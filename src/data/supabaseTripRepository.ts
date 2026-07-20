@@ -87,7 +87,8 @@ interface PlaceRow {
   id: string;
   trip_id: string;
   name: string;
-  note: string | null;
+  description: string | null;
+  self_review: string | null;
   category: string | null;
   lat: number;
   lng: number;
@@ -96,6 +97,7 @@ interface PlaceRow {
   day_id: string | null;
   source_url: string | null;
   address: string | null;
+  updated_at: string;
 }
 
 function placeFromRow(row: PlaceRow): Place {
@@ -103,7 +105,8 @@ function placeFromRow(row: PlaceRow): Place {
     id: row.id,
     tripId: row.trip_id,
     name: row.name,
-    note: row.note ?? undefined,
+    description: row.description ?? undefined,
+    selfReview: row.self_review ?? undefined,
     category: row.category ?? undefined,
     lat: row.lat,
     lng: row.lng,
@@ -112,6 +115,7 @@ function placeFromRow(row: PlaceRow): Place {
     dayId: row.day_id ?? undefined,
     sourceUrl: row.source_url ?? undefined,
     address: row.address ?? undefined,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -120,7 +124,8 @@ function placeToRow(place: Place): PlaceRow {
     id: place.id,
     trip_id: place.tripId,
     name: place.name,
-    note: place.note ?? null,
+    description: place.description ?? null,
+    self_review: place.selfReview ?? null,
     category: place.category ?? null,
     lat: place.lat,
     lng: place.lng,
@@ -129,6 +134,7 @@ function placeToRow(place: Place): PlaceRow {
     day_id: place.dayId ?? null,
     source_url: place.sourceUrl ?? null,
     address: place.address ?? null,
+    updated_at: place.updatedAt,
   };
 }
 
@@ -261,6 +267,41 @@ export class SupabaseTripRepository implements TripRepository {
     if (error) throw error;
   }
 
+  // Conditional update via a `WHERE id = ... AND updated_at = ...` clause —
+  // atomic at the database level, no read-compare-write race window. `.select()`
+  // makes PostgREST return the updated row(s) so we can tell "matched and
+  // wrote" (non-empty array) apart from "matched nothing" (empty array)
+  // without a second round-trip on the success path.
+  async updatePlaceIfUnchanged(
+    place: Place,
+    baseUpdatedAt: string,
+  ): Promise<{ place: Place; conflict: boolean }> {
+    const { data, error } = await this.client
+      .from('places')
+      .update(placeToRow(place))
+      .eq('id', place.id)
+      .eq('updated_at', baseUpdatedAt)
+      .select();
+    if (error) throw error;
+    if (data && data.length > 0) {
+      return { place, conflict: false };
+    }
+
+    // Nothing matched: either `updated_at` moved on since the caller read
+    // it (the expected conflict case) or the place doesn't exist at all.
+    // Re-read to tell those apart and hand back the current row.
+    const { data: currentRow, error: readError } = await this.client
+      .from('places')
+      .select('*')
+      .eq('id', place.id)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!currentRow) {
+      throw new Error(`updatePlaceIfUnchanged: no place with id ${place.id}`);
+    }
+    return { place: placeFromRow(currentRow as PlaceRow), conflict: true };
+  }
+
   // ---- Days ----
 
   async listDays(tripId: ID): Promise<Day[]> {
@@ -341,7 +382,7 @@ export class SupabaseTripRepository implements TripRepository {
       this.listAllItinerary(trip.id),
       this.listExpenses(trip.id),
     ]);
-    return { version: 2, trip, days, places, itinerary, expenses };
+    return { version: 3, trip, days, places, itinerary, expenses };
   }
 
   async importSnapshot(snapshot: TripSnapshot): Promise<void> {

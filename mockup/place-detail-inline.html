@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Place detail — Option B: Inline expand</title>
+<style>
+  /* ============================= TOKENS (ported from mockup/mockup.html) ============================= */
+  :root{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350;
+    --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-full: 999px;
+    --shadow-sm: 0 1px 2px rgba(60,40,20,.08), 0 1px 1px rgba(60,40,20,.05);
+    --shadow-md: 0 8px 24px -8px rgba(60,40,20,.22), 0 2px 6px rgba(60,40,20,.08);
+    --shadow-lg: 0 24px 60px -16px rgba(30,20,10,.35);
+    --font-display: 'Songti SC','STSong','Noto Serif SC', Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Consolas', 'Roboto Mono', monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+      --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+      --line: #362E24; --line-strong: #453A2C;
+      --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+      --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B;
+      --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+      --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+      --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+    --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+    --line: #362E24; --line-strong: #453A2C;
+    --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+    --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+    --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+    --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    color-scheme: light;
+  }
+
+  /* ============================= RESET ============================= */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,p,ul{ margin:0; }
+  ul{ list-style:none; padding:0; }
+  button{ font:inherit; color:inherit; }
+  textarea,select{ font:inherit; color:inherit; }
+  button, select{ cursor:pointer; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  svg{ display:block; }
+
+  /* ============================= SCAFFOLDING (mockup-only, not app UI) ============================= */
+  .spec-bar{
+    position:sticky; top:0; z-index:200; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:var(--ink); color:var(--paper); padding:12px 18px; font-size:13px;
+  }
+  .spec-bar strong{ font-size:14px; }
+  .spec-bar span{ color:#cabfae; }
+  .spec-bar .btn-icon{ background:transparent; border:1px solid rgba(255,255,255,.3); color:var(--paper); }
+  .spec-bar .btn-icon:hover{ background:rgba(255,255,255,.12); }
+  .frame-label{ max-width:1100px; margin:26px auto 10px; padding:0 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); }
+  .frame-wrap{ max-width:1100px; margin:0 auto 40px; padding:0 18px; }
+  .frame-hint{ font-size:12.5px; color:var(--ink-soft); margin:2px 0 0; font-weight:400; text-transform:none; letter-spacing:0; }
+  .reflow-callout{
+    max-width:1100px; margin:0 auto 18px; padding:0 18px 0; font-size:12.5px; color:var(--ink-soft);
+  }
+  .reflow-callout b{ color:var(--accent-soft-ink); background:var(--accent-soft); padding:1px 5px; border-radius:4px; }
+
+  /* ============================= BUTTONS / TAGS ============================= */
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; border-radius:var(--radius-full);
+    padding:9px 16px; font-size:13.5px; font-weight:600; background:var(--paper-raised); border-color:var(--line-strong); color:var(--ink);
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease; white-space:nowrap;
+  }
+  .btn:hover{ box-shadow:var(--shadow-sm); }
+  .btn:active{ transform:scale(.97); }
+  .btn svg{ width:15px; height:15px; flex:none; }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-ghost{ background:transparent; border-color:var(--line-strong); }
+  .btn-ghost:hover{ background:var(--paper-sunk); }
+  .btn-sm{ padding:6px 12px; font-size:12.5px; }
+  .btn-icon{ width:36px; height:36px; padding:0; justify-content:center; border-radius:50%; flex:none; }
+  .btn-icon svg{ width:16px; height:16px; }
+  .icon-btn{ width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--ink-faint); flex:none; }
+  .icon-btn:hover{ background:var(--paper-sunk); color:var(--ink); }
+  .icon-btn svg{ width:14px; height:14px; }
+
+  .tag{
+    display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700;
+    padding:3px 9px; border-radius:var(--radius-full); letter-spacing:.02em;
+    background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line);
+  }
+  .tag.city{ background:var(--accent-soft); color:var(--accent-soft-ink); border-color:transparent; }
+  .tag.reviewed{ background:var(--jade-soft); color:var(--jade-soft-ink); border-color:transparent; }
+  .tag-icon{ width:10px; height:10px; }
+
+  select{
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:6px 26px 6px 9px; font-size:12px; font-weight:600; color:var(--ink); appearance:none; -webkit-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239C9184' stroke-width='2'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 8px center; background-size:14px;
+  }
+
+  /* ============================= PANEL / GRID / CARD (matches src/features/places/PlacesPanel.tsx) ============================= */
+  .panel-head{ margin-bottom:14px; }
+  .panel-title{ font-family:var(--font-display); font-size:1.25rem; font-weight:600; }
+  .panel-hint{ font-size:12.5px; color:var(--ink-soft); display:block; margin-top:2px; }
+
+  .card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-md); box-shadow:var(--shadow-sm); }
+  .city-section{
+    margin-bottom:18px; padding:14px 16px 16px; border-radius:var(--radius-md);
+    background:var(--paper-raised); border:1px solid var(--line); border-left:4px solid var(--city-accent, var(--line-strong));
+    box-shadow:var(--shadow-sm);
+  }
+  .city-section-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .city-section-head h3{ font-family:var(--font-display); font-size:1.05rem; font-weight:600; }
+  .city-section-head .count{ font-size:12px; color:var(--ink-soft); margin-left:auto; }
+  .city-dot{ width:9px; height:9px; border-radius:50%; background:var(--city-accent, var(--d-grey)); flex:none; }
+
+  /* NOTE: no align-items override on .place-grid, and .place-foot keeps its
+     real margin-top:auto (see below) — this is deliberate. It's what makes
+     the grid-reflow cost of expanding a card in place visible instead of
+     silently avoided. See the callout above each demo frame. */
+  .place-grid{ display:grid; grid-template-columns:1fr; gap:10px; }
+  @media (min-width:640px){ .place-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media (min-width:1000px){ .place-grid{ grid-template-columns:repeat(3,1fr); } }
+  .phone-frame .place-grid{ grid-template-columns:1fr; }
+
+  .place-card{ padding:14px; display:flex; flex-direction:column; gap:9px; transition:box-shadow .12s ease, border-color .12s ease; }
+  .place-card-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .place-title{ display:flex; align-items:center; gap:8px; min-width:0; }
+  .place-icon{
+    width:24px; height:24px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
+    background:var(--pin-color, var(--d-grey)); box-shadow:0 1px 3px rgba(0,0,0,.2);
+  }
+  .place-icon svg{ width:12px; height:12px; stroke:#fff; fill:none; }
+  .place-icon.unassigned{ background:transparent; border:1.5px dashed var(--pin-color, var(--d-grey)); }
+  .place-icon.unassigned svg{ stroke:var(--pin-color, var(--d-grey)); }
+  .place-name{ font-size:14.5px; font-weight:700; line-height:1.3; min-width:0; }
+  .place-tags{ display:flex; gap:6px; flex-wrap:wrap; }
+  .place-note{ font-size:12.5px; color:var(--ink-soft); font-style:italic; }
+  .place-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px 10px; flex-wrap:wrap; margin-top:auto; padding-top:8px; border-top:1px solid var(--line); }
+  .assign-select{ border-left:4px solid var(--select-tint, var(--line-strong)); }
+  .assign-select.is-wishlist{ border-left-style:dashed; }
+
+  /* ---- expand / collapse toggle ---- */
+  .details-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .details-toggle{
+    display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700; color:var(--ink-soft);
+    background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-full); padding:5px 11px 5px 9px;
+  }
+  .details-toggle:hover{ border-color:var(--line-strong); color:var(--ink); }
+  .details-toggle svg{ width:13px; height:13px; transition:transform .15s ease; }
+  .details-toggle[aria-expanded="true"]{ background:var(--accent-soft); border-color:transparent; color:var(--accent-soft-ink); }
+  .details-toggle[aria-expanded="true"] svg{ transform:rotate(180deg); }
+  .details-toggle.invite{ background:transparent; border-style:dashed; border-color:var(--accent); color:var(--accent); }
+
+  /* ---- expanded body: About + My review, inline in the card ---- */
+  .place-detail-body{ padding-top:2px; }
+  .detail-section{ margin-top:16px; }
+  .detail-section:first-child{ margin-top:0; }
+  .detail-section .field-label{ font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:7px; }
+  .detail-section .detail-prose,
+  .detail-section .detail-empty,
+  .detail-section .detail-edit{ display:none; }
+  .detail-section[data-mode="view-filled"] > .detail-prose{ display:block; }
+  .detail-section[data-mode="view-empty"] > .detail-empty{ display:flex; }
+  .detail-section[data-mode="edit"] > .detail-edit{ display:block; }
+  .detail-prose{ font-size:13.5px; color:var(--ink); white-space:pre-line; line-height:1.6; }
+  .detail-empty{
+    align-items:center; gap:9px; padding:12px; border:1px dashed var(--line-strong); border-radius:var(--radius-sm);
+    background:var(--paper-sunk);
+  }
+  .detail-empty svg{ width:16px; height:16px; color:var(--ink-faint); flex:none; }
+  .detail-empty-text{ flex:1; min-width:0; }
+  .detail-empty-text strong{ display:block; font-size:12px; color:var(--ink-soft); font-weight:700; }
+  .detail-empty-text span{ font-size:11px; color:var(--ink-faint); }
+  .detail-empty .btn{ flex:none; }
+  .detail-edit textarea{
+    width:100%; background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:9px 10px; font-size:13.5px; font-family:inherit; color:var(--ink); resize:vertical; line-height:1.55;
+  }
+  .detail-edit textarea:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .inline-edit-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+
+  /* ============================= PHONE FRAME (mockup scaffolding) ============================= */
+  .phone-frame{
+    position:relative; width:390px; max-width:100%; margin:0 auto; padding:12px;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:34px; box-shadow:var(--shadow-md);
+  }
+  .phone-screen{ background:var(--paper); border-radius:22px; overflow:auto; max-height:900px; padding:16px 14px 24px; }
+</style>
+</head>
+<body>
+
+<div class="spec-bar">
+  <div><strong>Option B — Inline expand</strong> <span>&middot; the card itself grows in place to reveal About / My review</span></div>
+  <button class="btn btn-icon" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Toggle light / dark">
+    <svg id="themeIcon"><use href="#i-moon"/></svg>
+  </button>
+</div>
+
+<svg class="visually-hidden" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <defs>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0112 2a7 7 0 017 7.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5v-15z"/><path d="M4 20.5A2.5 2.5 0 006.5 18H20"/></symbol>
+    <symbol id="i-quote" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8c-2 1-3 3-3 5.5S6 18 8 18"/><path d="M17 8c-2 1-3 3-3 5.5S20 18 22 18"/></symbol>
+    <symbol id="i-cat-landmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 6h-8l4-6z"/><path d="M6 22V10M18 22V10M2 22h20"/></symbol>
+    <symbol id="i-cat-nature" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l5 8h-3l4 6H6l4-6H7l5-8z"/><path d="M12 21v-4"/></symbol>
+    <symbol id="i-cat-neighbourhood" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V11l4-3 4 3v10"/><path d="M13 21V8l4-4 4 4v13"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.5 8.5 0 1110 3.3 6.7 6.7 0 0020 14.2z"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============================= DESKTOP / TABLET DEMO ============================= -->
+<h2 class="frame-label">Desktop / tablet width<span class="frame-hint" style="display:block;text-transform:none;font-weight:400;letter-spacing:0;margin-top:4px">Places &middot; Chongqing, 3-column grid. <strong>Hongya Cave</strong> starts expanded (filled &amp; reviewed) so the reflow cost sits next to collapsed neighbours by default. Try expanding a second card, e.g. <strong>Wulong Karst</strong> (empty) or the <strong>Great Hall</strong> (notes only).</span></h2>
+<p class="reflow-callout">This is deliberately <b>not hidden</b>: because <code>.place-foot</code> uses <code>margin-top:auto</code> and the grid doesn't override <code>align-items</code>, an expanded card stretches its whole row — collapsed neighbours get taller with empty space above their footer. That's the real cost of expanding in a shared grid, and it's visible below at 2- and 3-column widths.</p>
+<div class="frame-wrap">
+  <div class="panel-head">
+    <h2 class="panel-title">Places</h2>
+    <span class="panel-hint">Chongqing &middot; 5 places &middot; 3 assigned</span>
+  </div>
+  <div class="city-section" style="--city-accent:var(--d-plum)">
+    <div class="city-section-head"><span class="city-dot"></span><h3>Chongqing</h3><span class="count">5 places &middot; 3 assigned</span></div>
+    <div class="place-grid" id="grid-desktop"></div>
+  </div>
+</div>
+
+<!-- ============================= MOBILE DEMO (390px) ============================= -->
+<h2 class="frame-label">Mobile &mdash; 390px width<span class="frame-hint" style="display:block;text-transform:none;font-weight:400;letter-spacing:0;margin-top:4px">Same grid, same data, single column. No side-by-side reflow cost here — the cost at this width is a longer scroll past whatever's expanded.</span></h2>
+<div class="frame-wrap" style="margin-bottom:60px">
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="panel-head">
+        <h2 class="panel-title">Places</h2>
+        <span class="panel-hint">Chongqing &middot; 5 places &middot; 3 assigned</span>
+      </div>
+      <div class="city-section" style="--city-accent:var(--d-plum)">
+        <div class="city-section-head"><span class="city-dot"></span><h3>Chongqing</h3><span class="count">5 places</span></div>
+        <div class="place-grid" id="grid-mobile"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var PLACES = {
+    hongya: {
+      name: 'Hongya Cave', category: 'Landmark', city: 'Chongqing', icon: 'i-cat-landmark', color: 'var(--d-blue)',
+      note: 'Stilt-house complex, lit up at night', assigned: 'day1',
+      description: "Multi-tiered stilt-house complex built into the cliff above the Jialing River — a modern reconstruction of old Bayu-style architecture rather than an actual historic site, so don't go in expecting ruins. Eleven levels connect the riverside road up to Cangbai Road at the top; escalators inside make it easy to skip the stairs if the humidity's bad.\n\nBest seen from across the river, or from Qiansimen Bridge, right after dusk when all the levels light up together — arriving 15–20 minutes before is worth it to get a spot on the bridge. The interior is a shopping/dining complex, free to enter; the rooftop observation deck is a separate paid ticket and probably skippable.",
+      review: "Worth timing it exactly right — we crossed Qiansimen Bridge at 6:40pm and caught the lights coming on tier by tier, easily the best ten minutes of the Chongqing leg. Photos from the bridge came out far better than anything we managed from inside.\n\nInside is basically a mall dressed as a Ming-dynasty film set, which was a little deflating up close after seeing it lit from outside, so we didn't linger — the photo really is the point, not the shopping. Skipped the paid rooftop deck; the free view from the bridge is honestly the better angle anyway.\n\nWhole visit including queuing for a bridge spot took about 90 minutes. Would come back just for the lights, wouldn't bother with the interior a second time."
+    },
+    liziba: {
+      name: 'Liziba Monorail Station', category: 'Landmark', city: 'Chongqing', icon: 'i-cat-landmark', color: 'var(--d-blue)',
+      note: 'Train runs right through the building', assigned: 'day1',
+      description: "Monorail Line 2 runs directly through floors 6–8 of this apartment block — the platform is inside the building itself. Best photo spot is the small park across the road on the Nanbin Road side rather than trying to shoot from the platform, where security moves people along quickly. Trains pass roughly every 5–8 minutes, so no need to time a visit precisely.",
+      review: ''
+    },
+    wulong: {
+      name: 'Wulong Karst (Three Natural Bridges)', category: 'Nature', city: 'Chongqing', icon: 'i-cat-nature', color: 'var(--d-amber)',
+      note: 'Day trip — book transport ahead', assigned: 'daytrip',
+      description: '', review: ''
+    },
+    ciqikou: {
+      name: 'Ciqikou Ancient Town', category: 'Neighbourhood', city: 'Chongqing', icon: 'i-cat-neighbourhood', color: 'var(--d-grey)',
+      note: 'Old riverside town', assigned: '',
+      description: '', review: ''
+    },
+    greathall: {
+      name: 'Chongqing People’s Great Hall', category: 'Landmark', city: 'Chongqing', icon: 'i-cat-landmark', color: 'var(--d-grey)',
+      note: 'Soviet-era auditorium, worth a look', assigned: '',
+      description: "Soviet-influenced auditorium modelled loosely on the Temple of Heaven, finished in 1954. The plaza out front is free to walk around and photograph any time; the interior is only open for scheduled events and guided tours, so worth checking ahead if we actually want to go inside rather than just see the exterior. Apparently nice lit up at night, with the fountains running.",
+      review: ''
+    }
+  };
+  var ORDER = ['hongya','liziba','wulong','ciqikou','greathall'];
+
+  // per (frame, key) UI state — expand/collapse and view/edit are independent
+  // per card instance, so the desktop and mobile demos don't have to match.
+  var cardState = {};
+  function getState(frame, key){
+    var k = frame + ':' + key;
+    if(!cardState[k]) cardState[k] = { expanded: key === 'hongya', mode: 'view' };
+    return cardState[k];
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function detailSectionHTML(frame, key, which, label, icon, text, mode, emptyTitle, emptyHint, emptyBtn, placeholder){
+    var lc = which; // 'about' | 'review'
+    var domMode = mode === 'edit' ? 'edit' : (text ? 'view-filled' : 'view-empty');
+    var ids = 'card-' + lc + '-' + frame + '-' + key;
+    return '' +
+      '<div class="detail-section" data-mode="' + domMode + '">' +
+        '<span class="field-label">' + label + '</span>' +
+        '<p class="detail-prose">' + (text ? escapeHtml(text) : '') + '</p>' +
+        '<div class="detail-empty">' +
+          '<svg><use href="#' + icon + '"/></svg>' +
+          '<div class="detail-empty-text"><strong>' + emptyTitle + '</strong><span>' + emptyHint + '</span></div>' +
+          '<button type="button" class="btn btn-sm btn-ghost" onclick="event.stopPropagation();setCardMode(\'' + frame + '\',\'' + key + '\',\'edit\',\'' + lc + '\')">' + emptyBtn + '</button>' +
+        '</div>' +
+        '<div class="detail-edit"><textarea id="' + ids + '" placeholder="' + placeholder + '">' + (mode === 'edit' ? escapeHtml(text) : '') + '</textarea></div>' +
+      '</div>';
+  }
+
+  function cardHTML(key, frame){
+    var p = PLACES[key];
+    var s = getState(frame, key);
+    var unassigned = !p.assigned;
+    var hasDetail = !!(p.description || p.review);
+    var iconCls = unassigned ? 'place-icon unassigned' : 'place-icon';
+
+    var toggleLabel, toggleIcon, toggleCls;
+    if(s.expanded){ toggleLabel = 'Hide details'; toggleIcon = 'i-chevron-down'; toggleCls = 'details-toggle'; }
+    else if(hasDetail){ toggleLabel = 'Details'; toggleIcon = 'i-chevron-down'; toggleCls = 'details-toggle'; }
+    else { toggleLabel = 'Add notes & review'; toggleIcon = 'i-plus'; toggleCls = 'details-toggle invite'; }
+
+    var body = '';
+    if(s.expanded){
+      body = '<div class="place-detail-body">' +
+        detailSectionHTML(frame, key, 'about', 'About', 'i-book', p.description, s.mode,
+          'Nothing written yet', 'Opening hours, best time, tips before you go', '+ Add notes',
+          "What should you know before visiting? Opening hours, best time of day, getting there, tips...") +
+        detailSectionHTML(frame, key, 'review', 'My review', 'i-quote', p.review, s.mode,
+          'You haven&rsquo;t reviewed this place yet', 'Write it up once you&rsquo;ve been', '+ Write a review',
+          "How did it go? Worth it, what you'd skip next time, how long you stayed...") +
+        (s.mode === 'edit' ?
+          '<div class="inline-edit-actions">' +
+            '<button type="button" class="btn btn-sm btn-ghost" onclick="event.stopPropagation();cancelCard(\'' + frame + '\',\'' + key + '\')">Cancel</button>' +
+            '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation();saveCard(\'' + frame + '\',\'' + key + '\')"><svg><use href="#i-check"/></svg> Save</button>' +
+          '</div>' : '') +
+        '</div>';
+    }
+
+    var editTrigger = (s.expanded && s.mode === 'view')
+      ? '<button type="button" class="icon-btn" aria-label="Edit notes and review for ' + p.name + '" onclick="event.stopPropagation();setCardMode(\'' + frame + '\',\'' + key + '\',\'edit\')"><svg><use href="#i-edit"/></svg></button>'
+      : '';
+
+    return '' +
+      '<article class="card place-card" data-key="' + key + '">' +
+        '<div class="place-card-top">' +
+          '<span class="place-title">' +
+            '<span class="' + iconCls + '" style="--pin-color:' + p.color + '"><svg><use href="#' + p.icon + '"/></svg></span>' +
+            '<span class="place-name">' + p.name + '</span>' +
+          '</span>' +
+          '<button class="icon-btn" aria-label="Delete ' + p.name + '"><svg><use href="#i-trash"/></svg></button>' +
+        '</div>' +
+        '<div class="place-tags">' +
+          '<span class="tag">' + p.category + '</span>' +
+          '<span class="tag city">' + p.city + '</span>' +
+          (p.review ? '<span class="tag reviewed"><svg class="tag-icon"><use href="#i-check"/></svg>Reviewed</span>' : '') +
+        '</div>' +
+        (p.note ? '<p class="place-note">' + p.note + '</p>' : '') +
+        '<div class="details-row">' +
+          '<button type="button" class="' + toggleCls + '" aria-expanded="' + s.expanded + '" onclick="toggleDetails(\'' + frame + '\',\'' + key + '\')">' +
+            '<svg><use href="#' + toggleIcon + '"/></svg>' + toggleLabel +
+          '</button>' +
+          editTrigger +
+        '</div>' +
+        body +
+        '<div class="place-foot">' +
+          '<span class="assign-slot"><select class="assign-select' + (unassigned ? ' is-wishlist' : '') + '" style="--select-tint:' + p.color + '" aria-label="Assign day for ' + p.name + '">' +
+            '<option' + (!p.assigned ? ' selected' : '') + '>Wishlist</option>' +
+            '<option' + (p.assigned === 'day1' ? ' selected' : '') + '>Day 1 · Fri 20 Nov</option>' +
+            '<option' + (p.assigned === 'daytrip' ? ' selected' : '') + '>Day trip · Sat 21 Nov</option>' +
+          '</select></span>' +
+        '</div>' +
+      '</article>';
+  }
+
+  function renderGrids(){
+    ['desktop','mobile'].forEach(function(frame){
+      document.getElementById('grid-' + frame).innerHTML = ORDER.map(function(k){ return cardHTML(k, frame); }).join('');
+    });
+  }
+
+  function toggleDetails(frame, key){
+    var s = getState(frame, key);
+    s.expanded = !s.expanded;
+    if(!s.expanded) s.mode = 'view';
+    renderGrids();
+    refocus(frame, key);
+  }
+
+  function setCardMode(frame, key, mode, focusField){
+    var s = getState(frame, key);
+    s.expanded = true;
+    s.mode = mode;
+    renderGrids();
+    if(mode === 'edit'){
+      var id = 'card-' + (focusField || 'about') + '-' + frame + '-' + key;
+      setTimeout(function(){ var el = document.getElementById(id); if(el) el.focus(); }, 0);
+    } else {
+      refocus(frame, key);
+    }
+  }
+
+  function cancelCard(frame, key){
+    var s = getState(frame, key);
+    s.mode = 'view';
+    renderGrids();
+    refocus(frame, key);
+  }
+
+  function saveCard(frame, key){
+    var p = PLACES[key];
+    p.description = document.getElementById('card-about-' + frame + '-' + key).value.trim();
+    p.review = document.getElementById('card-review-' + frame + '-' + key).value.trim();
+    var s = getState(frame, key);
+    s.mode = 'view';
+    renderGrids();
+    refocus(frame, key);
+  }
+
+  // after a re-render destroys and rebuilds the DOM, return focus to the
+  // toggle button of the card that was just interacted with, so keyboard
+  // users don't lose their place.
+  function refocus(frame, key){
+    setTimeout(function(){
+      // both frames render a card with this data-key; only refocus the one
+      // in the frame that triggered the action.
+      var grid = document.getElementById('grid-' + frame);
+      var target = grid ? grid.querySelector('.place-card[data-key="' + key + '"] .details-toggle') : null;
+      if(target) target.focus();
+    }, 0);
+  }
+
+  renderGrids();
+
+  // ---------- theme toggle ----------
+  function systemTheme(){ return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+  function effectiveTheme(){ return document.documentElement.getAttribute('data-theme') || systemTheme(); }
+  function applyThemeIcon(){
+    var eff = effectiveTheme();
+    document.getElementById('themeIcon').innerHTML = '<use href="#i-' + (eff === 'dark' ? 'sun' : 'moon') + '"/>';
+  }
+  function toggleTheme(){
+    document.documentElement.setAttribute('data-theme', effectiveTheme() === 'dark' ? 'light' : 'dark');
+    applyThemeIcon();
+  }
+  applyThemeIcon();
+</script>
+</body>
+</html>

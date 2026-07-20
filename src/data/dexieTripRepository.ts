@@ -65,6 +65,28 @@ export class DexieTripRepository implements TripRepository {
     await db.places.delete(id);
   }
 
+  // Atomic within a single Dexie 'rw' transaction: IndexedDB serializes
+  // overlapping readwrite transactions against the same object store even
+  // across browser tabs/connections, so this is safe against a concurrent
+  // write from another tab on this same device, not just within one JS
+  // event loop.
+  async updatePlaceIfUnchanged(
+    place: Place,
+    baseUpdatedAt: string,
+  ): Promise<{ place: Place; conflict: boolean }> {
+    return db.transaction('rw', db.places, async () => {
+      const current = await db.places.get(place.id);
+      if (!current) {
+        throw new Error(`updatePlaceIfUnchanged: no place with id ${place.id}`);
+      }
+      if (current.updatedAt !== baseUpdatedAt) {
+        return { place: current, conflict: true };
+      }
+      await db.places.put(place);
+      return { place, conflict: false };
+    });
+  }
+
   // ---- Days ----
 
   async listDays(tripId: ID): Promise<Day[]> {
@@ -124,7 +146,7 @@ export class DexieTripRepository implements TripRepository {
       this.listAllItinerary(trip.id),
       this.listExpenses(trip.id),
     ]);
-    return { version: 2, trip, days, places, itinerary, expenses };
+    return { version: 3, trip, days, places, itinerary, expenses };
   }
 
   async importSnapshot(snapshot: TripSnapshot): Promise<void> {

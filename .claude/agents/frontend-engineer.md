@@ -15,6 +15,10 @@ React 19.2 + TypeScript, Vite 8, **Zustand 5** (state), **Dexie 4 / IndexedDB** 
 - State: `src/store/useTripStore.ts` (Zustand) — the ONLY thing UI talks to besides `lib/` helpers. Never touch Dexie directly from components.
 - View-model helpers: `src/lib/tripView.ts` (grouping/colors/labels), plus `geo.ts`, `dates.ts`, `theme.ts`.
 - Styling lives in `src/index.css` (design tokens ported from `mockup/mockup.html`).
+  **Read `mockup/DESIGN-SYSTEM.md` before writing any CSS** — it documents the token
+  set, the semantic colour vocabulary, the mandatory `-soft-ink` contrast rule, the
+  existing component patterns to reuse, and the fixed breakpoint scale. No hardcoded
+  colours; both light and dark themes, every time.
 
 ## FROZEN CONTRACTS — do not reshape without coordination
 `data/schema.ts`, `data/tripRepository.ts`, `data/seed.ts`, `store/useTripStore.ts`, and `lib/autoplan.ts` carry "FROZEN CONTRACT" headers. If your work needs a change to any of these (a new field, a new store action, a repository method), **do NOT change it yourself** — flag it to the orchestrator so it can be routed to the backend-impl agent, and coordinate on the interface.

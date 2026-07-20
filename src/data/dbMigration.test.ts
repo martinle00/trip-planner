@@ -71,6 +71,61 @@ afterEach(async () => {
   await Dexie.delete(DB_NAME);
 });
 
+/** Writes v2-shaped raw records (post multi-currency, pre Phase-4 prose
+ *  fields — `Place.note`, no `description`/`selfReview`/`updatedAt`) into a
+ *  fresh IndexedDB, declaring ONLY versions 1 and 2 (no `.version(3)`) —
+ *  simulating a browser profile used any time before today's db.ts (which
+ *  always declares all three versions) ever ran against it. */
+async function seedV2Database(): Promise<void> {
+  const v2Db = new Dexie(DB_NAME);
+  v2Db.version(1).stores({
+    trips: 'id',
+    days: 'id, tripId, date',
+    places: 'id, tripId, city, status, dayId',
+    itinerary: 'id, dayId, order',
+    expenses: 'id, tripId, dayId',
+  });
+  v2Db.version(2).stores({
+    trips: 'id',
+    days: 'id, tripId, date',
+    places: 'id, tripId, city, status, dayId',
+    itinerary: 'id, dayId, order',
+    expenses: 'id, tripId, dayId',
+  });
+  await v2Db.open();
+  await v2Db.table('trips').put({
+    id: ACTIVE_TRIP_ID,
+    name: 'V2 Trip',
+    startDate: '2026-11-07',
+    endDate: '2026-11-30',
+    homeCurrency: 'AUD',
+    tripCurrency: 'CNY',
+    rates: { AUD: 1, CNY: 0.21 },
+    ratesBase: 'AUD',
+    cities: [{ name: 'Shanghai', order: 1, nights: 2, arrive: '2026-11-09', depart: '2026-11-11' }],
+  });
+  await v2Db.table('places').put({
+    id: 'place-v2-with-note',
+    tripId: ACTIVE_TRIP_ID,
+    name: 'The Bund',
+    city: 'Shanghai',
+    lat: 31.2397,
+    lng: 121.49,
+    status: 'wishlist',
+    note: 'Go at sunset',
+  });
+  await v2Db.table('places').put({
+    id: 'place-v2-no-note',
+    tripId: ACTIVE_TRIP_ID,
+    name: 'Yu Garden',
+    city: 'Shanghai',
+    lat: 31.227,
+    lng: 121.492,
+    status: 'wishlist',
+  });
+  v2Db.close();
+}
+
 describe('Dexie v1 -> v2 in-place migration (db.ts version(2).upgrade)', () => {
   it('migrates an existing v1 trip to v2 shape (rates table, ratesBase, no cnyToHomeRate) on first open', async () => {
     await seedV1Database();
@@ -114,25 +169,84 @@ describe('Dexie v1 -> v2 in-place migration (db.ts version(2).upgrade)', () => {
     expect(convert(50, 'AUD', trip!)).toBe(50);
   });
 
-  it('exportSnapshot on a migrated database produces a valid, self-consistent v2 snapshot', async () => {
+  it('exportSnapshot on a migrated database produces a valid, self-consistent v3 snapshot', async () => {
     await seedV1Database();
 
     const repo = new DexieTripRepository();
     const snapshot = await repo.exportSnapshot();
 
-    expect(snapshot.version).toBe(2);
+    expect(snapshot.version).toBe(3);
     expect(snapshot.trip.rates).toEqual({ CNY: 0.21, AUD: 1 });
     expect(snapshot.expenses.find((e) => e.id === 'exp-v1')).toMatchObject({ amount: 38, currency: 'CNY' });
   });
 
-  it('a fresh (never-v1) database is seeded directly at v2 with no upgrade side effects', async () => {
+  it('a fresh (never-v1) database is seeded directly at the current version with no upgrade side effects', async () => {
     // No seedV1Database() call — sanity check that the normal first-run path
     // (seedIfEmpty against an empty DB) still works unaffected by the new
-    // version(2).upgrade() being declared.
+    // version(2)/version(3) upgrades being declared.
     const repo = new DexieTripRepository();
     await repo.seedIfEmpty();
     const trip = await repo.getTrip();
     expect(trip?.rates).toBeDefined();
     expect((trip as unknown as { cnyToHomeRate?: number })?.cnyToHomeRate).toBeUndefined();
+  });
+});
+
+describe('Dexie v2 -> v3 in-place migration (db.ts version(3).upgrade)', () => {
+  it('folds an existing place `note` into `description` and removes `note`', async () => {
+    await seedV2Database();
+
+    const repo = new DexieTripRepository();
+    const places = await repo.listPlaces(ACTIVE_TRIP_ID);
+
+    const withNote = places.find((p) => p.id === 'place-v2-with-note');
+    expect(withNote?.description).toBe('Go at sunset');
+    expect((withNote as unknown as { note?: string })?.note).toBeUndefined();
+  });
+
+  it('backfills `updatedAt` on every existing place (a real ISO date-time string)', async () => {
+    await seedV2Database();
+
+    const repo = new DexieTripRepository();
+    const places = await repo.listPlaces(ACTIVE_TRIP_ID);
+
+    for (const place of places) {
+      expect(typeof place.updatedAt).toBe('string');
+      expect(Number.isNaN(Date.parse(place.updatedAt))).toBe(false);
+    }
+  });
+
+  it('leaves a place with no note alone apart from backfilling updatedAt (description stays undefined)', async () => {
+    await seedV2Database();
+
+    const repo = new DexieTripRepository();
+    const places = await repo.listPlaces(ACTIVE_TRIP_ID);
+
+    const noNote = places.find((p) => p.id === 'place-v2-no-note');
+    expect(noNote?.description).toBeUndefined();
+    expect(noNote?.updatedAt).toBeDefined();
+  });
+
+  it('exportSnapshot on a v2->v3-migrated database produces a valid v3 snapshot with no note field anywhere', async () => {
+    await seedV2Database();
+
+    const repo = new DexieTripRepository();
+    const snapshot = await repo.exportSnapshot();
+
+    expect(snapshot.version).toBe(3);
+    for (const place of snapshot.places) {
+      expect((place as unknown as { note?: string }).note).toBeUndefined();
+      expect(place.updatedAt).toBeDefined();
+    }
+  });
+
+  it('a fresh (never-v2) database is seeded directly at v3 with the placeDrafts table present', async () => {
+    const repo = new DexieTripRepository();
+    await repo.seedIfEmpty();
+    const places = await repo.listPlaces(ACTIVE_TRIP_ID);
+    expect(places.length).toBeGreaterThan(0);
+    for (const place of places) {
+      expect(place.updatedAt).toBeDefined();
+    }
   });
 });

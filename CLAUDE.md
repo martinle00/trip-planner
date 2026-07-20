@@ -149,6 +149,12 @@ backwards, because nothing writes the render state. **Do not reintroduce a
 
 ## Design / mockup workflow
 
+**`mockup/DESIGN-SYSTEM.md` is the design reference** — tokens and what each one means,
+the semantic colour vocabulary (jade = paid/done, gold = owed/pending, accent = primary
+action), the mandatory `-soft-ink` contrast rule, component patterns, breakpoints and
+the a11y floor. Read it before any UI work so you don't re-derive it from the CSS.
+`src/index.css` stays the source of truth; if the doc drifts from it, fix the doc.
+
 `mockup/mockup.html` is a self-contained static mockup that acts as the visual spec
 the React app is built to match; design tokens in `src/index.css` are ported from it.
 `.claude/agents/` defines a pipeline: ux-designer → ux-reviewer → frontend-engineer /
@@ -156,6 +162,11 @@ backend-impl → code-reviewer → qa-tester. Non-trivial UI work is expected to
 through mockup + review before implementation.
 
 ## Status / next steps
+
+**⚠️ Phase 4 is mid-flight — see `PHASE4.md` before touching anything.** It carries the
+full scope (9 items), the decisions and their rationale, four documented traps, and the
+workstream state. The working tree may not compile: removing `Place.note` was
+deliberately landed without fixing its three UI consumers.
 
 Working and verified by tests + build: schema, both repositories, the synced
 write-through wrapper, magic-link auth, bootstrap migration, cache-first boot, sync

@@ -23,6 +23,8 @@ import { ACTIVE_TRIP_ID } from '../data/tripRepository';
 import { getActiveRepository, tripRepository } from '../data/tripRepositoryInstance';
 import { DexieTripRepository } from '../data/dexieTripRepository';
 import { parseSnapshot, serializeSnapshot } from '../data/exportImport';
+import { draftRepository } from '../data/draftRepository';
+import type { PlaceDraft } from '../data/draftRepository';
 import * as exchangeRates from '../lib/exchangeRates';
 
 export interface TripState {
@@ -79,13 +81,59 @@ export interface TripState {
   init: () => Promise<void>;
 
   // ---- places ----
+  /** `updatedAt` is never caller-supplied — every place-mutating action
+   *  stamps it with the current time itself (see `Place.updatedAt`'s doc
+   *  comment in schema.ts). */
   addPlace: (
-    input: Omit<Place, 'id' | 'tripId' | 'status'> & Partial<Pick<Place, 'status' | 'dayId'>>,
+    input: Omit<Place, 'id' | 'tripId' | 'status' | 'updatedAt'> &
+      Partial<Pick<Place, 'status' | 'dayId'>>,
   ) => Promise<Place>;
+  /** `place.updatedAt` is ignored (overwritten with now) — callers should
+   *  not try to manage it themselves. To edit `description`/`selfReview`
+   *  specifically, prefer `savePlaceDraft` + `commitPlaceDraft` below, which
+   *  add append-both conflict detection; this action is for the other
+   *  (non-prose) fields, e.g. name/category/position. */
   updatePlace: (place: Place) => Promise<void>;
   removePlace: (id: ID) => Promise<void>;
   /** Assign (or clear, with undefined) a place's day; keeps status in sync. */
   assignPlaceToDay: (placeId: ID, dayId: ID | undefined) => Promise<void>;
+
+  // ---- place prose drafts (description/selfReview) ----
+  /** Read the local (never-synced) WIP draft for a place, if any — e.g. to
+   *  prefill an edit form after a reload. `undefined` means no draft is
+   *  pending; the caller should fall back to the place's own
+   *  `description`/`selfReview`. */
+  getPlaceDraft: (placeId: ID) => Promise<PlaceDraft | undefined>;
+  /**
+   * Persist WIP `description`/`selfReview` text for a place locally only
+   * (never synced) — call on every edit (typically debounced) so a draft
+   * survives a reload/offline with no network involved. The draft's
+   * conflict-detection base (`baseUpdatedAt`) is established from the
+   * place's current `updatedAt` the FIRST time a draft is started, and then
+   * held fixed across subsequent `savePlaceDraft` calls for the same
+   * editing session (until `commitPlaceDraft` or `discardPlaceDraft`) —
+   * callers never need to manage it themselves.
+   */
+  savePlaceDraft: (
+    placeId: ID,
+    fields: { description?: string; selfReview?: string },
+  ) => Promise<void>;
+  /** Discard a local draft without committing it (e.g. a Cancel button). */
+  discardPlaceDraft: (placeId: ID) => Promise<void>;
+  /**
+   * Commit a place's local draft (or, if there is none, whatever
+   * `description`/`selfReview` the place currently has) through the
+   * repository's `updatePlaceIfUnchanged`. If a concurrent edit from
+   * another device is detected (the stored `updatedAt` has moved on from
+   * the draft's base), this does NOT overwrite and does NOT surface a merge
+   * UI — it appends the other device's current text below the local text
+   * (see `useTripStore.ts` module comments for the exact algorithm) and
+   * retries, bounded, until it succeeds. Clears the local draft on success.
+   * Returns `merged: true` if a conflict was detected and auto-resolved
+   * this way, so the caller can inform the user; rethrows (leaving the
+   * draft intact) if the repository write itself fails, e.g. offline.
+   */
+  commitPlaceDraft: (placeId: ID) => Promise<{ place: Place; merged: boolean }>;
 
   // ---- itinerary ----
   addItineraryItem: (input: Omit<ItineraryItem, 'id' | 'order'> & Partial<Pick<ItineraryItem, 'order'>>) => Promise<ItineraryItem>;
@@ -198,6 +246,45 @@ const runExclusive = makeExclusiveQueue();
 // any caller. Kept separate from `runExclusive` above since rate refreshes
 // are unrelated to itinerary-linking writes.
 const runRatesExclusive = makeExclusiveQueue();
+
+// Dedicated queue for commitPlaceDraft(): serializes overlapping commits for
+// the SAME place (e.g. a rapid double-click on "Save") so two calls can't
+// both read "no conflict" and both write, silently dropping one's append-
+// merge. Kept separate from `runExclusive` (itinerary-linking writes) since
+// committing a place draft is unrelated and shouldn't queue behind (or
+// block) assignPlaceToDay/applyAutoPlan calls for other places.
+const runDraftExclusive = makeExclusiveQueue();
+
+/** Separator inserted between local and remote text when `commitPlaceDraft`
+ *  detects a concurrent edit from another device and append-merges rather
+ *  than overwriting. Deliberately owned by the store (not the persistence
+ *  layer) — it's presentation-ish text specific to this one conflict-
+ *  resolution policy, not something either repository implementation should
+ *  need to know about. */
+const DRAFT_MERGE_SEPARATOR = '\n\n--- merged edit from another device ---\n\n';
+
+/** Bounds `commitPlaceDraft`'s conflict-retry loop. A real repeated race
+ *  this deep is not expected in a two-device household app — this exists to
+ *  fail loudly rather than spin forever if something is pathologically
+ *  wrong. */
+const MAX_DRAFT_COMMIT_ATTEMPTS = 5;
+
+/**
+ * Append-both merge for one free-text field: if `remote` is empty or
+ * identical to `local` (after trimming), there's nothing to preserve, so
+ * `local` is returned unchanged. If `local` is empty, `remote` is returned
+ * as-is (no pointless leading separator). Otherwise the two are joined with
+ * `DRAFT_MERGE_SEPARATOR` — this NEVER discards either side, matching the
+ * "nothing is ever lost" conflict-resolution policy for Place.description/
+ * selfReview (see commitPlaceDraft).
+ */
+function appendRemoteIfDifferent(local: string | undefined, remote: string | undefined): string | undefined {
+  const localTrimmed = (local ?? '').trim();
+  const remoteTrimmed = (remote ?? '').trim();
+  if (!remoteTrimmed || remoteTrimmed === localTrimmed) return local;
+  if (!localTrimmed) return remote;
+  return `${local}${DRAFT_MERGE_SEPARATOR}${remote}`;
+}
 
 // Guards against an outdated `init()` call's background refresh clobbering a
 // newer one's result (or the freshly-reset post-sign-out state) — e.g. React
@@ -369,6 +456,7 @@ export const useTripStore = create<TripState>((set, get) => ({
       tripId: trip?.id ?? ACTIVE_TRIP_ID,
       status: input.status ?? 'wishlist',
       ...input,
+      updatedAt: new Date().toISOString(),
     };
     await tripRepository.upsertPlace(place);
     set((s) => ({ places: [...s.places, place] }));
@@ -385,8 +473,9 @@ export const useTripStore = create<TripState>((set, get) => ({
   },
 
   updatePlace: async (place) => {
-    await tripRepository.upsertPlace(place);
-    set((s) => ({ places: s.places.map((p) => (p.id === place.id ? place : p)) }));
+    const updated: Place = { ...place, updatedAt: new Date().toISOString() };
+    await tripRepository.upsertPlace(updated);
+    set((s) => ({ places: s.places.map((p) => (p.id === updated.id ? updated : p)) }));
   },
 
   // Also strips any itinerary item(s) linked to this place (item.placeId ===
@@ -439,7 +528,12 @@ export const useTripStore = create<TripState>((set, get) => ({
       const existing = get().places.find((p) => p.id === placeId);
       if (!existing) return;
       const oldDayId = existing.dayId;
-      const updated: Place = { ...existing, dayId, status: dayId ? 'planned' : 'wishlist' };
+      const updated: Place = {
+        ...existing,
+        dayId,
+        status: dayId ? 'planned' : 'wishlist',
+        updatedAt: new Date().toISOString(),
+      };
       await tripRepository.upsertPlace(updated);
       set((s) => ({
         places: s.places.map((p) => (p.id === placeId ? updated : p)),
@@ -488,6 +582,77 @@ export const useTripStore = create<TripState>((set, get) => ({
         placeId,
         title: updated.name,
       });
+    }),
+
+  getPlaceDraft: (placeId) => draftRepository.getDraft(placeId),
+
+  savePlaceDraft: async (placeId, fields) => {
+    const existingDraft = await draftRepository.getDraft(placeId);
+    const place = get().places.find((p) => p.id === placeId);
+    // The base is established once (on the first save of a new editing
+    // session) and then held fixed across further keystrokes/debounced
+    // saves for the same draft, so `commitPlaceDraft` always compares
+    // against "what the place looked like when editing began," not
+    // "whatever it looked like a moment ago."
+    const baseUpdatedAt = existingDraft?.baseUpdatedAt ?? place?.updatedAt ?? new Date(0).toISOString();
+    await draftRepository.saveDraft({
+      placeId,
+      description: fields.description,
+      selfReview: fields.selfReview,
+      baseUpdatedAt,
+      savedAt: new Date().toISOString(),
+    });
+  },
+
+  discardPlaceDraft: async (placeId) => {
+    await draftRepository.deleteDraft(placeId);
+  },
+
+  commitPlaceDraft: (placeId) =>
+    runDraftExclusive(async () => {
+      const place = get().places.find((p) => p.id === placeId);
+      if (!place) {
+        throw new Error(`commitPlaceDraft: no place with id ${placeId}`);
+      }
+      const draft = await draftRepository.getDraft(placeId);
+
+      let description = draft?.description ?? place.description;
+      let selfReview = draft?.selfReview ?? place.selfReview;
+      let baseUpdatedAt = draft?.baseUpdatedAt ?? place.updatedAt;
+      let merged = false;
+      let result: { place: Place; conflict: boolean };
+      let attempts = 0;
+
+      do {
+        attempts++;
+        const candidate: Place = {
+          ...place,
+          description,
+          selfReview,
+          updatedAt: new Date().toISOString(),
+        };
+        result = await tripRepository.updatePlaceIfUnchanged(candidate, baseUpdatedAt);
+        if (result.conflict) {
+          merged = true;
+          const remote = result.place;
+          description = appendRemoteIfDifferent(description, remote.description);
+          selfReview = appendRemoteIfDifferent(selfReview, remote.selfReview);
+          baseUpdatedAt = remote.updatedAt;
+        }
+      } while (result.conflict && attempts < MAX_DRAFT_COMMIT_ATTEMPTS);
+
+      if (result.conflict) {
+        // Pathological: kept losing the race MAX_DRAFT_COMMIT_ATTEMPTS times
+        // in a row. Leave the local draft intact (nothing was written) so
+        // the user's text isn't lost — they can just retry the save.
+        throw new Error(
+          'commitPlaceDraft: too many concurrent edits from another device — please try saving again',
+        );
+      }
+
+      set((s) => ({ places: s.places.map((p) => (p.id === placeId ? result.place : p)) }));
+      await draftRepository.deleteDraft(placeId);
+      return { place: result.place, merged };
     }),
 
   addItineraryItem: async (input) => {
@@ -666,7 +831,12 @@ export const useTripStore = create<TripState>((set, get) => ({
         for (const stop of dayPlan.stops) {
           const place = get().places.find((p) => p.id === stop.placeId);
           if (!place) continue;
-          const updatedPlace: Place = { ...place, dayId: dayPlan.dayId, status: 'planned' };
+          const updatedPlace: Place = {
+            ...place,
+            dayId: dayPlan.dayId,
+            status: 'planned',
+            updatedAt: new Date().toISOString(),
+          };
           await tripRepository.upsertPlace(updatedPlace);
           set((s) => ({
             places: s.places.map((p) => (p.id === stop.placeId ? updatedPlace : p)),
@@ -706,6 +876,11 @@ export const useTripStore = create<TripState>((set, get) => ({
   importJson: async (json) => {
     const snapshot = parseSnapshot(json);
     await tripRepository.importSnapshot(snapshot);
+    // Local drafts are keyed by place id from the PREVIOUS data; a whole-trip
+    // replace can reuse/reassign those ids to entirely different places, so
+    // any pending draft text is no longer meaningfully associated with
+    // anything and must not silently resurface against an unrelated place.
+    await draftRepository.clearAll();
     set({
       trip: snapshot.trip,
       places: snapshot.places,

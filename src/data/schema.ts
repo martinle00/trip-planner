@@ -76,12 +76,26 @@ export interface Trip {
   cities: City[];
 }
 
-/** A place the user wants to visit — a map pin. */
+/**
+ * A place the user wants to visit — a map pin.
+ *
+ * v2 -> v3: the single free-text `note` field was removed and split into two
+ * purpose-built fields — `description` (pre-visit notes) and `selfReview`
+ * (post-visit, blog-style reflection) — and a required `updatedAt` was
+ * added. This is the one deliberate exception to the "additive only" rule
+ * this contract otherwise holds itself to (see the file header): every
+ * layer (Dexie, Supabase, export/import, store, seed) migrates in lockstep —
+ * see `migratePlaceV2ToV3` in `exportImport.ts` for the shared per-record
+ * transform (an old `note` is folded into `description`).
+ */
 export interface Place {
   id: ID;
   tripId: ID;
   name: string;
-  note?: string;
+  /** Free-text pre-visit notes (e.g. things to remember before visiting). */
+  description?: string;
+  /** Free-text, blog-style reflection written after visiting. */
+  selfReview?: string;
   /** Free-text category, e.g. 'Sightseeing', 'Food', 'Museum'. */
   category?: string;
   lat: number;
@@ -96,6 +110,16 @@ export interface Place {
   /** Optional formatted address, typically filled in from a geocode search
    *  result (`GeocodeResult.address` in `lib/geocode.ts`). */
   address?: string;
+  /**
+   * ISO date-time of the last write to this place row. Every place-mutating
+   * store action refreshes this on save — it is NOT scoped only to
+   * `description`/`selfReview`. Used for optimistic-concurrency conflict
+   * detection when two devices sharing one account edit the same place (see
+   * `TripRepository.updatePlaceIfUnchanged` and `useTripStore`'s
+   * `commitPlaceDraft`, which append-merges free text on a detected
+   * conflict rather than silently overwriting or prompting a merge UI).
+   */
+  updatedAt: string;
 }
 
 /** One dated day of the trip, belonging to a city. */
@@ -146,11 +170,17 @@ export interface Expense {
  *
  * v1 -> v2: `Expense.amountCny` became `amount` + `currency`; `Trip.
  * cnyToHomeRate` became the multi-currency `rates` table (+ `ratesUpdatedAt`/
- * `ratesBase`). `parseSnapshot` (exportImport.ts) accepts and migrates v1
- * snapshots on import; exports always write v2.
+ * `ratesBase`).
+ *
+ * v2 -> v3: `Place.note` was removed in favor of `description` + `selfReview`,
+ * and `Place.updatedAt` became required (see `Place`'s doc comment above).
+ *
+ * `parseSnapshot` (exportImport.ts) accepts and migrates v1 and v2
+ * snapshots on import (chaining v1 -> v2 -> v3 for a very old export);
+ * exports always write v3.
  */
 export interface TripSnapshot {
-  version: 2;
+  version: 3;
   trip: Trip;
   days: Day[];
   places: Place[];

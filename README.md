@@ -20,6 +20,36 @@ npm run dev
 
 Then open the URL it prints (typically **http://localhost:5173**).
 
+## Environment variables
+
+Cloud sync and sign-in need Supabase credentials. `.env.local` is gitignored, so it
+does **not** come with the repo — create it yourself in the project root on each new
+machine:
+
+```powershell
+ni .env.local
+```
+
+Then put these two lines in it:
+
+```
+VITE_SUPABASE_URL=https://kqvrrxtnvcywreewnesk.supabase.co
+VITE_SUPABASE_ANON_KEY=<publishable key>
+```
+
+Get the publishable key from the [Supabase dashboard](https://supabase.com/dashboard)
+→ your project → **Project Settings → API Keys**. Newer projects label the keys
+"Publishable" and "Secret" rather than the old anon/service_role JWTs — **Publishable**
+is the client-safe one. Never commit the Secret key or put it in a `VITE_`-prefixed
+variable; anything with that prefix is bundled into the browser build.
+
+Restart `npm run dev` after creating or editing the file — Vite only reads env files
+at startup. If either variable is missing the app throws a clear error on boot.
+
+> Signing in from a new origin also needs that origin added under Supabase →
+> **Authentication → URL Configuration → Redirect URLs** (e.g.
+> `http://localhost:5173/**`), otherwise the magic link won't come back to your app.
+
 ## Scripts
 
 | Command | Description |

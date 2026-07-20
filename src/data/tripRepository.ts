@@ -30,6 +30,33 @@ export interface TripRepository {
   listPlaces(tripId: ID): Promise<Place[]>;
   upsertPlace(place: Place): Promise<Place>;
   deletePlace(id: ID): Promise<void>;
+  /**
+   * Conditional place write for optimistic-concurrency conflict detection
+   * (see `Place.updatedAt`). Writes `place` (already carrying its intended
+   * fresh `updatedAt`) ONLY IF the row currently stored under `place.id`
+   * still has `updatedAt === baseUpdatedAt` — i.e. nobody has written this
+   * place since the caller last read it.
+   *
+   * - Success: returns `{ place, conflict: false }` with exactly the place
+   *   that was passed in (now persisted).
+   * - Conflict: the write is REJECTED (nothing is persisted) and this
+   *   returns `{ place: <current stored place>, conflict: true }` — the
+   *   CURRENT row, not the caller's `place` — so the caller can inspect
+   *   what changed and reconcile (see `useTripStore.commitPlaceDraft`,
+   *   which append-merges free text rather than overwriting or showing a
+   *   merge UI).
+   * - Throws if no place with `place.id` exists at all.
+   *
+   * Implementations must perform this as an atomic conditional update (a
+   * transactional read-check-write for Dexie; a `WHERE id = ... AND
+   * updated_at = ...` conditional update for Supabase) — never a plain
+   * read-compare-write from the caller's side, which would leave a race
+   * window between two overlapping callers.
+   */
+  updatePlaceIfUnchanged(
+    place: Place,
+    baseUpdatedAt: string,
+  ): Promise<{ place: Place; conflict: boolean }>;
 
   // Days
   listDays(tripId: ID): Promise<Day[]>;

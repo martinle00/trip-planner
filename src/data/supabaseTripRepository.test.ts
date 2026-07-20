@@ -56,6 +56,35 @@ function makeFakeClient(seed: Record<string, Row[]> = {}) {
           },
         };
       },
+      // Minimal conditional-update chain: .update(partial).eq(...).eq(...).select()
+      // Mimics a real WHERE-clause conditional update — only rows matching
+      // EVERY chained .eq() get written; .select() resolves with the rows
+      // that were actually updated (empty array if none matched).
+      update(partial: Row) {
+        let matchFiltered = rows;
+        const updateBuilder = {
+          eq(col: string, val: unknown) {
+            calls.push({ table, op: 'update.eq', args: [col, val] });
+            matchFiltered = matchFiltered.filter((r) => r[col] === val);
+            return updateBuilder;
+          },
+          select() {
+            const matchedIds = new Set(matchFiltered.map((r) => r.id));
+            const updatedRows: Row[] = [];
+            tables[table] = rows.map((r) => {
+              if (matchedIds.has(r.id)) {
+                const merged = { ...r, ...partial };
+                updatedRows.push(merged);
+                return merged;
+              }
+              return r;
+            });
+            rows = tables[table];
+            return Promise.resolve({ data: updatedRows, error: null });
+          },
+        };
+        return updateBuilder;
+      },
       // select() without a terminal call resolves as a thenable returning all filtered rows
       then(resolve: (v: { data: Row[]; error: null }) => void) {
         resolve({ data: filtered, error: null });
@@ -118,8 +147,9 @@ describe('SupabaseTripRepository', () => {
       lat: 31.2,
       lng: 121.5,
       status: 'wishlist',
-      note: 'Go at sunset',
+      description: 'Go at sunset',
       address: 'The Bund, Shanghai',
+      updatedAt: '2026-01-01T00:00:00.000Z',
     };
     await repo.upsertPlace(place);
     const places = await repo.listPlaces(baseTrip.id);
@@ -137,6 +167,7 @@ describe('SupabaseTripRepository', () => {
       lat: 31.2,
       lng: 121.5,
       status: 'wishlist',
+      updatedAt: '2026-01-01T00:00:00.000Z',
     };
     await repo.upsertPlace(place);
     await repo.deletePlace(place.id);
@@ -187,7 +218,7 @@ describe('SupabaseTripRepository', () => {
       },
     } as unknown as import('@supabase/supabase-js').SupabaseClient;
     const repo = new SupabaseTripRepository(client, USER_ID);
-    const snapshot = { version: 2 as const, trip: baseTrip, days: [], places: [], itinerary: [], expenses: [] };
+    const snapshot = { version: 3 as const, trip: baseTrip, days: [], places: [], itinerary: [], expenses: [] };
     await repo.importSnapshot(snapshot);
     expect(rpcCalls).toEqual([{ fn: 'import_trip_snapshot', args: { snapshot } }]);
   });
@@ -229,5 +260,61 @@ describe('SupabaseTripRepository', () => {
     await repo.seedIfEmpty();
     const trip = await repo.getTrip();
     expect(trip?.id).toBe(baseTrip.id);
+  });
+});
+
+describe('SupabaseTripRepository — updatePlaceIfUnchanged (conflict detection)', () => {
+  const place: Place = {
+    id: 'place-cond-1',
+    tripId: baseTrip.id,
+    name: 'Original',
+    city: 'Shanghai',
+    lat: 1,
+    lng: 2,
+    status: 'wishlist',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('writes and returns the place when baseUpdatedAt matches the stored row', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    await repo.upsertPlace(place);
+
+    const updated: Place = { ...place, description: 'A note', updatedAt: '2026-01-02T00:00:00.000Z' };
+    const result = await repo.updatePlaceIfUnchanged(updated, '2026-01-01T00:00:00.000Z');
+
+    expect(result.conflict).toBe(false);
+    expect(result.place).toEqual(updated);
+    const stored = await repo.listPlaces(baseTrip.id);
+    expect(stored.find((p) => p.id === 'place-cond-1')?.description).toBe('A note');
+  });
+
+  it('rejects the write and returns the CURRENT stored place when baseUpdatedAt is stale', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    await repo.upsertPlace(place);
+    const remoteWrite: Place = {
+      ...place,
+      description: 'From another device',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    };
+    await repo.upsertPlace(remoteWrite);
+
+    const attempted: Place = { ...place, description: 'My edit', updatedAt: '2026-01-03T00:00:00.000Z' };
+    const result = await repo.updatePlaceIfUnchanged(attempted, '2026-01-01T00:00:00.000Z');
+
+    expect(result.conflict).toBe(true);
+    expect(result.place).toEqual(remoteWrite);
+    const stored = await repo.listPlaces(baseTrip.id);
+    expect(stored.find((p) => p.id === 'place-cond-1')?.description).toBe('From another device');
+  });
+
+  it('throws when the place does not exist', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const ghost: Place = { ...place, id: 'no-such-place' };
+    await expect(repo.updatePlaceIfUnchanged(ghost, '2026-01-01T00:00:00.000Z')).rejects.toThrow(
+      'no place with id no-such-place',
+    );
   });
 });

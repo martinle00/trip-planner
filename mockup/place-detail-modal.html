@@ -1,0 +1,1376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Place detail — Option A: Modal</title>
+<style>
+  /* ============================= TOKENS (ported from mockup/mockup.html) ============================= */
+  :root{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350;
+    --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-full: 999px;
+    --shadow-sm: 0 1px 2px rgba(60,40,20,.08), 0 1px 1px rgba(60,40,20,.05);
+    --shadow-md: 0 8px 24px -8px rgba(60,40,20,.22), 0 2px 6px rgba(60,40,20,.08);
+    --shadow-lg: 0 24px 60px -16px rgba(30,20,10,.35);
+    --font-display: 'Songti SC','STSong','Noto Serif SC', Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Consolas', 'Roboto Mono', monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+      --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+      --line: #362E24; --line-strong: #453A2C;
+      --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+      --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B;
+      --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+      --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+      --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+    --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+    --line: #362E24; --line-strong: #453A2C;
+    --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+    --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+    --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+    --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    color-scheme: light;
+  }
+
+  /* ============================= RESET ============================= */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,p,ul{ margin:0; }
+  ul{ list-style:none; padding:0; }
+  button{ font:inherit; color:inherit; }
+  textarea,select{ font:inherit; color:inherit; }
+  button, select{ cursor:pointer; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  svg{ display:block; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
+
+  /* ============================= SCAFFOLDING (mockup-only, not app UI) ============================= */
+  .spec-bar{
+    position:sticky; top:0; z-index:200; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:var(--ink); color:var(--paper); padding:12px 18px; font-size:13px;
+  }
+  .spec-bar strong{ font-size:14px; }
+  .spec-bar span{ color:#cabfae; }
+  .spec-bar .btn-icon{ background:transparent; border:1px solid rgba(255,255,255,.3); color:var(--paper); }
+  .spec-bar .btn-icon:hover{ background:rgba(255,255,255,.12); }
+  /* mirrors mockup/mockup.html's .debug-toggle exactly (review-only helper,
+     not part of the shipped UI) — used here to force the save-failure path
+     on demand instead of leaving it to chance, so the error state in the
+     modal footer is actually reachable during review. */
+  .spec-bar .debug-toggle{
+    font-size:10.5px; font-weight:600; color:#cabfae; background:transparent;
+    border:1px dashed rgba(255,255,255,.35); border-radius:var(--radius-full); padding:5px 12px;
+  }
+  .spec-bar .debug-toggle:hover{ color:var(--paper); border-color:rgba(255,255,255,.6); }
+  .spec-bar .debug-toggle.is-on{ color:var(--gold); border-color:var(--gold); border-style:solid; }
+  .spec-bar-tools{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .frame-label{ max-width:1100px; margin:26px auto 10px; padding:0 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); }
+  .frame-wrap{ max-width:1100px; margin:0 auto 40px; padding:0 18px; }
+  .frame-hint{ font-size:12.5px; color:var(--ink-soft); margin:2px 0 0; font-weight:400; text-transform:none; letter-spacing:0; }
+
+  /* ============================= BUTTONS / CHIPS / TAGS ============================= */
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; border-radius:var(--radius-full);
+    padding:9px 16px; font-size:13.5px; font-weight:600; background:var(--paper-raised); border-color:var(--line-strong); color:var(--ink);
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease; white-space:nowrap;
+  }
+  .btn:hover{ box-shadow:var(--shadow-sm); }
+  .btn:active{ transform:scale(.97); }
+  .btn svg{ width:15px; height:15px; flex:none; }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-ghost{ background:transparent; border-color:var(--line-strong); }
+  .btn-ghost:hover{ background:var(--paper-sunk); }
+  .btn-sm{ padding:6px 12px; font-size:12.5px; }
+  .btn-icon{ width:36px; height:36px; padding:0; justify-content:center; border-radius:50%; flex:none; }
+  .btn-icon svg{ width:16px; height:16px; }
+  .icon-btn{ width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--ink-faint); flex:none; }
+  .icon-btn:hover{ background:var(--paper-sunk); color:var(--ink); }
+  .icon-btn svg{ width:14px; height:14px; }
+  /* real disabled attribute (not just a visual/CSS-only look) toggled by JS
+     during an in-flight save — see saveDetail() — so buttons also become
+     genuinely inert and unfocusable, not just dimmed. */
+  .btn[disabled]{ opacity:.5; pointer-events:none; }
+
+  .tag{
+    display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700;
+    padding:3px 9px; border-radius:var(--radius-full); letter-spacing:.02em;
+    background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line);
+  }
+  .tag.city{ background:var(--accent-soft); color:var(--accent-soft-ink); border-color:transparent; }
+  .tag.reviewed{ background:var(--jade-soft); color:var(--jade-soft-ink); border-color:transparent; }
+  /* draft = an unsaved local edit exists for this place — gold per the
+     design system's "needs attention" semantic (nothing is wrong, but it's
+     easy to forget a half-written draft sitting on one device). Can coexist
+     with .reviewed: a place you already reviewed can still pick up a new
+     unsaved edit later. */
+  .tag.draft{ background:var(--gold-soft); color:var(--gold-soft-ink); border-color:transparent; }
+  .tag-icon{ width:10px; height:10px; }
+
+  /* reused as-is from mockup/mockup.html's save-confirmation pattern — a
+     brief jade pulse is the app's established "it worked" signal, preferred
+     over toasts. */
+  .flash-confirm{ animation:flashOk .8s ease; }
+  @keyframes flashOk{
+    0%{ box-shadow:0 0 0 0 var(--jade-soft); }
+    25%{ box-shadow:0 0 0 4px var(--jade-soft); }
+    100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+  }
+
+  select{
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:6px 26px 6px 9px; font-size:12px; font-weight:600; color:var(--ink); appearance:none; -webkit-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239C9184' stroke-width='2'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 8px center; background-size:14px;
+  }
+  .text-input{
+    width:100%; background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:8px 10px; font-size:13px; font-family:inherit; color:var(--ink);
+  }
+  .text-input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .field-optional{ color:var(--ink-faint); font-weight:500; text-transform:none; letter-spacing:0; }
+
+  /* ============================= PANEL / GRID / CARD (matches src/features/places/PlacesPanel.tsx) ============================= */
+  .panel-head{ margin-bottom:14px; }
+  .panel-title{ font-family:var(--font-display); font-size:1.25rem; font-weight:600; }
+  .panel-hint{ font-size:12.5px; color:var(--ink-soft); display:block; margin-top:2px; }
+
+  .card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-md); box-shadow:var(--shadow-sm); }
+  .city-section{
+    margin-bottom:18px; padding:14px 16px 16px; border-radius:var(--radius-md);
+    background:var(--paper-raised); border:1px solid var(--line); border-left:4px solid var(--city-accent, var(--line-strong));
+    box-shadow:var(--shadow-sm);
+  }
+  .city-section-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .city-section-head h3{ font-family:var(--font-display); font-size:1.05rem; font-weight:600; }
+  .city-section-head .count{ font-size:12px; color:var(--ink-soft); margin-left:auto; }
+  .city-dot{ width:9px; height:9px; border-radius:50%; background:var(--city-accent, var(--d-grey)); flex:none; }
+
+  .place-grid{ display:grid; grid-template-columns:1fr; gap:10px; }
+  @media (min-width:640px){ .place-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media (min-width:1000px){ .place-grid{ grid-template-columns:repeat(3,1fr); } }
+  /* the mobile demo frame is deliberately narrower than the viewport itself
+     (a fixed-width phone frame on a wide monitor), so the above viewport
+     media queries won't fire the way they would on a real phone — force the
+     single-column layout with a higher-specificity descendant rule instead. */
+  .phone-frame .place-grid{ grid-template-columns:1fr; }
+
+  .place-card{ padding:14px; display:flex; flex-direction:column; gap:9px; transition:box-shadow .12s ease, border-color .12s ease; cursor:pointer; }
+  .place-card:hover{ box-shadow:var(--shadow-md); border-color:var(--line-strong); }
+  .place-card-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .place-title{ display:flex; align-items:center; gap:8px; min-width:0; }
+  .place-icon{
+    width:24px; height:24px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
+    background:var(--pin-color, var(--d-grey)); box-shadow:0 1px 3px rgba(0,0,0,.2);
+  }
+  .place-icon svg{ width:12px; height:12px; stroke:#fff; fill:none; }
+  .place-icon.unassigned{ background:transparent; border:1.5px dashed var(--pin-color, var(--d-grey)); }
+  .place-icon.unassigned svg{ stroke:var(--pin-color, var(--d-grey)); }
+  .place-name{ font-size:14.5px; font-weight:700; line-height:1.3; min-width:0; }
+  .place-tags{ display:flex; gap:6px; flex-wrap:wrap; }
+  /* `note` (the old one-line italic teaser) is gone post-migration — this is
+     an excerpt of `description` instead. Real text, not JS-truncated (so a
+     screen reader still gets the full description, just visually clipped),
+     capped with CSS line-clamp rather than a fixed character count so it
+     truncates honestly at any card width instead of guessing. Not italic
+     any more either — italic read as "a little aside"; this is now the lead
+     of the actual write-up, so it reads as plain secondary text instead. */
+  .place-desc-excerpt{
+    font-size:12.5px; color:var(--ink-soft); line-height:1.4;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .place-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px 10px; flex-wrap:wrap; margin-top:auto; padding-top:8px; border-top:1px solid var(--line); }
+  .assign-select{ border-left:4px solid var(--select-tint, var(--line-strong)); }
+  .assign-select.is-wishlist{ border-left-style:dashed; }
+  .detail-link{
+    display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:var(--accent);
+    background:none; border:none; padding:0; text-align:left; align-self:flex-start;
+  }
+  .detail-link:hover{ text-decoration:underline; }
+  .detail-link svg{ width:11px; height:11px; }
+
+  /* Delete trigger: bumped from the base 26px .icon-btn to 36px (matching
+     the same "real minimum" the modal's own icon buttons were bumped to)
+     specifically because the stakes changed — this can now destroy written
+     prose, not just a pin, and it needs to be reachable by thumb on a
+     390px card. The accent hover tint previews the destructive intent
+     before it's even pressed. */
+  .icon-btn.icon-btn-danger{ width:36px; height:36px; color:var(--ink-faint); }
+  .icon-btn.icon-btn-danger svg{ width:16px; height:16px; }
+  .icon-btn.icon-btn-danger:hover{ color:var(--accent); background:var(--accent-soft); }
+
+  /* Delete confirmation: reuses the discard-confirm PATTERN from the detail
+     modal (small inline two-step control, safe action styled primary,
+     destructive action styled as de-emphasised coloured-ghost) rather than
+     opening a full Modal.tsx dialog. Deliberate choice — delete is triggered
+     from a specific card in the grid, and a full-screen modal would yank
+     focus away from the exact visual context (which card, its title, its
+     tags) that the confirmation message needs to reference. Keeping it
+     inline, in place of the card's normal content, keeps that context in
+     view. It replaces the WHOLE card rather than just the footer, because
+     the warning copy is content-aware and can run to a full sentence or two
+     (see buildDeleteWarning() in the script) — there isn't room for that in
+     the footer strip alone without also hiding the tags/name it refers to. */
+  .place-card.is-delete-confirm{ justify-content:space-between; cursor:default; }
+  .delete-confirm-inner{ display:flex; align-items:flex-start; gap:10px; }
+  .delete-confirm-inner svg{ width:18px; height:18px; flex:none; margin-top:1px; color:var(--accent); }
+  .delete-confirm-text strong{ display:block; font-size:13.5px; font-weight:700; margin-bottom:3px; }
+  .delete-confirm-text span{ font-size:12px; color:var(--ink-soft); line-height:1.45; }
+  .delete-confirm-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+  /* same reasoning as .discard-btn in the modal: no filled destructive
+     button — --accent already carries "error/danger" in this design system
+     (see DESIGN-SYSTEM.md §2, "focus rings, error rate-state"), so plain
+     accent-coloured text on a ghost button reads as destructive without
+     inventing a new filled-button contrast case. Cancel stays the visually
+     prominent (btn-primary) default, same safe-option-first convention. */
+  .delete-btn{ color:var(--accent); }
+
+  .places-empty{
+    display:none; flex-direction:column; align-items:center; gap:9px; text-align:center;
+    padding:32px 20px; color:var(--ink-soft); border:1px dashed var(--line-strong); border-radius:var(--radius-lg);
+    background:var(--paper-sunk);
+  }
+  .places-empty.show{ display:flex; }
+  .places-empty svg{ width:24px; height:24px; opacity:.5; }
+  .places-empty strong{ color:var(--ink-soft); font-size:13.5px; }
+  .places-empty span{ font-size:12.5px; max-width:32ch; }
+
+  /* ============================= MODAL (mirrors src/components/Modal.tsx) ============================= */
+  .overlay{
+    position:fixed; inset:0; background:rgba(20,14,8,.5); backdrop-filter:blur(2px);
+    display:none; align-items:flex-end; justify-content:center; z-index:100; padding:0;
+  }
+  .overlay.open{ display:flex; animation:overlayin .15s ease; }
+  @keyframes overlayin{ from{ opacity:0; } to{ opacity:1; } }
+  .modal{
+    background:var(--paper-raised); width:100%; max-width:560px; max-height:92vh; overflow-y:auto;
+    border-radius:var(--radius-lg) var(--radius-lg) 0 0; box-shadow:var(--shadow-lg);
+    padding:20px 18px 22px; animation:modalup .2s ease;
+  }
+  @keyframes modalup{ from{ transform:translateY(24px); opacity:0; } to{ transform:none; opacity:1; } }
+  @media (min-width:720px){
+    .overlay{ align-items:center; }
+    .modal{ border-radius:var(--radius-lg); max-height:85vh; }
+  }
+  /* the mobile demo frame must always render the bottom-sheet variant,
+     regardless of the actual browser viewport width (see .phone-frame
+     .place-grid note above) — same override technique, higher specificity
+     beats the bare media-queried rule unconditionally. */
+  .phone-frame .overlay{ align-items:flex-end; position:absolute; }
+  .phone-frame .modal{ border-radius:var(--radius-lg) var(--radius-lg) 0 0; max-height:94%; }
+
+  .modal-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .modal-title-block{ min-width:0; }
+  .modal-title{ font-family:var(--font-display); font-size:1.25rem; font-weight:600; display:flex; align-items:center; gap:9px; }
+  .modal-title .place-icon{ width:26px; height:26px; }
+  .modal-title .place-icon svg{ width:13px; height:13px; }
+  .modal-tags{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 0 35px; }
+  .modal-cues{ display:flex; gap:8px; flex-wrap:wrap; margin:9px 0 0 35px; }
+  .editing-cue{
+    display:none; align-self:flex-start; font-size:10.5px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.06em; color:var(--accent-soft-ink); background:var(--accent-soft);
+    padding:3px 9px; border-radius:var(--radius-full); border:none;
+  }
+  /* both fields share a single edit/save step (see saveDetail() rationale),
+     so opening the review field's editor also puts About into edit mode
+     even if the user never touched it — this cue makes that state legible
+     instead of looking like an accidental change. */
+  .modal[data-mode="edit"] .editing-cue, .modal[data-mode="saving"] .editing-cue{ display:inline-block; }
+  /* draft pill: visible whenever a local draft exists for this place,
+     independent of the current view/edit mode — a draft left behind after
+     stepping back to read mode (Escape, or just closing) is exactly the
+     "forgotten draft" case this exists to prevent. Rendered as a real
+     <button> so it's also the fastest way to jump back into editing. */
+  .draft-pill{
+    display:none; align-items:center; gap:5px; align-self:flex-start; font-size:10.5px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.06em; color:var(--gold-soft-ink); background:var(--gold-soft);
+    padding:3px 9px 3px 7px; border-radius:var(--radius-full); border:none;
+  }
+  .draft-pill .dot{ width:6px; height:6px; border-radius:50%; background:var(--gold); flex:none; }
+  .draft-pill:hover{ box-shadow:var(--shadow-sm); }
+  .modal-head-actions{ display:flex; gap:8px; flex:none; }
+  /* 38px matches the app-wide .btn-icon circle (see DESIGN-SYSTEM.md §4) —
+     this dialog is heavily thumb-driven on mobile, so it gets the standard
+     touch-friendly size rather than the smaller ad hoc 32px it shipped with. */
+  .modal-close, .modal-edit-btn{
+    width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:var(--paper-sunk); border:none; flex:none; color:var(--ink-soft);
+  }
+  .modal-close:hover, .modal-edit-btn:hover{ background:var(--line); color:var(--ink); }
+  .modal-close svg, .modal-edit-btn svg{ width:16px; height:16px; }
+  .modal-close[disabled], .modal-edit-btn[disabled]{ opacity:.4; pointer-events:none; }
+  .modal[data-mode="edit"] .modal-edit-btn{ display:none; }
+  .modal[data-mode="saving"] .modal-edit-btn{ display:none; }
+
+  .detail-section{ margin-top:20px; }
+  .detail-section .field-label{ font-size:11.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:8px; }
+  .detail-section .detail-prose,
+  .detail-section .detail-empty,
+  .detail-section .detail-edit{ display:none; }
+  .detail-section[data-mode="view-filled"] > .detail-prose{ display:block; }
+  .detail-section[data-mode="view-empty"] > .detail-empty{ display:flex; }
+  .detail-section[data-mode="edit"] > .detail-edit{ display:block; }
+  .detail-prose{ font-size:13.5px; color:var(--ink); white-space:pre-line; line-height:1.6; }
+  .prose-block{ display:block; }
+  /* the crude-by-design conflict resolution: keep both, never discard.
+     Rendered from a plain-text sentinel line stored in the field itself
+     (see CONFLICT_SENTINEL / renderProseHTML in the script) — the divider
+     is a rendering convenience over ordinary text, not a second content
+     type, so "text only" still holds for the underlying data. */
+  .conflict-sep-row{
+    display:flex; align-items:center; gap:10px; margin:16px 0;
+    color:var(--ink-faint); font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+  }
+  .conflict-sep-row::before, .conflict-sep-row::after{ content:""; flex:1; height:0; border-top:1px dashed var(--line-strong); }
+  .detail-empty{
+    align-items:center; gap:10px; padding:14px; border:1px dashed var(--line-strong); border-radius:var(--radius-md);
+    background:var(--paper-sunk);
+  }
+  .detail-empty svg{ width:18px; height:18px; color:var(--ink-faint); flex:none; }
+  .detail-empty-text{ flex:1; min-width:0; }
+  .detail-empty-text strong{ display:block; font-size:12.5px; color:var(--ink-soft); font-weight:700; }
+  .detail-empty-text span{ font-size:11.5px; color:var(--ink-faint); }
+  .detail-empty .btn{ flex:none; }
+  .detail-edit textarea{
+    width:100%; background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:10px 11px; font-size:13.5px; font-family:inherit; color:var(--ink); resize:vertical; line-height:1.55;
+  }
+  .detail-edit textarea:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  /* not the native disabled attribute — that can visually mute a textarea's
+     own value inconsistently across browsers. pointer-events:none blocks
+     further typing while a save is in flight without touching what's
+     already there. */
+  .modal[data-mode="saving"] .detail-edit textarea{ opacity:.7; pointer-events:none; }
+  #about-desktop, #about-mobile{ min-height:88px; }
+  #review-desktop, #review-mobile{ min-height:120px; }
+
+  /* sticky so Save/Cancel — the primary action of this whole feature — stays
+     reachable when the on-screen keyboard eats half a 390px viewport while
+     typing a long review. .modal itself is the scrolling container
+     (overflow-y:auto), so "bottom:0" pins this to the visible modal edge,
+     not the page. */
+  .modal-foot{
+    display:none; flex-direction:column; gap:10px; margin-top:22px; padding-top:14px; padding-bottom:2px;
+    border-top:1px solid var(--line); position:sticky; bottom:0; background:var(--paper-raised); z-index:2;
+  }
+  .modal[data-mode="edit"] .modal-foot, .modal[data-mode="saving"] .modal-foot{ display:flex; }
+  .modal-foot-actions{ display:flex; justify-content:flex-end; gap:10px; }
+  .modal-foot-actions .btn svg{ transition:transform .15s ease; }
+  .modal[data-mode="saving"] .modal-foot-actions .btn-primary svg{ animation:spin .8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .save-error{
+    display:none; align-items:flex-start; gap:7px; font-size:12px; font-weight:600; line-height:1.4;
+    color:var(--gold-soft-ink); background:var(--gold-soft); border-radius:var(--radius-sm); padding:9px 10px;
+  }
+  .save-error.show{ display:flex; }
+  .save-error svg{ width:14px; height:14px; flex:none; margin-top:1px; }
+
+  /* the merge-conflict notice — deliberately jade, not gold: nothing failed,
+     the save succeeded, it just also folded in an edit from the other
+     device. Persists (no auto-fade) since there's a real follow-up task —
+     go tidy the merged prose — dismissed explicitly or replaced whenever a
+     different place is opened. */
+  .conflict-banner{
+    display:none; align-items:flex-start; gap:8px; font-size:12px; font-weight:600; line-height:1.45;
+    color:var(--jade-soft-ink); background:var(--jade-soft); border-radius:var(--radius-sm); padding:10px 10px 10px 11px;
+    margin-bottom:18px;
+  }
+  .conflict-banner.show{ display:flex; }
+  .conflict-banner svg{ width:15px; height:15px; flex:none; margin-top:1px; }
+  .conflict-banner p{ flex:1; }
+  .conflict-banner .icon-btn{ flex:none; color:var(--jade-soft-ink); margin:-4px -4px -4px 0; }
+  .conflict-banner .icon-btn:hover{ background:rgba(0,0,0,.06); color:var(--jade-soft-ink); }
+
+  /* small inline two-step control replacing a native confirm() — this is
+     now the ONLY place a confirmation appears in this modal. Closing the
+     modal (overlay click / header × / Escape) is no longer destructive
+     under the local-draft model — the draft is cached regardless — so
+     nothing guards those anymore. This panel guards the one action that IS
+     still destructive: explicitly discarding a draft via the footer's
+     "Discard draft" button. See handleDiscardClick()/discardDraftConfirmed()
+     in the script. */
+  .discard-confirm{
+    display:none; flex-direction:column; gap:10px; margin-top:22px; padding-top:14px; padding-bottom:2px;
+    border-top:1px solid var(--line); position:sticky; bottom:0; background:var(--paper-raised); z-index:2;
+  }
+  .modal[data-mode="confirm-discard"] .discard-confirm{ display:flex; }
+  .modal[data-mode="confirm-discard"] .modal-foot,
+  .modal[data-mode="confirm-discard"] .detail-section,
+  .modal[data-mode="confirm-discard"] .modal-head-actions{ display:none; }
+  .discard-confirm-text{ display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--ink-soft); }
+  .discard-confirm-text svg{ width:16px; height:16px; flex:none; margin-top:1px; color:var(--gold-soft-ink); }
+  .discard-confirm-text strong{ display:block; color:var(--ink); font-size:13.5px; font-weight:700; margin-bottom:2px; }
+  .discard-confirm-actions{ display:flex; justify-content:flex-end; gap:10px; }
+  /* deliberately not a filled/destructive-red button — --gold has no defined
+     white-on-fill "-ink" pairing (see DESIGN-SYSTEM.md §2), and the safer
+     default (Keep editing) should read as the primary action, not Discard. */
+  .discard-btn{ color:var(--gold-soft-ink); }
+
+  /* ============================= PHONE FRAME (mockup scaffolding) ============================= */
+  .phone-frame{
+    position:relative; width:390px; max-width:100%; margin:0 auto; padding:12px;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:34px; box-shadow:var(--shadow-md);
+  }
+  .phone-screen{ position:relative; background:var(--paper); border-radius:22px; overflow:auto; max-height:760px; padding:16px 14px 24px; }
+</style>
+</head>
+<body>
+
+<div class="spec-bar">
+  <div><strong>Option A — Centred modal</strong> <span>&middot; local draft, autosaved on-device; only "Save changes" writes to the database</span></div>
+  <div class="spec-bar-tools">
+    <button type="button" class="debug-toggle" id="offlineToggle" onclick="toggleSimulateOffline()" title="Design-review helper — not part of the real app">
+      <span id="offlineToggleLabel">Preview: simulate save failure</span>
+    </button>
+    <button type="button" class="debug-toggle" id="conflictToggle" onclick="toggleSimulateConflict()" title="Design-review helper — not part of the real app">
+      <span id="conflictToggleLabel">Preview: simulate remote conflict</span>
+    </button>
+    <button type="button" class="debug-toggle" onclick="resetDemoState()" title="Design-review helper — not part of the real app">Reset demo drafts</button>
+    <button class="btn btn-icon" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Toggle light / dark">
+      <svg id="themeIcon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+  </div>
+</div>
+
+<svg class="visually-hidden" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <defs>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0112 2a7 7 0 017 7.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5v-15z"/><path d="M4 20.5A2.5 2.5 0 006.5 18H20"/></symbol>
+    <symbol id="i-quote" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8c-2 1-3 3-3 5.5S6 18 8 18"/><path d="M17 8c-2 1-3 3-3 5.5S20 18 22 18"/></symbol>
+    <symbol id="i-cat-landmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 6h-8l4-6z"/><path d="M6 22V10M18 22V10M2 22h20"/></symbol>
+    <symbol id="i-cat-nature" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l5 8h-3l4 6H6l4-6H7l5-8z"/><path d="M12 21v-4"/></symbol>
+    <symbol id="i-cat-neighbourhood" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V11l4-3 4 3v10"/><path d="M13 21V8l4-4 4 4v13"/></symbol>
+    <symbol id="i-cat-garden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V12"/><path d="M12 12C12 12 5 11 5 4c7 0 7 7 7 8z"/><path d="M12 15C12 15 19 14 19 7c-7 0-7 7-7 8z"/></symbol>
+    <symbol id="i-cat-museum" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6"/><path d="M4 9h16v11H4z"/><path d="M9 20v-7M15 20v-7"/></symbol>
+    <symbol id="i-cat-market" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l1.5-4h13L20 8"/><path d="M4 8h16l-1 12H5L4 8z"/><path d="M9 12a3 3 0 006 0"/></symbol>
+    <symbol id="i-cat-food" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v8a2 2 0 002 2v10M6 2v10M9 2v10"/><path d="M17 2c-1.5 0-3 1.5-3 5s1 5 1 5v10"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.5 8.5 0 1110 3.3 6.7 6.7 0 0020 14.2z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.3l9.7 17.4H2.3L12 3.3z"/><path d="M12 10v4.2"/><circle cx="12" cy="17.4" r="0.6" fill="currentColor" stroke="none"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============================= DESKTOP / TABLET DEMO ============================= -->
+<h2 class="frame-label">Desktop / tablet width<span class="frame-hint" style="display:block;text-transform:none;font-weight:400;letter-spacing:0;margin-top:4px">Places &middot; Chongqing &mdash; click a card to open its detail, or the trash icon to delete one. Try <strong>Hongya Cave</strong> (filled &amp; reviewed &mdash; deleting it warns about losing a review), <strong>Liziba</strong> (a seeded unsaved draft &mdash; opens straight into editing), the <strong>Great Hall</strong> (notes but no review yet), or <strong>Wulong Karst</strong> / <strong>Ciqikou</strong> (only their short ex-note description, no review). Use the spec-bar toggles above to preview a failed save or a merge conflict on Save.</span></h2>
+<div class="frame-wrap">
+  <div class="panel-head">
+    <h2 class="panel-title">Places</h2>
+    <span class="panel-hint" id="panelHint-desktop">Chongqing &middot; 5 places &middot; 3 assigned</span>
+  </div>
+  <div class="city-section" style="--city-accent:var(--d-plum)">
+    <div class="city-section-head"><span class="city-dot"></span><h3>Chongqing</h3><span class="count" id="sectionCount-desktop">5 places &middot; 3 assigned</span></div>
+    <div class="place-grid" id="grid-desktop"></div>
+    <div class="places-empty" id="placesEmpty-desktop">
+      <svg aria-hidden="true"><use href="#i-pin"/></svg>
+      <strong>No places in Chongqing yet</strong>
+      <span>Deleted places can&rsquo;t be restored. Add one from the map or the form below.</span>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-desktop" onclick="if(event.target===this) requestClose('desktop')">
+  <div class="modal" id="modal-desktop" role="dialog" aria-modal="true" aria-labelledby="modalName-desktop" tabindex="-1">
+    <div class="modal-head">
+      <div class="modal-title-block">
+        <h2 class="modal-title">
+          <span class="place-icon" id="modalIcon-desktop"><svg aria-hidden="true"></svg></span>
+          <span id="modalName-desktop"></span>
+        </h2>
+        <div class="modal-tags">
+          <span class="tag" id="modalCat-desktop"></span>
+          <span class="tag city" id="modalCity-desktop"></span>
+          <span class="tag reviewed" id="modalReviewed-desktop" style="display:none"><svg class="tag-icon" aria-hidden="true"><use href="#i-check"/></svg>Reviewed</span>
+        </div>
+        <div class="modal-cues">
+          <span class="editing-cue" id="editingCue-desktop">Editing</span>
+          <button type="button" class="draft-pill" id="draftPill-desktop" onclick="setMode('desktop','edit')"><span class="dot" aria-hidden="true"></span>Unsaved changes</button>
+        </div>
+      </div>
+      <div class="modal-head-actions">
+        <button class="modal-edit-btn" id="editBtn-desktop" aria-label="Edit notes and review" onclick="setMode('desktop','edit')"><svg aria-hidden="true"><use href="#i-edit"/></svg></button>
+        <button class="modal-close" id="closeBtn-desktop" aria-label="Close" onclick="requestClose('desktop')"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+      </div>
+    </div>
+
+    <div class="conflict-banner" id="conflictBanner-desktop">
+      <svg aria-hidden="true"><use href="#i-check"/></svg>
+      <p>Saved &mdash; your partner also edited this on another device while you were writing. Their text was added below yours in My review; look for the divider.</p>
+      <button type="button" class="icon-btn" aria-label="Dismiss" onclick="hideConflictBanner('desktop')"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+    </div>
+
+    <div class="detail-section" id="secAbout-desktop">
+      <label class="field-label" for="about-desktop"><svg class="tag-icon" aria-hidden="true" style="width:11px;height:11px;display:inline;vertical-align:-1px;margin-right:4px"><use href="#i-book"/></svg>About</label>
+      <div class="detail-prose" id="proseAbout-desktop"></div>
+      <div class="detail-empty">
+        <svg aria-hidden="true"><use href="#i-book"/></svg>
+        <div class="detail-empty-text"><strong>Nothing written yet</strong><span>Opening hours, best time of day, tips before you go</span></div>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="setMode('desktop','edit','about')">+ Add notes</button>
+      </div>
+      <div class="detail-edit"><textarea id="about-desktop" oninput="handleDraftInput('desktop')" placeholder="What should you know before visiting? Opening hours, best time of day, getting there, tips..."></textarea></div>
+    </div>
+
+    <div class="detail-section" id="secReview-desktop">
+      <label class="field-label" for="review-desktop"><svg class="tag-icon" aria-hidden="true" style="width:11px;height:11px;display:inline;vertical-align:-1px;margin-right:4px"><use href="#i-quote"/></svg>My review</label>
+      <div class="detail-prose" id="proseReview-desktop"></div>
+      <div class="detail-empty">
+        <svg aria-hidden="true"><use href="#i-quote"/></svg>
+        <div class="detail-empty-text"><strong>You haven&rsquo;t reviewed this place yet</strong><span>Write it up once you&rsquo;ve been</span></div>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="setMode('desktop','edit','review')">+ Write a review</button>
+      </div>
+      <div class="detail-edit"><textarea id="review-desktop" oninput="handleDraftInput('desktop')" placeholder="How did it go? Worth it, what you'd skip next time, how long you stayed..."></textarea></div>
+    </div>
+
+    <div class="modal-foot">
+      <p class="save-error" id="saveError-desktop" role="alert"><svg aria-hidden="true"><use href="#i-alert"/></svg><span>Couldn&rsquo;t save &mdash; check your connection. Your draft is still here, safe on this device.</span></p>
+      <div class="modal-foot-actions">
+        <button type="button" class="btn btn-ghost" id="discardBtn-desktop" onclick="handleDiscardClick('desktop')">Discard draft</button>
+        <button type="button" class="btn btn-primary" id="saveBtn-desktop" onclick="saveDetail('desktop')"><svg aria-hidden="true"><use href="#i-check"/></svg> <span id="saveBtnLabel-desktop">Save changes</span></button>
+      </div>
+    </div>
+
+    <div class="discard-confirm" id="discardConfirm-desktop">
+      <p class="discard-confirm-text"><svg aria-hidden="true"><use href="#i-alert"/></svg><span><strong>Discard this draft?</strong>It&rsquo;ll be replaced with what&rsquo;s currently saved. This can&rsquo;t be undone.</span></p>
+      <div class="discard-confirm-actions">
+        <button type="button" class="btn discard-btn" onclick="discardDraftConfirmed('desktop')">Discard draft</button>
+        <button type="button" class="btn btn-primary" id="keepEditingBtn-desktop" onclick="keepEditing('desktop')">Keep editing</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MOBILE DEMO (390px) ============================= -->
+<h2 class="frame-label">Mobile &mdash; 390px width<span class="frame-hint" style="display:block;text-transform:none;font-weight:400;letter-spacing:0;margin-top:4px">Same grid, same data, confined to a 390px frame so the phone rendering is honest regardless of your browser width. The modal becomes a bottom sheet, as it does elsewhere in the app below the 720px breakpoint.</span></h2>
+<div class="frame-wrap" style="margin-bottom:60px">
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="panel-head">
+        <h2 class="panel-title">Places</h2>
+        <span class="panel-hint" id="panelHint-mobile">Chongqing &middot; 5 places &middot; 3 assigned</span>
+      </div>
+      <div class="city-section" style="--city-accent:var(--d-plum)">
+        <div class="city-section-head"><span class="city-dot"></span><h3>Chongqing</h3><span class="count" id="sectionCount-mobile">5 places</span></div>
+        <div class="place-grid" id="grid-mobile"></div>
+        <div class="places-empty" id="placesEmpty-mobile">
+          <svg aria-hidden="true"><use href="#i-pin"/></svg>
+          <strong>No places in Chongqing yet</strong>
+          <span>Deleted places can&rsquo;t be restored. Add one from the map or Places tab.</span>
+        </div>
+      </div>
+
+      <div class="overlay" id="overlay-mobile" onclick="if(event.target===this) requestClose('mobile')">
+        <div class="modal" id="modal-mobile" role="dialog" aria-modal="true" aria-labelledby="modalName-mobile" tabindex="-1">
+          <div class="modal-head">
+            <div class="modal-title-block">
+              <h2 class="modal-title">
+                <span class="place-icon" id="modalIcon-mobile"><svg aria-hidden="true"></svg></span>
+                <span id="modalName-mobile"></span>
+              </h2>
+              <div class="modal-tags">
+                <span class="tag" id="modalCat-mobile"></span>
+                <span class="tag city" id="modalCity-mobile"></span>
+                <span class="tag reviewed" id="modalReviewed-mobile" style="display:none"><svg class="tag-icon" aria-hidden="true"><use href="#i-check"/></svg>Reviewed</span>
+              </div>
+              <div class="modal-cues">
+                <span class="editing-cue" id="editingCue-mobile">Editing</span>
+                <button type="button" class="draft-pill" id="draftPill-mobile" onclick="setMode('mobile','edit')"><span class="dot" aria-hidden="true"></span>Unsaved changes</button>
+              </div>
+            </div>
+            <div class="modal-head-actions">
+              <button class="modal-edit-btn" id="editBtn-mobile" aria-label="Edit notes and review" onclick="setMode('mobile','edit')"><svg aria-hidden="true"><use href="#i-edit"/></svg></button>
+              <button class="modal-close" id="closeBtn-mobile" aria-label="Close" onclick="requestClose('mobile')"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+            </div>
+          </div>
+
+          <div class="conflict-banner" id="conflictBanner-mobile">
+            <svg aria-hidden="true"><use href="#i-check"/></svg>
+            <p>Saved &mdash; your partner also edited this on another device while you were writing. Their text was added below yours in My review; look for the divider.</p>
+            <button type="button" class="icon-btn" aria-label="Dismiss" onclick="hideConflictBanner('mobile')"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+          </div>
+
+          <div class="detail-section" id="secAbout-mobile">
+            <label class="field-label" for="about-mobile">About</label>
+            <div class="detail-prose" id="proseAbout-mobile"></div>
+            <div class="detail-empty">
+              <svg aria-hidden="true"><use href="#i-book"/></svg>
+              <div class="detail-empty-text"><strong>Nothing written yet</strong><span>Opening hours, best time, tips before you go</span></div>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="setMode('mobile','edit','about')">+ Add</button>
+            </div>
+            <div class="detail-edit"><textarea id="about-mobile" oninput="handleDraftInput('mobile')" placeholder="What should you know before visiting?"></textarea></div>
+          </div>
+
+          <div class="detail-section" id="secReview-mobile">
+            <label class="field-label" for="review-mobile">My review</label>
+            <div class="detail-prose" id="proseReview-mobile"></div>
+            <div class="detail-empty">
+              <svg aria-hidden="true"><use href="#i-quote"/></svg>
+              <div class="detail-empty-text"><strong>Not reviewed yet</strong><span>Write it up once you&rsquo;ve been</span></div>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="setMode('mobile','edit','review')">+ Write</button>
+            </div>
+            <div class="detail-edit"><textarea id="review-mobile" oninput="handleDraftInput('mobile')" placeholder="How did it go?"></textarea></div>
+          </div>
+
+          <div class="modal-foot">
+            <p class="save-error" id="saveError-mobile" role="alert"><svg aria-hidden="true"><use href="#i-alert"/></svg><span>Couldn&rsquo;t save &mdash; check your connection. Your draft is still here, safe on this device.</span></p>
+            <div class="modal-foot-actions">
+              <button type="button" class="btn btn-ghost" id="discardBtn-mobile" onclick="handleDiscardClick('mobile')">Discard draft</button>
+              <button type="button" class="btn btn-primary" id="saveBtn-mobile" onclick="saveDetail('mobile')"><svg aria-hidden="true"><use href="#i-check"/></svg> <span id="saveBtnLabel-mobile">Save changes</span></button>
+            </div>
+          </div>
+
+          <div class="discard-confirm" id="discardConfirm-mobile">
+            <p class="discard-confirm-text"><svg aria-hidden="true"><use href="#i-alert"/></svg><span><strong>Discard this draft?</strong>It&rsquo;ll be replaced with what&rsquo;s currently saved. This can&rsquo;t be undone.</span></p>
+            <div class="discard-confirm-actions">
+              <button type="button" class="btn discard-btn" onclick="discardDraftConfirmed('mobile')">Discard draft</button>
+              <button type="button" class="btn btn-primary" id="keepEditingBtn-mobile" onclick="keepEditing('mobile')">Keep editing</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= ADD PLACE — FIELD CHANGE ONLY ============================= -->
+<!-- Not a rebuild of the app's real search-first Add Place flow (that flow
+     lives in mockup/mockup.html and src/features/places/AddPlaceModal.tsx,
+     out of scope here) — this demonstrates just the one thing this round
+     asked for: the old single-line "Note" input is gone, replaced by an
+     optional multi-line Description field, and it deliberately does NOT
+     grow into the full read/edit/empty-state Description+Review editor the
+     detail modal has above. See the caption below and the design-decisions
+     note in this round's report for the reasoning. Wired to actually add a
+     card to both grids above (reusing renderGrids()/updateCounts()) so the
+     decision is checkable, not just described. -->
+<h2 class="frame-label">Add place &mdash; field change only<span class="frame-hint" style="display:block;text-transform:none;font-weight:400;letter-spacing:0;margin-top:4px">The one-line &ldquo;Note&rdquo; input is gone. It&rsquo;s replaced by an optional, short Description field &mdash; not the full About/My review editor above. Adding a place and writing about it are different moments: this stays a fast, few-second step; real long-form writing happens later, from the place&rsquo;s own card.</span></h2>
+<div class="frame-wrap" style="margin-bottom:60px">
+  <div class="card" style="padding:16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div>
+        <label class="field-label" for="npName" style="display:block;margin-bottom:5px">Name</label>
+        <input type="text" class="text-input" id="npName" placeholder="e.g. Ciqikou Ancient Town">
+      </div>
+      <div>
+        <label class="field-label" for="npCat" style="display:block;margin-bottom:5px">Category</label>
+        <select id="npCat" style="width:100%">
+          <option value="Landmark">Landmark</option>
+          <option value="Garden">Garden</option>
+          <option value="Museum">Museum</option>
+          <option value="Street / Market">Street / Market</option>
+          <option value="Nature">Nature</option>
+          <option value="Neighbourhood">Neighbourhood</option>
+          <option value="Food">Food</option>
+        </select>
+      </div>
+    </div>
+    <label class="field-label" for="npDesc" style="display:block;margin-bottom:5px">Description <span class="field-optional">(optional)</span></label>
+    <textarea id="npDesc" class="text-input" style="min-height:64px;resize:vertical" placeholder="Why you want to go, best time of day, anything worth knowing before you visit — you can always write more later."></textarea>
+    <button type="button" class="btn btn-primary" style="margin-top:12px" onclick="addDemoPlace()"><svg aria-hidden="true"><use href="#i-check"/></svg> Save to wishlist</button>
+  </div>
+</div>
+
+<script>
+  // `note` (the old one-line teaser) no longer exists on Place — this
+  // migration folded it into `description`. Where a place already had a
+  // real description, the old note text was redundant with it and was
+  // dropped rather than prepended (see the design-decisions note in the
+  // report for this round). Where a place had ONLY a note and no
+  // description (wulong, ciqikou), that note text became the entire
+  // description — which is exactly why those two are short, single-line
+  // descriptions below: a faithful post-migration state, not a placeholder.
+  var PLACES = {
+    hongya: {
+      name: 'Hongya Cave', category: 'Landmark', city: 'Chongqing', icon: 'i-cat-landmark', color: 'var(--d-blue)',
+      assigned: 'day1',
+      description: "Multi-tiered stilt-house complex built into the cliff above the Jialing River — a modern reconstruction of old Bayu-style architecture rather than an actual historic site, so don't go in expecting ruins. Eleven levels connect the riverside road up to Cangbai Road at the top; escalators inside make it easy to skip the stairs if the humidity's bad.\n\nBest seen from across the river, or from Qiansimen Bridge, right after dusk when all the levels light up together — arriving 15–20 minutes before is worth it to get a spot on the bridge. The interior is a shopping/dining complex, free to enter; the rooftop observation deck is a separate paid ticket and probably skippable.",
+      review: "Worth timing it exactly right — we crossed Qiansimen Bridge at 6:40pm and caught the lights coming on tier by tier, easily the best ten minutes of the Chongqing leg. Photos from the bridge came out far better than anything we managed from inside.\n\nInside is basically a mall dressed as a Ming-dynasty film set, which was a little deflating up close after seeing it lit from outside, so we didn't linger — the photo really is the point, not the shopping. Skipped the paid rooftop deck; the free view from the bridge is honestly the better angle anyway.\n\nWhole visit including queuing for a bridge spot took about 90 minutes. Would come back just for the lights, wouldn't bother with the interior a second time."
+    },
+    liziba: {
+      name: 'Liziba Monorail Station', category: 'Landmark', city: 'Chongqing', icon: 'i-cat-landmark', color: 'var(--d-blue)',
+      assigned: 'day1',
+      description: "Monorail Line 2 runs directly through floors 6–8 of this apartment block — the platform is inside the building itself. Best photo spot is the small park across the road on the Nanbin Road side rather than trying to shoot from the platform, where security moves people along quickly. Trains pass roughly every 5–8 minutes, so no need to time a visit precisely.",
+      review: ''
+    },
+    wulong: {
+      name: 'Wulong Karst (Three Natural Bridges)', category: 'Nature', city: 'Chongqing', icon: 'i-cat-nature', color: 'var(--d-amber)',
+      assigned: 'daytrip',
+      description: 'Day trip — book transport ahead', review: ''
+    },
+    ciqikou: {
+      name: 'Ciqikou Ancient Town', category: 'Neighbourhood', city: 'Chongqing', icon: 'i-cat-neighbourhood', color: 'var(--d-grey)',
+      assigned: '',
+      description: 'Old riverside town', review: ''
+    },
+    greathall: {
+      name: 'Chongqing People’s Great Hall', category: 'Landmark', city: 'Chongqing', icon: 'i-cat-landmark', color: 'var(--d-grey)',
+      assigned: '',
+      description: "Soviet-influenced auditorium modelled loosely on the Temple of Heaven, finished in 1954. The plaza out front is free to walk around and photograph any time; the interior is only open for scheduled events and guided tours, so worth checking ahead if we actually want to go inside rather than just see the exterior. Apparently nice lit up at night, with the fountains running.",
+      review: ''
+    }
+  };
+  var ORDER = ['hongya','liziba','wulong','ciqikou','greathall'];
+
+  // ============================================================================
+  // CONTRACT — frontend/backend must agree on this BYTE-IDENTICAL string.
+  //
+  // This is the boundary marker the "keep both" conflict merge writes into a
+  // saved field (see resolveConflict() / renderProseHTML() further down).
+  // Whichever side writes the merge on a real conflict — right now that's
+  // sketched client-side here, but this is exactly the kind of thing that
+  // could end up written by a backend function instead — MUST produce this
+  // exact string, whitespace and dash character included. A mismatch (extra
+  // space, an en dash vs em dash, a translated string, trailing punctuation)
+  // means renderProseHTML()'s plain substring match below will silently fail
+  // to recognise it, and the user will see this raw line sitting in their
+  // prose instead of a divider. Treat this as an API contract, not UI copy —
+  // if it ever needs to change, it has to change in both places at once.
+  //
+  // What if a user types this exact sentence themselves? Not defended
+  // against, and that's an accepted trade-off for this mockup: the match is
+  // a plain substring check, so a user who happens to type "— Also written
+  // on another device —" verbatim would see their own text rendered as a
+  // divider. Vanishingly unlikely in practice, and the consequence is purely
+  // cosmetic — no text is lost or corrupted, it's just visually split where
+  // it wasn't meant to be. A production implementation would more likely use
+  // a delimiter a human can't type (e.g. a private-use Unicode character)
+  // precisely to close this gap; noted here as a deliberate simplification,
+  // not an oversight.
+  // ============================================================================
+  var CONFLICT_SENTINEL = '— Also written on another device —';
+  var PARTNER_TEXT = {
+    liziba: { review: "Loved this one — the platform-inside-a-building thing has to be seen to be believed. Snap the photo from the little park across the road; we couldn't get a good angle from the platform itself." }
+  };
+
+  // per-frame delete-confirmation state — kept alongside `state` (the modal's
+  // per-frame view/edit/saving state) for the same reason: it's transient UI,
+  // not data, so the desktop and mobile demo frames don't have to agree on
+  // whether a given card is mid-delete-confirm in the other frame.
+  var pendingDelete = { desktop: {}, mobile: {} };
+
+  // Mirrors the real PlaceCard structure (src/features/places/PlacesPanel.tsx
+  // lines 166-214): place-card-top holds the icon/name and the delete
+  // action, place-tags, a description excerpt, then place-foot with the
+  // day-assign select. The "Notes & review" link is a real <button> (not
+  // the whole card) so a <select> and a delete <button> can still legally
+  // live inside the same article — you cannot nest interactive controls
+  // inside a clickable wrapper element. A click anywhere else on the card
+  // also opens the detail view as a mouse convenience; the explicit link is
+  // what a keyboard/screen-reader user relies on.
+  function cardHTML(key, frame){
+    var p = PLACES[key];
+    if(pendingDelete[frame][key]) return deleteConfirmCardHTML(key, frame);
+    var unassigned = !p.assigned;
+    var hasDetail = !!(p.description || p.review);
+    var iconCls = unassigned ? 'place-icon unassigned' : 'place-icon';
+    return '' +
+      '<article class="card place-card" data-key="' + key + '" onclick="openDetail(\'' + frame + '\',\'' + key + '\')">' +
+        '<div class="place-card-top">' +
+          '<span class="place-title">' +
+            '<span class="' + iconCls + '" style="--pin-color:' + p.color + '"><svg aria-hidden="true"><use href="#' + p.icon + '"/></svg></span>' +
+            '<span class="place-name">' + p.name + '</span>' +
+          '</span>' +
+          '<button class="icon-btn icon-btn-danger" aria-label="Delete ' + p.name + '" onclick="event.stopPropagation();requestDeleteConfirm(\'' + frame + '\',\'' + key + '\')"><svg aria-hidden="true"><use href="#i-trash"/></svg></button>' +
+        '</div>' +
+        '<div class="place-tags">' +
+          '<span class="tag">' + p.category + '</span>' +
+          '<span class="tag city">' + p.city + '</span>' +
+          (p.review ? '<span class="tag reviewed"><svg class="tag-icon" aria-hidden="true"><use href="#i-check"/></svg>Reviewed</span>' : '') +
+          (hasDraft(key) ? '<span class="tag draft">Draft</span>' : '') +
+        '</div>' +
+        (p.description ? '<p class="place-desc-excerpt">' + escapeHtml(p.description) + '</p>' : '') +
+        '<button type="button" class="detail-link" onclick="event.stopPropagation();openDetail(\'' + frame + '\',\'' + key + '\')">' +
+          (hasDetail ? 'Notes &amp; review' : 'Add notes') + ' <svg aria-hidden="true"><use href="#i-chevron-right"/></svg>' +
+        '</button>' +
+        '<div class="place-foot">' +
+          '<span class="assign-slot"><select class="assign-select' + (unassigned ? ' is-wishlist' : '') + '" style="--select-tint:' + p.color + '" aria-label="Assign day for ' + p.name + '" onclick="event.stopPropagation()">' +
+            '<option' + (!p.assigned ? ' selected' : '') + '>Wishlist</option>' +
+            '<option' + (p.assigned === 'day1' ? ' selected' : '') + '>Day 1 · Fri 20 Nov</option>' +
+            '<option' + (p.assigned === 'daytrip' ? ' selected' : '') + '>Day trip · Sat 21 Nov</option>' +
+          '</select></span>' +
+        '</div>' +
+      '</article>';
+  }
+
+  // Content-aware warning: names what's actually about to be destroyed
+  // instead of a generic "Are you sure?" — a bare pin and a pin carrying
+  // three paragraphs of review are different things to delete.
+  function joinWithAnd(parts){
+    if(parts.length === 0) return '';
+    if(parts.length === 1) return parts[0];
+    if(parts.length === 2) return parts[0] + ' and ' + parts[1];
+    return parts.slice(0, -1).join(', ') + ', and ' + parts[parts.length - 1];
+  }
+  function wordCount(text){ return text.trim() ? text.trim().split(/\s+/).length : 0; }
+  function buildDeleteWarning(key){
+    var p = PLACES[key];
+    var parts = [];
+    if(p.review) parts.push('your review (' + wordCount(p.review) + ' words)');
+    if(p.description) parts.push('your notes');
+    if(hasDraft(key)) parts.push('an unsaved draft');
+    if(!parts.length) return 'This place has nothing written on it yet.';
+    return 'This will also delete ' + joinWithAnd(parts) + '.';
+  }
+  function deleteConfirmCardHTML(key, frame){
+    var p = PLACES[key];
+    return '' +
+      '<article class="card place-card is-delete-confirm" data-key="' + key + '" role="alertdialog" aria-label="Delete ' + p.name + '?">' +
+        '<div class="delete-confirm-inner">' +
+          '<svg aria-hidden="true"><use href="#i-alert"/></svg>' +
+          '<div class="delete-confirm-text"><strong>Delete ' + p.name + '?</strong><span>' + buildDeleteWarning(key) + ' This can&rsquo;t be undone.</span></div>' +
+        '</div>' +
+        '<div class="delete-confirm-actions">' +
+          '<button type="button" class="btn delete-btn" onclick="confirmDelete(\'' + frame + '\',\'' + key + '\')">Delete place</button>' +
+          '<button type="button" class="btn btn-primary" id="deleteCancelBtn-' + frame + '-' + key + '" onclick="cancelDeleteConfirm(\'' + frame + '\',\'' + key + '\')">Cancel</button>' +
+        '</div>' +
+      '</article>';
+  }
+  function requestDeleteConfirm(frame, key){
+    pendingDelete[frame][key] = true;
+    renderGrids();
+    var btn = document.getElementById('deleteCancelBtn-' + frame + '-' + key);
+    if(btn) setTimeout(function(){ btn.focus(); }, 0);
+  }
+  function cancelDeleteConfirm(frame, key){
+    delete pendingDelete[frame][key];
+    renderGrids();
+    var grid = document.getElementById('grid-' + frame);
+    var btn = grid && grid.querySelector('.place-card[data-key="' + key + '"] .icon-btn-danger');
+    if(btn) btn.focus();
+  }
+  function confirmDelete(frame, key){
+    clearDraftStorage(key);
+    delete PLACES[key];
+    var idx = ORDER.indexOf(key);
+    if(idx !== -1) ORDER.splice(idx, 1);
+    delete pendingDelete.desktop[key];
+    delete pendingDelete.mobile[key];
+    // if either frame's modal currently has this place open, close it —
+    // there's nothing left to show.
+    ['desktop', 'mobile'].forEach(function(f){
+      if(state[f].key === key){ closeDetail(f); state[f].key = null; }
+    });
+    renderGrids();
+  }
+
+  function updateCounts(){
+    var total = ORDER.length;
+    var assigned = ORDER.filter(function(k){ return !!PLACES[k].assigned; }).length;
+    var placesWord = total === 1 ? 'place' : 'places';
+    ['desktop', 'mobile'].forEach(function(frame){
+      var hint = document.getElementById('panelHint-' + frame);
+      if(hint) hint.textContent = 'Chongqing · ' + total + ' ' + placesWord + ' · ' + assigned + ' assigned';
+      var count = document.getElementById('sectionCount-' + frame);
+      if(count) count.textContent = total + ' ' + placesWord + ' · ' + assigned + ' assigned';
+      var empty = document.getElementById('placesEmpty-' + frame);
+      if(empty) empty.classList.toggle('show', total === 0);
+    });
+  }
+
+  function renderGrids(){
+    ['desktop','mobile'].forEach(function(frame){
+      document.getElementById('grid-' + frame).innerHTML = ORDER.map(function(k){ return cardHTML(k, frame); }).join('');
+    });
+    updateCounts();
+  }
+
+  var CATEGORY_ICON = {
+    Landmark: 'i-cat-landmark', Garden: 'i-cat-garden', Museum: 'i-cat-museum',
+    'Street / Market': 'i-cat-market', Nature: 'i-cat-nature', Neighbourhood: 'i-cat-neighbourhood', Food: 'i-cat-food'
+  };
+  // Backs the "Add place — field change only" section below the two demo
+  // frames (see the markup comment there for why this exists instead of a
+  // rebuilt search-first add flow). New places start unassigned/wishlist
+  // and with no review, same as any real add — a review can only exist
+  // after the description does, and usually much later.
+  function addDemoPlace(){
+    var nameEl = document.getElementById('npName');
+    var catEl = document.getElementById('npCat');
+    var descEl = document.getElementById('npDesc');
+    var name = nameEl.value.trim();
+    if(!name){ nameEl.focus(); return; }
+    var key = 'new-' + Date.now();
+    PLACES[key] = {
+      name: name, category: catEl.value, city: 'Chongqing', icon: CATEGORY_ICON[catEl.value] || 'i-cat-landmark',
+      color: 'var(--d-grey)', assigned: '', description: descEl.value.trim(), review: ''
+    };
+    ORDER.push(key);
+    nameEl.value = ''; descEl.value = ''; catEl.selectedIndex = 0;
+    renderGrids();
+    nameEl.focus();
+  }
+
+  // Seeds one place with an in-progress draft on first-ever load only (never
+  // overwrites a real localStorage entry), so the "you left off mid-thought"
+  // scenario — and the Draft badge on the card — is visible immediately
+  // without having to type anything first. Liziba's saved review is empty;
+  // this simulates a review that got cut off mid-sentence on a previous
+  // visit to the app.
+  (function seedDemoDraft(){
+    try{
+      if(localStorage.getItem('mockup-place-draft:liziba') === null && localStorage.getItem('mockup-place-draft:seeded') === null){
+        saveDraftToStorage('liziba', PLACES.liziba.description,
+          "Caught it right on schedule, though the platform itself is fenced off enough that you can't get close — the");
+        localStorage.setItem('mockup-place-draft:seeded', '1');
+      }
+    }catch(e){}
+  })();
+
+  renderGrids();
+
+  // ---------- local draft cache ----------
+  // The core of the new save model: text is cached to this device
+  // continuously as you type, survives closing the modal / switching tabs /
+  // a full reload, and is NEVER written to the database until "Save
+  // changes" is pressed. ~90% of writing happens in long after-the-trip
+  // sessions at home, where losing prose to a flaky connection is the
+  // expensive failure and instant server consistency buys nothing — so this
+  // also makes writing work fully offline; the network is only needed at
+  // Save. Real localStorage (not a JS variable) so the "survives a reload"
+  // half of that promise is actually demonstrated here, not just claimed.
+  function draftStorageKey(key){ return 'mockup-place-draft:' + key; }
+  function loadDraft(key){
+    try{
+      var raw = localStorage.getItem(draftStorageKey(key));
+      return raw ? JSON.parse(raw) : null;
+    }catch(e){ return null; }
+  }
+  function saveDraftToStorage(key, description, review){
+    try{ localStorage.setItem(draftStorageKey(key), JSON.stringify({ description: description, review: review })); }catch(e){}
+  }
+  function clearDraftStorage(key){
+    try{ localStorage.removeItem(draftStorageKey(key)); }catch(e){}
+  }
+  function hasDraft(key){ return !!loadDraft(key); }
+
+  // ---------- detail modal state ----------
+  var state = { desktop: { key: null, mode: 'view' }, mobile: { key: null, mode: 'view' } };
+  var trapHandlers = {};
+  var saveTimers = {};
+  // design-review helpers only (see the "Preview: simulate..." toggles in
+  // the spec bar) — make the failure and conflict paths in saveDetail()
+  // reachable on demand instead of left to chance. Not part of the real
+  // app; real writes go through the write-through TripRepository (CLAUDE.md).
+  var simulateSaveFailure = false;
+  var simulateConflict = false;
+
+  function toggleSimulateOffline(){
+    simulateSaveFailure = !simulateSaveFailure;
+    var btn = document.getElementById('offlineToggle');
+    var label = document.getElementById('offlineToggleLabel');
+    btn.classList.toggle('is-on', simulateSaveFailure);
+    label.textContent = simulateSaveFailure ? 'Preview: save failure ON — next Save will fail' : 'Preview: simulate save failure';
+  }
+  function toggleSimulateConflict(){
+    simulateConflict = !simulateConflict;
+    var btn = document.getElementById('conflictToggle');
+    var label = document.getElementById('conflictToggleLabel');
+    btn.classList.toggle('is-on', simulateConflict);
+    label.textContent = simulateConflict ? 'Preview: conflict ON — next Save will merge' : 'Preview: simulate remote conflict';
+  }
+  // Wipes every demo draft this file has ever written to localStorage and
+  // reloads, for repeat review passes. Real trip data (PLACES) is a plain
+  // JS var and already resets itself on every reload; only the drafts
+  // persist, since persisting is the entire point being demonstrated.
+  function resetDemoState(){
+    try{
+      Object.keys(localStorage).filter(function(k){ return k.indexOf('mockup-place-draft:') === 0; })
+        .forEach(function(k){ localStorage.removeItem(k); });
+    }catch(e){}
+    location.reload();
+  }
+
+  function openDetail(frame, key){
+    state[frame].key = key;
+    // Opening a place that already has a draft resumes editing exactly
+    // where it was left, rather than showing the (now stale) saved text and
+    // making the user go hunt for the "Unsaved changes" pill first.
+    state[frame].mode = hasDraft(key) ? 'edit' : 'view';
+    renderModal(frame);
+    clearSaveError(frame);
+    hideConflictBanner(frame);
+    var overlay = document.getElementById('overlay-' + frame);
+    var trigger = document.activeElement;
+    overlay.classList.add('open');
+    installTrap(frame, trigger);
+  }
+  function closeDetail(frame){
+    document.getElementById('overlay-' + frame).classList.remove('open');
+    removeTrap(frame);
+  }
+  // Closing is no longer destructive under the local-draft model — the
+  // draft is cached regardless of how the modal closes — so this is a thin
+  // wrapper, not a guard. The only thing it still blocks is abandoning a
+  // save that's actively in flight (a few hundred ms window) so the user
+  // isn't left unsure whether it landed.
+  function requestClose(frame){
+    if(state[frame].mode === 'saving') return;
+    closeDetail(frame);
+  }
+  // isDirty() is now just "does a draft exist" — handleDraftInput() below is
+  // the single place that decides whether one exists, so this is a read,
+  // not a re-derivation.
+  function isDirty(frame){
+    var key = state[frame].key;
+    return !!key && hasDraft(key);
+  }
+  // Escape has exactly two states to move through, no confirmation branch:
+  // editing steps back to read mode (the draft stays cached either way),
+  // read mode closes. The one exception is the discard-draft confirm panel
+  // itself, if it happens to be open — Escape there backs out one level
+  // (same as pressing "Keep editing") rather than skipping past an open
+  // prompt and slamming the whole dialog shut.
+  function handleEscape(frame){
+    var s = state[frame];
+    if(s.mode === 'confirm-discard'){ keepEditing(frame); return; }
+    if(s.mode === 'saving') return;
+    if(s.mode === 'edit'){ s.mode = 'view'; renderModal(frame); return; }
+    closeDetail(frame);
+  }
+
+  // ---------- discard draft (the one action that's still destructive) ----------
+  function handleDiscardClick(frame){
+    if(isDirty(frame)){ showDiscardConfirm(frame); }
+    else { state[frame].mode = 'view'; renderModal(frame); }
+  }
+  function showDiscardConfirm(frame){
+    // Deliberately does NOT call renderModal() — that would re-sync the
+    // textareas from PLACES via setSection() before the user has actually
+    // confirmed anything. Only the modal's mode flips (swaps which footer
+    // panel the CSS shows); the edit textareas underneath, and the draft in
+    // storage, are both left untouched until Discard is actually pressed.
+    state[frame].mode = 'confirm-discard';
+    document.getElementById('modal-' + frame).dataset.mode = 'confirm-discard';
+    var btn = document.getElementById('keepEditingBtn-' + frame);
+    if(btn) setTimeout(function(){ btn.focus(); }, 0);
+  }
+  function keepEditing(frame){
+    state[frame].mode = 'edit';
+    document.getElementById('modal-' + frame).dataset.mode = 'edit';
+  }
+  function discardDraftConfirmed(frame){
+    var key = state[frame].key;
+    clearDraftStorage(key);
+    state[frame].mode = 'view';
+    renderModal(frame);
+    updateCardBadges(key);
+  }
+
+  function setMode(frame, mode, focusField){
+    state[frame].mode = mode;
+    renderModal(frame);
+    clearSaveError(frame);
+    if(mode === 'edit'){
+      var id = (focusField || 'about') + '-' + frame;
+      var el = document.getElementById(id);
+      if(el) setTimeout(function(){ el.focus(); }, 0);
+    }
+  }
+
+  // Fires on every keystroke in either textarea. This — not saveDetail() —
+  // is what "continuously and automatically" cached means: the draft is
+  // written to localStorage as you type, well before any Save is pressed.
+  function handleDraftInput(frame){
+    var key = state[frame].key;
+    if(!key) return;
+    var p = PLACES[key];
+    var aboutVal = document.getElementById('about-' + frame).value;
+    var reviewVal = document.getElementById('review-' + frame).value;
+    var differs = aboutVal.trim() !== (p.description || '') || reviewVal.trim() !== (p.review || '');
+    if(differs) saveDraftToStorage(key, aboutVal, reviewVal);
+    else clearDraftStorage(key); // typed back to exactly the saved text — nothing left to protect
+    updateDraftPill(frame);
+    updateCardBadges(key);
+  }
+  function updateDraftPill(frame){
+    var pill = document.getElementById('draftPill-' + frame);
+    if(pill) pill.style.display = isDirty(frame) ? 'inline-flex' : 'none';
+  }
+
+  // Real writes go through the app's write-through TripRepository, so a
+  // Save while offline or mid-outage WILL fail — sketched here via the
+  // "simulate save failure" toggle. The draft is the whole safety net on
+  // failure: it is never touched, so a failed Save is retryable with
+  // nothing re-typed. "simulate remote conflict" sketches the other new
+  // failure-adjacent case: two people share one login across devices, so
+  // the record can have changed remotely since this draft was started. The
+  // resolution is deliberately crude — keep both, never discard — see
+  // resolveConflict() below.
+  function saveDetail(frame){
+    var key = state[frame].key;
+    var modal = document.getElementById('modal-' + frame);
+    state[frame].mode = 'saving';
+    modal.dataset.mode = 'saving';
+    clearSaveError(frame);
+    setButtonsDisabled(frame, true);
+
+    saveTimers[frame] = setTimeout(function(){
+      if(simulateSaveFailure){
+        state[frame].mode = 'edit';
+        modal.dataset.mode = 'edit';
+        setButtonsDisabled(frame, false);
+        showSaveError(frame);
+        // draft in storage (and the textareas showing it) are never
+        // touched on failure — Save is simply retryable.
+        return;
+      }
+      var p = PLACES[key];
+      var aboutVal = document.getElementById('about-' + frame).value.trim();
+      var reviewVal = document.getElementById('review-' + frame).value.trim();
+      var conflicted = simulateConflict;
+
+      if(conflicted){
+        resolveConflict(key, p, aboutVal, reviewVal);
+      } else {
+        p.description = aboutVal;
+        p.review = reviewVal;
+      }
+
+      clearDraftStorage(key);
+      state[frame].mode = 'view';
+      setButtonsDisabled(frame, false);
+      renderModal(frame);
+      updateCardBadges(key);
+      modal.classList.remove('flash-confirm');
+      void modal.offsetWidth; // restart the animation if it's re-triggered back-to-back
+      modal.classList.add('flash-confirm');
+      if(conflicted) showConflictBanner(frame);
+    }, 650);
+  }
+
+  // Crude by design, per the product decision: never discard either side.
+  // The incoming "remote" text (what the partner's device is presumed to
+  // have saved first) is appended under the user's own text with a plain
+  // -text sentinel line that renderProseHTML() below turns into a visible
+  // divider. This keeps the data model honestly "text only" — the divider
+  // is a rendering convenience over an ordinary string, not a new field or
+  // a markup payload.
+  function resolveConflict(key, p, aboutVal, reviewVal){
+    var partner = PARTNER_TEXT[key] || { review: 'Also added a note from another device — nothing major, just a couple of quick details.' };
+    p.description = aboutVal;
+    p.review = reviewVal
+      ? reviewVal + '\n\n' + CONFLICT_SENTINEL + '\n\n' + partner.review
+      : partner.review;
+  }
+
+  function setButtonsDisabled(frame, disabled){
+    ['discardBtn-', 'saveBtn-', 'editBtn-', 'closeBtn-'].forEach(function(prefix){
+      var el = document.getElementById(prefix + frame);
+      if(!el) return;
+      if(disabled) el.setAttribute('disabled', 'true'); else el.removeAttribute('disabled');
+    });
+    var label = document.getElementById('saveBtnLabel-' + frame);
+    if(label) label.textContent = disabled ? 'Saving…' : 'Save changes';
+  }
+  function showSaveError(frame){
+    var el = document.getElementById('saveError-' + frame);
+    if(el) el.classList.add('show');
+  }
+  function clearSaveError(frame){
+    var el = document.getElementById('saveError-' + frame);
+    if(el) el.classList.remove('show');
+  }
+  function showConflictBanner(frame){
+    var el = document.getElementById('conflictBanner-' + frame);
+    if(el) el.classList.add('show');
+  }
+  function hideConflictBanner(frame){
+    var el = document.getElementById('conflictBanner-' + frame);
+    if(el) el.classList.remove('show');
+  }
+
+  function renderModal(frame){
+    var key = state[frame].key;
+    if(!key) return;
+    var p = PLACES[key];
+    var mode = state[frame].mode;
+    var draft = loadDraft(key);
+    document.getElementById('modal-' + frame).dataset.mode = mode;
+    var iconEl = document.getElementById('modalIcon-' + frame);
+    iconEl.style.setProperty('--pin-color', p.color);
+    iconEl.innerHTML = '<svg aria-hidden="true"><use href="#' + p.icon + '"/></svg>';
+    document.getElementById('modalName-' + frame).textContent = p.name;
+    document.getElementById('modalCat-' + frame).textContent = p.category;
+    document.getElementById('modalCity-' + frame).textContent = p.city;
+    document.getElementById('modalReviewed-' + frame).style.display = p.review ? 'inline-flex' : 'none';
+    updateDraftPill(frame);
+
+    // Read mode always shows the last SAVED (committed) text — never the
+    // draft — so "About"/"My review" keep meaning "what's actually on
+    // record." Edit mode resumes the draft if one exists, else starts from
+    // the saved text, same as any normal edit.
+    var aboutText = (mode === 'edit' && draft) ? draft.description : p.description;
+    var reviewText = (mode === 'edit' && draft) ? draft.review : p.review;
+    setSection(frame, 'About', aboutText, mode);
+    setSection(frame, 'Review', reviewText, mode);
+  }
+
+  function setSection(frame, which, text, mode){
+    var section = document.getElementById('sec' + which + '-' + frame);
+    var lc = which.toLowerCase();
+    if(mode === 'edit'){
+      section.dataset.mode = 'edit';
+      document.getElementById(lc + '-' + frame).value = text;
+    } else {
+      section.dataset.mode = text ? 'view-filled' : 'view-empty';
+      if(text) document.getElementById('prose' + which + '-' + frame).innerHTML = renderProseHTML(text);
+    }
+  }
+
+  // ---------- prose rendering (plain text in, occasional conflict divider out) ----------
+  // CONFLICT_SENTINEL / PARTNER_TEXT are declared as the CONTRACT block right
+  // after PLACES/ORDER above — kept far from where they're consumed on
+  // purpose, so they're impossible to miss on a top-to-bottom read of the file.
+  function escapeHtml(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function renderProseHTML(text){
+    var idx = text.indexOf(CONFLICT_SENTINEL);
+    if(idx === -1) return '<span class="prose-block">' + escapeHtml(text) + '</span>';
+    var before = text.slice(0, idx).trim();
+    var after = text.slice(idx + CONFLICT_SENTINEL.length).trim();
+    return '' +
+      '<span class="prose-block">' + escapeHtml(before) + '</span>' +
+      '<div class="conflict-sep-row">Also written on another device</div>' +
+      '<span class="prose-block">' + escapeHtml(after) + '</span>';
+  }
+
+  // Patches existing card DOM nodes in place (both frames share the same
+  // place keys) rather than a full renderGrids() re-render, so scroll
+  // position / open dropdowns elsewhere in the grid aren't disturbed. Covers
+  // both badges a card can carry: "Reviewed" (a committed review exists —
+  // the app's has-this-been-visited signal) and "Draft" (an unsaved local
+  // edit exists — see the draft-pill note in the CSS for why this needs to
+  // be visible from the grid, not just inside the modal).
+  function updateCardBadges(key){
+    var p = PLACES[key];
+    if(!p) return; // place was deleted since this was queued
+    var draftPresent = hasDraft(key);
+    document.querySelectorAll('.place-card[data-key="' + key + '"]').forEach(function(card){
+      var tagsRow = card.querySelector('.place-tags');
+      // a card mid delete-confirm renders no .place-tags (see
+      // deleteConfirmCardHTML) — not normally reachable at the same time as
+      // a live badge update for the same key (the confirm panel's own card
+      // has no modal open behind it to trigger one), but guarded anyway.
+      if(!tagsRow) return;
+      var existingReviewed = tagsRow.querySelector('.tag.reviewed');
+      if(p.review && !existingReviewed){
+        var t = document.createElement('span');
+        t.className = 'tag reviewed';
+        t.innerHTML = '<svg class="tag-icon" aria-hidden="true"><use href="#i-check"/></svg>Reviewed';
+        tagsRow.appendChild(t);
+      } else if(!p.review && existingReviewed){
+        existingReviewed.remove();
+      }
+      var existingDraft = tagsRow.querySelector('.tag.draft');
+      if(draftPresent && !existingDraft){
+        var d = document.createElement('span');
+        d.className = 'tag draft';
+        d.textContent = 'Draft';
+        tagsRow.appendChild(d);
+      } else if(!draftPresent && existingDraft){
+        existingDraft.remove();
+      }
+      var link = card.querySelector('.detail-link');
+      if(link){
+        var hasDetail = !!(p.description || p.review);
+        link.firstChild.textContent = hasDetail ? 'Notes & review ' : 'Add notes ';
+      }
+    });
+  }
+
+  // ---------- focus trap (mirrors src/components/Modal.tsx) ----------
+  function getFocusable(container){
+    return Array.prototype.slice.call(
+      container.querySelectorAll('a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])')
+    ).filter(function(el){ return el.offsetParent !== null; });
+  }
+  function installTrap(frame, prevFocus){
+    var modal = document.getElementById('modal-' + frame);
+    var focusables = getFocusable(modal);
+    (focusables[0] || modal).focus();
+    function onKeydown(e){
+      if(e.key === 'Escape'){ e.preventDefault(); handleEscape(frame); return; }
+      if(e.key !== 'Tab') return;
+      var items = getFocusable(modal);
+      if(!items.length) return;
+      var first = items[0], last = items[items.length - 1];
+      if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    }
+    document.addEventListener('keydown', onKeydown);
+    trapHandlers[frame] = { onKeydown: onKeydown, prevFocus: prevFocus };
+  }
+  function removeTrap(frame){
+    var t = trapHandlers[frame];
+    if(!t) return;
+    document.removeEventListener('keydown', t.onKeydown);
+    if(t.prevFocus && t.prevFocus.focus) t.prevFocus.focus();
+    delete trapHandlers[frame];
+  }
+
+  // ---------- theme toggle ----------
+  function systemTheme(){ return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+  function effectiveTheme(){ return document.documentElement.getAttribute('data-theme') || systemTheme(); }
+  function applyThemeIcon(){
+    var eff = effectiveTheme();
+    document.getElementById('themeIcon').innerHTML = '<use href="#i-' + (eff === 'dark' ? 'sun' : 'moon') + '"/>';
+  }
+  function toggleTheme(){
+    document.documentElement.setAttribute('data-theme', effectiveTheme() === 'dark' ? 'light' : 'dark');
+    applyThemeIcon();
+  }
+  applyThemeIcon();
+
+  // Desktop's overlay is position:fixed (matches the real app — a modal
+  // should cover everything), so it is deliberately NOT auto-opened here:
+  // doing so would permanently hide the mobile demo frame below it on this
+  // single scrolling page. Click a card to try it — Hongya Cave is the
+  // filled/reviewed example; Wulong Karst and Ciqikou have only the short,
+  // ex-`note` one-liner as their post-migration description and no review
+  // yet; Liziba has a seeded in-progress draft (opens straight into edit
+  // mode — try reloading the page, it's still there) plus a longer saved
+  // description with no review yet; the Great Hall has pre-trip notes but
+  // no review either.
+  //
+  // The mobile frame's overlay is position:absolute, confined to its own
+  // phone-frame box, so it's safe to pre-open as a resting example.
+  openDetail('mobile', 'wulong');
+</script>
+</body>
+</html>

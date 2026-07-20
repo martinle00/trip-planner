@@ -77,6 +77,24 @@ export class SyncedTripRepository implements TripRepository {
     await this.cache.deletePlace(id);
   }
 
+  // No offline fallback here, same as every other write in this class — a
+  // conditional write against a conflict-detection field is exactly the
+  // kind of thing that must never be attempted against a possibly-stale
+  // local cache. `result.place` is always mirrored to the cache regardless
+  // of whether the write landed or was rejected: on success it's the
+  // freshly-written place; on conflict it's the CURRENT remote place the
+  // repository re-read to build the conflict response, and that read
+  // succeeded — mirroring it matches the "reads mirror to cache on success"
+  // rule the rest of this class follows.
+  async updatePlaceIfUnchanged(
+    place: Place,
+    baseUpdatedAt: string,
+  ): Promise<{ place: Place; conflict: boolean }> {
+    const result = await this.remote.updatePlaceIfUnchanged(place, baseUpdatedAt);
+    await this.cache.upsertPlace(result.place);
+    return result;
+  }
+
   // ---- Days ----
 
   async listDays(tripId: ID): Promise<Day[]> {

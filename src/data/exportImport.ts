@@ -8,7 +8,7 @@
 import type { Day, Expense, ItineraryItem, Place, Trip, TripSnapshot } from './schema';
 
 /** Serialize a TripSnapshot to a pretty-printed JSON string. Always writes
- *  the current (v2) shape. */
+ *  the current (v3) shape. */
 export function serializeSnapshot(snapshot: TripSnapshot): string {
   return JSON.stringify(snapshot, null, 2);
 }
@@ -88,24 +88,106 @@ export function migrateExpenseV1ToV2(expense: ExpenseV1): Expense {
   return { ...rest, amount: amountCny, currency: 'CNY' };
 }
 
-function migrateSnapshotV1ToV2(snapshot: TripSnapshotV1): TripSnapshot {
+/** v2-shaped snapshot — places are `PlaceV2` (pre `description`/`selfReview`/
+ *  required `updatedAt`, still carrying the old free-text `note`). */
+interface TripSnapshotV2 {
+  version: 2;
+  trip: Trip;
+  days: Day[];
+  places: PlaceV2[];
+  itinerary: ItineraryItem[];
+  expenses: Expense[];
+}
+
+function migrateSnapshotV1ToV2(snapshot: TripSnapshotV1): TripSnapshotV2 {
   return {
     version: 2,
     trip: migrateTripV1ToV2(snapshot.trip),
     days: snapshot.days,
-    places: snapshot.places,
+    places: snapshot.places as PlaceV2[],
     itinerary: snapshot.itinerary,
     expenses: snapshot.expenses.map(migrateExpenseV1ToV2),
   };
 }
 
+// ---------------------------------------------------------------------------
+// v2 -> v3 migration.
+//
+// v2 shape: `Place.note` (single free-text field), no `description`/
+// `selfReview`, no `updatedAt`.
+// v3 shape (current — see schema.ts): `Place.note` removed; `description`
+// (pre-visit notes) + `selfReview` (post-visit reflection) added, both
+// optional; `updatedAt` (ISO date-time) added, required.
+//
+// `migratePlaceV2ToV3` is exported (along with `PlaceV2`) so `data/db.ts`'s
+// Dexie `version(3).upgrade()` can reuse the exact same per-place transform
+// for existing LOCAL IndexedDB data — the JSON import path here and the
+// in-place IndexedDB upgrade must never drift out of sync with each other,
+// same rule the v1->v2 migration above already follows.
+// ---------------------------------------------------------------------------
+
+export interface PlaceV2 {
+  id: string;
+  tripId: string;
+  name: string;
+  note?: string;
+  category?: string;
+  lat: number;
+  lng: number;
+  city: string;
+  status: Place['status'];
+  dayId?: string;
+  sourceUrl?: string;
+  address?: string;
+}
+
 /**
- * Parse a JSON string into a (current, v2-shaped) TripSnapshot, with minimal
- * shape validation. Accepts both v1 and v2 snapshot JSON — a v1 snapshot is
- * transparently migrated (see migrateSnapshotV1ToV2 above). Throws if the
- * JSON is malformed, clearly not a trip snapshot, or carries a `version`
- * this build doesn't recognize (including a missing/undefined version) —
- * an unrecognized version is never silently trusted as the current shape.
+ * Pure per-place v2 -> v3 transform. Folds `note` into `description`
+ * (concatenating if `description` is somehow already present on the input —
+ * defensive; a genuine v2 record never has one) and backfills `updatedAt`
+ * from `fallbackUpdatedAt` when the record doesn't already carry one.
+ * `fallbackUpdatedAt` is passed in (rather than computed here) so a single
+ * migration run — one Dexie upgrade, or one `parseSnapshot` call — stamps
+ * every place it touches with the exact same timestamp, and so this
+ * function itself stays a pure, easily-testable transform.
+ */
+export function migratePlaceV2ToV3(
+  place: PlaceV2 & { description?: string; updatedAt?: string },
+  fallbackUpdatedAt: string,
+): Place {
+  const { note, description: existingDescription, updatedAt, ...rest } = place;
+  const description = note
+    ? existingDescription
+      ? `${existingDescription}\n\n${note}`
+      : note
+    : existingDescription;
+  return {
+    ...rest,
+    description,
+    updatedAt: updatedAt ?? fallbackUpdatedAt,
+  };
+}
+
+export function migrateSnapshotV2ToV3(snapshot: TripSnapshotV2): TripSnapshot {
+  const fallbackUpdatedAt = new Date().toISOString();
+  return {
+    version: 3,
+    trip: snapshot.trip,
+    days: snapshot.days,
+    places: snapshot.places.map((p) => migratePlaceV2ToV3(p, fallbackUpdatedAt)),
+    itinerary: snapshot.itinerary,
+    expenses: snapshot.expenses,
+  };
+}
+
+/**
+ * Parse a JSON string into a (current, v3-shaped) TripSnapshot, with minimal
+ * shape validation. Accepts v1, v2 and v3 snapshot JSON — v1 and v2 are
+ * transparently migrated, chaining v1 -> v2 -> v3 for a very old export (see
+ * migrateSnapshotV1ToV2/migrateSnapshotV2ToV3 above). Throws if the JSON is
+ * malformed, clearly not a trip snapshot, or carries a `version` this build
+ * doesn't recognize (including a missing/undefined version) — an
+ * unrecognized version is never silently trusted as the current shape.
  */
 export function parseSnapshot(json: string): TripSnapshot {
   let parsed: unknown;
@@ -127,9 +209,12 @@ export function parseSnapshot(json: string): TripSnapshot {
   }
   const version = (parsed as { version?: unknown }).version;
   if (version === 1) {
-    return migrateSnapshotV1ToV2(parsed as TripSnapshotV1);
+    return migrateSnapshotV2ToV3(migrateSnapshotV1ToV2(parsed as TripSnapshotV1));
   }
   if (version === 2) {
+    return migrateSnapshotV2ToV3(parsed as TripSnapshotV2);
+  }
+  if (version === 3) {
     return parsed as TripSnapshot;
   }
   throw new Error('parseSnapshot: unsupported snapshot version');

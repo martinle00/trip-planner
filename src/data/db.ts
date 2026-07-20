@@ -6,9 +6,28 @@
 
 import Dexie from 'dexie';
 import type { Table } from 'dexie';
-import type { Day, Expense, ItineraryItem, Place, Trip } from './schema';
-import { migrateExpenseV1ToV2, migrateTripV1ToV2 } from './exportImport';
-import type { ExpenseV1, TripV1 } from './exportImport';
+import type { Day, Expense, ID, ItineraryItem, Place, Trip } from './schema';
+import { migrateExpenseV1ToV2, migratePlaceV2ToV3, migrateTripV1ToV2 } from './exportImport';
+import type { ExpenseV1, PlaceV2, TripV1 } from './exportImport';
+
+/**
+ * A place's WIP free-text draft (`description`/`selfReview`), local-only and
+ * NEVER synced to Supabase — see `data/draftRepository.ts`, the only module
+ * that touches this table. Kept here (rather than in schema.ts, which is the
+ * synced-domain-model contract) because it isn't part of `TripSnapshot`/
+ * `TripRepository` at all.
+ */
+export interface PlaceDraft {
+  placeId: ID;
+  description?: string;
+  selfReview?: string;
+  /** The `Place.updatedAt` this draft was started/last rebased against —
+   *  used for append-both conflict detection on commit (see
+   *  `useTripStore.commitPlaceDraft`). */
+  baseUpdatedAt: string;
+  /** ISO date-time of the most recent local draft save. */
+  savedAt: string;
+}
 
 // Index layout has never changed between v1 and v2 — same `.stores()` shape
 // for both declared Dexie versions below.
@@ -26,6 +45,7 @@ export class TripDatabase extends Dexie {
   places!: Table<Place, string>;
   itinerary!: Table<ItineraryItem, string>;
   expenses!: Table<Expense, string>;
+  placeDrafts!: Table<PlaceDraft, string>;
 
   constructor() {
     super('china-trip-planner');
@@ -68,6 +88,34 @@ export class TripDatabase extends Dexie {
             }
           });
       });
+
+    // v3 (Phase 4 — place description/selfReview/updatedAt): folds
+    // Place.note into `description` (concatenating if `description`
+    // somehow already exists — defensive), drops `note`, and backfills
+    // `updatedAt`. Also introduces the local-only `placeDrafts` table (new
+    // in this version, hence the `.stores()` change — everything else keeps
+    // its v1/v2 index layout unchanged since none of the new fields are
+    // queried directly).
+    //
+    // Reuses `migratePlaceV2ToV3` (exported from exportImport.ts) so this
+    // in-place upgrade and the JSON import path (`parseSnapshot`'s v2->v3
+    // migration) can't drift out of sync with each other — same pattern as
+    // the v2 upgrade above.
+    this.version(3)
+      .stores({ ...STORES, placeDrafts: 'placeId' })
+      .upgrade(async (tx) => {
+        const fallbackUpdatedAt = new Date().toISOString();
+        await tx
+          .table('places')
+          .toCollection()
+          .modify((raw: Record<string, unknown>) => {
+            const alreadyMigrated = !('note' in raw) && typeof raw.updatedAt === 'string';
+            if (alreadyMigrated) return;
+            const migrated = migratePlaceV2ToV3(raw as unknown as PlaceV2, fallbackUpdatedAt);
+            Object.assign(raw, migrated);
+            delete raw.note;
+          });
+      });
   }
 }
 
@@ -75,15 +123,26 @@ export class TripDatabase extends Dexie {
 export const db = new TripDatabase();
 
 /** Wipes the local cache. Call on sign-out so a previous account's trip data
- *  isn't left readable offline on a shared/public device. */
+ *  (including any unsaved place-prose drafts, which are local-only and never
+ *  synced) isn't left readable offline on a shared/public device. */
 export async function clearLocalCache(): Promise<void> {
-  await db.transaction('rw', db.trips, db.days, db.places, db.itinerary, db.expenses, async () => {
-    await Promise.all([
-      db.trips.clear(),
-      db.days.clear(),
-      db.places.clear(),
-      db.itinerary.clear(),
-      db.expenses.clear(),
-    ]);
-  });
+  await db.transaction(
+    'rw',
+    db.trips,
+    db.days,
+    db.places,
+    db.itinerary,
+    db.expenses,
+    db.placeDrafts,
+    async () => {
+      await Promise.all([
+        db.trips.clear(),
+        db.days.clear(),
+        db.places.clear(),
+        db.itinerary.clear(),
+        db.expenses.clear(),
+        db.placeDrafts.clear(),
+      ]);
+    },
+  );
 }

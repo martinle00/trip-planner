@@ -42,8 +42,13 @@ const DAY_TRIP_OVERRIDES: Record<string, { city: string; parentCity: string }> =
   '2026-11-27': { city: 'Shenzhen', parentCity: 'Guangzhou' },
 };
 
+/** Fixed "authored" timestamp for every seed place's `updatedAt`. A literal
+ *  constant (not `new Date().toISOString()`) so `buildSeed()` stays a pure,
+ *  deterministic function per its FROZEN CONTRACT header. */
+const SEED_PLACE_UPDATED_AT = '2026-01-01T00:00:00.000Z';
+
 /** Starter wishlist places (approx. real coordinates) so the map has content. */
-const SEED_PLACES: Array<Omit<Place, 'id' | 'tripId' | 'status'>> = [
+const SEED_PLACES: Array<Omit<Place, 'id' | 'tripId' | 'status' | 'updatedAt'>> = [
   // Singapore
   { name: 'Marina Bay Sands',   city: 'Singapore',   lat: 1.2834,  lng: 103.8607, category: 'Landmark' },
   { name: 'Gardens by the Bay', city: 'Singapore',   lat: 1.2816,  lng: 103.8636, category: 'Sightseeing' },
@@ -121,10 +126,11 @@ export function buildSeed(): TripSnapshot {
     id: nextId('place'),
     tripId: TRIP_ID,
     status: 'wishlist' as const,
+    updatedAt: SEED_PLACE_UPDATED_AT,
   }));
 
   return {
-    version: 2,
+    version: 3,
     trip,
     days,
     places,
