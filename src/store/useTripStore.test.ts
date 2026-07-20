@@ -6,8 +6,12 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Dexie from 'dexie';
-import { useTripStore } from './useTripStore';
+import { useTripStore, resetTripStoreForSignOut } from './useTripStore';
 import type { DayPlan } from '../lib/autoplan';
+import { setTripRepository } from '../data/tripRepositoryInstance';
+import { DexieTripRepository } from '../data/dexieTripRepository';
+import type { TripRepository } from '../data/tripRepository';
+import type { Trip } from '../data/schema';
 
 const fetchRatesMock = vi.fn();
 vi.mock('../lib/exchangeRates', async (importOriginal) => {
@@ -598,5 +602,254 @@ describe('updateItineraryItem — cross-day move vs. same-day edit', () => {
     expect(items.map((i) => i.id)).toEqual([i0.id, i1.id, i2.id]);
     expect(items.find((i) => i.id === i1.id)?.title).toBe('Second (edited)');
     expect(items.find((i) => i.id === i1.id)?.order).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// init() — cache-first / stale-while-revalidate against a remote-backed
+// repository (see useTripStore.ts's init()). The outer beforeEach above
+// already seeded and loaded the local Dexie cache via the *default* (plain
+// Dexie) repository before each of these tests runs, mirroring a real app
+// that already has a cached trip on this device. Each test here then swaps
+// in a fake remote-backed `TripRepository` via `setTripRepository` (the same
+// seam AuthGate.tsx uses to wire up a real `SyncedTripRepository`) to
+// exercise the cache-first/background-refresh path specifically.
+describe('init() — cache-first / stale-while-revalidate (remote-backed repository)', () => {
+  afterEach(() => {
+    // Restore the default plain-Dexie repository so later tests/files aren't
+    // left pointed at a fake one.
+    setTripRepository(new DexieTripRepository());
+  });
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (err: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+    const start = Date.now();
+    while (!predicate()) {
+      if (Date.now() - start > timeoutMs) throw new Error('waitUntil: timed out waiting for condition');
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  }
+
+  /** A fake `TripRepository` that is NOT a `DexieTripRepository` instance —
+   *  this is exactly what makes `init()` take the cache-first/remote-backed
+   *  branch rather than the plain-Dexie fast path. */
+  function makeFakeRemoteRepo(overrides: Partial<TripRepository>): TripRepository {
+    return {
+      async seedIfEmpty() {},
+      async getTrip() {
+        return undefined;
+      },
+      async saveTrip() {},
+      async listPlaces() {
+        return [];
+      },
+      async upsertPlace(p) {
+        return p;
+      },
+      async deletePlace() {},
+      async listDays() {
+        return [];
+      },
+      async listItinerary() {
+        return [];
+      },
+      async listAllItinerary() {
+        return [];
+      },
+      async upsertItineraryItem(i) {
+        return i;
+      },
+      async deleteItineraryItem() {},
+      async listExpenses() {
+        return [];
+      },
+      async upsertExpense(e) {
+        return e;
+      },
+      async deleteExpense() {},
+      async exportSnapshot() {
+        throw new Error('not used by these tests');
+      },
+      async importSnapshot() {},
+      ...overrides,
+    };
+  }
+
+  it('paints instantly from the already-cached local trip, then reconciles with the remote in the background', async () => {
+    const cached = useTripStore.getState();
+    const cachedTrip = cached.trip as Trip;
+    const remoteTrip: Trip = { ...cachedTrip, name: 'Remote-updated trip name' };
+    const gate = deferred<void>();
+    let remoteGetTripCalls = 0;
+
+    const fakeRemote = makeFakeRemoteRepo({
+      async getTrip() {
+        remoteGetTripCalls += 1;
+        await gate.promise;
+        return remoteTrip;
+      },
+      async listPlaces() {
+        return useTripStore.getState().places;
+      },
+      async listDays() {
+        return useTripStore.getState().days;
+      },
+      async listAllItinerary() {
+        return Object.values(useTripStore.getState().itineraryByDay).flat();
+      },
+      async listExpenses() {
+        return useTripStore.getState().expenses;
+      },
+    });
+    setTripRepository(fakeRemote);
+
+    // init() resolves quickly here: the cached trip already painted, so the
+    // background remote refresh is deliberately NOT awaited before this
+    // promise settles.
+    await useTripStore.getState().init();
+
+    expect(useTripStore.getState().loading).toBe(false);
+    expect(useTripStore.getState().trip?.name).toBe(cachedTrip.name);
+    expect(useTripStore.getState().syncing).toBe(true);
+
+    // Let the "remote" respond.
+    gate.resolve();
+    await waitUntil(() => useTripStore.getState().syncing === false);
+
+    expect(useTripStore.getState().trip?.name).toBe('Remote-updated trip name');
+    expect(useTripStore.getState().syncError).toBeUndefined();
+    expect(remoteGetTripCalls).toBe(1);
+  });
+
+  it('shows the blocking cold-start state (loading=true) only when there is genuinely no local cache, then resolves from the remote', async () => {
+    await Dexie.delete('china-trip-planner');
+    const remoteTrip: Trip = {
+      id: 'trip-remote-only',
+      name: 'Remote-only trip',
+      startDate: '2026-01-01',
+      endDate: '2026-01-05',
+      homeCurrency: 'AUD',
+      tripCurrency: 'CNY',
+      rates: { AUD: 1 },
+      cities: [],
+    };
+    const fakeRemote = makeFakeRemoteRepo({
+      async getTrip() {
+        return remoteTrip;
+      },
+    });
+    setTripRepository(fakeRemote);
+
+    // With no local cache at all, init() must await the background fetch
+    // (there's nothing else to paint yet) before resolving.
+    await useTripStore.getState().init();
+
+    expect(useTripStore.getState().loading).toBe(false);
+    expect(useTripStore.getState().syncing).toBe(false);
+    expect(useTripStore.getState().trip?.id).toBe('trip-remote-only');
+  });
+
+  it('a background refresh failure sets syncError, unblocks loading, and preserves the already-cached data', async () => {
+    const cachedTrip = useTripStore.getState().trip as Trip;
+    const fakeRemote = makeFakeRemoteRepo({
+      async getTrip() {
+        throw new Error('network down');
+      },
+    });
+    setTripRepository(fakeRemote);
+
+    await useTripStore.getState().init();
+    await waitUntil(() => useTripStore.getState().syncing === false);
+
+    expect(useTripStore.getState().loading).toBe(false);
+    expect(useTripStore.getState().syncError).toBe('network down');
+    // The cached trip from before the failed refresh is left in place, not
+    // cleared.
+    expect(useTripStore.getState().trip?.id).toBe(cachedTrip.id);
+  });
+
+  it('an outdated init() call\'s background refresh cannot clobber a newer call\'s result (StrictMode double-invoke / rapid re-init)', async () => {
+    const cachedTrip = useTripStore.getState().trip as Trip;
+    const staleGate = deferred<void>();
+    const staleTrip: Trip = { ...cachedTrip, name: 'Stale — from the first, outdated call' };
+    const freshTrip: Trip = { ...cachedTrip, name: 'Fresh — from the second, current call' };
+
+    let call = 0;
+    const fakeRemote = makeFakeRemoteRepo({
+      async getTrip() {
+        call += 1;
+        if (call === 1) {
+          // The first call's remote fetch hangs until released below, well
+          // after the second call has already completed.
+          await staleGate.promise;
+          return staleTrip;
+        }
+        return freshTrip;
+      },
+    });
+    setTripRepository(fakeRemote);
+
+    // The first call fully completes its local paint and kicks off its own
+    // (hanging) background refresh before the second call starts — modeling
+    // e.g. a component remount shortly after the first `init()`, not a
+    // same-tick double-invoke.
+    const firstInit = useTripStore.getState().init();
+    await firstInit;
+    expect(useTripStore.getState().syncing).toBe(true);
+    expect(useTripStore.getState().trip?.name).toBe(cachedTrip.name);
+
+    // The second, current call also paints from cache, then kicks off its
+    // own background refresh — which (per the fake above) resolves quickly.
+    const secondInit = useTripStore.getState().init();
+    await secondInit;
+    await waitUntil(() => useTripStore.getState().trip?.name === freshTrip.name);
+
+    // Now let the first (outdated) call's slow "remote" respond — its result
+    // must be discarded, not overwrite the second call's already-settled state.
+    staleGate.resolve();
+    await waitUntil(() => useTripStore.getState().syncing === false);
+
+    expect(useTripStore.getState().trip?.name).toBe(freshTrip.name);
+  });
+
+  it('resetTripStoreForSignOut invalidates an in-flight background refresh and clears state', async () => {
+    const cachedTrip = useTripStore.getState().trip as Trip;
+    const gate = deferred<void>();
+    const remoteTrip: Trip = { ...cachedTrip, name: 'Should never appear after sign-out' };
+    const fakeRemote = makeFakeRemoteRepo({
+      async getTrip() {
+        await gate.promise;
+        return remoteTrip;
+      },
+    });
+    setTripRepository(fakeRemote);
+
+    const initPromise = useTripStore.getState().init();
+    // Cached trip paints and init() resolves right after kicking off its
+    // background refresh (not awaiting the hung "remote").
+    await initPromise;
+    expect(useTripStore.getState().syncing).toBe(true);
+
+    resetTripStoreForSignOut();
+    expect(useTripStore.getState().trip).toBeUndefined();
+    expect(useTripStore.getState().syncing).toBe(false);
+    expect(useTripStore.getState().loading).toBe(true);
+
+    // Let the stale refresh resolve — it must not repaint the reset state.
+    gate.resolve();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(useTripStore.getState().trip).toBeUndefined();
+    expect(useTripStore.getState().loading).toBe(true);
+    expect(useTripStore.getState().syncing).toBe(false);
   });
 });

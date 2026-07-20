@@ -24,10 +24,15 @@ vi.mock('../hooks/useOnlineStatus', () => ({ useOnlineStatus: () => false }));
 
 beforeEach(async () => {
   await Dexie.delete('china-trip-planner');
+  // App persists the active tab in sessionStorage (see App.tsx) so a
+  // genuine reload restores it; clear it between tests so each test starts
+  // on the default Map tab regardless of what a previous test left behind.
+  window.sessionStorage.clear();
 });
 
 afterEach(async () => {
   await Dexie.delete('china-trip-planner');
+  window.sessionStorage.clear();
 });
 
 function placesTab() {

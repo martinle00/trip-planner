@@ -2,9 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { IconSprite, Icon } from './components/Icons';
 import { RouteStrip } from './components/RouteStrip';
-import { useTripStore } from './store/useTripStore';
+import { useTripStore, resetTripStoreForSignOut } from './store/useTripStore';
 import { initTheme, toggleTheme as flipTheme } from './lib/theme';
 import type { Theme } from './lib/theme';
+import { supabase } from './lib/supabaseClient';
+import { clearLocalCache } from './data/db';
+import { DexieTripRepository } from './data/dexieTripRepository';
+import { setTripRepository } from './data/tripRepositoryInstance';
 import { orderedCities } from './lib/tripView';
 import { fmtCompactRange } from './lib/dates';
 import { useStickyOffsets } from './hooks/useStickyOffsets';
@@ -26,15 +30,63 @@ const TAB_DEFS: { id: TabId; label: string; icon: string }[] = [
   { id: 'budget', label: 'Budget', icon: 'wallet' },
 ];
 
+const ACTIVE_TAB_STORAGE_KEY = 'trip-planner:activeTab';
+const TAB_IDS: readonly TabId[] = TAB_DEFS.map((t) => t.id);
+
+function isTabId(value: string | null): value is TabId {
+  return value !== null && (TAB_IDS as readonly string[]).includes(value);
+}
+
+/** Reads the last-active tab from sessionStorage so that a full reload
+ *  (which, on an installed PWA — especially iOS — can happen just from
+ *  backgrounding the app for a while, not just an explicit refresh) restores
+ *  where the user left off instead of always landing back on Map. Scoped to
+ *  sessionStorage (not localStorage) since this is just a "resume this
+ *  session" affordance, not a durable preference. */
+function readStoredTab(): TabId {
+  try {
+    const stored = window.sessionStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    return isTabId(stored) ? stored : 'map';
+  } catch {
+    return 'map';
+  }
+}
+
+type SyncDisplay = 'hidden' | 'syncing' | 'done';
+
 function App() {
   const init = useTripStore((s) => s.init);
   const trip = useTripStore((s) => s.trip);
   const loading = useTripStore((s) => s.loading);
+  const syncing = useTripStore((s) => s.syncing);
   const exportJson = useTripStore((s) => s.exportJson);
   const importJson = useTripStore((s) => s.importJson);
   const online = useOnlineStatus();
 
-  const [tab, setTab] = useState<TabId>('map');
+  // Drives the topbar's small sync-status pill (mockup's .sync-indicator):
+  // shows "syncing" for as long as the store's background refresh
+  // (useTripStore's init()) is in flight, then holds "done" for ~1.6s once
+  // it finishes before settling back to hidden — mirroring the mockup's
+  // syncSettle/setBootState timing exactly. Kept as local UI state (rather
+  // than in the store) since the "hold done for 1.6s" behavior is purely a
+  // presentational animation-timing concern, not app data.
+  const [syncDisplay, setSyncDisplay] = useState<SyncDisplay>('hidden');
+  const wasSyncingRef = useRef(false);
+
+  useEffect(() => {
+    if (syncing) {
+      wasSyncingRef.current = true;
+      setSyncDisplay('syncing');
+      return;
+    }
+    if (!wasSyncingRef.current) return;
+    wasSyncingRef.current = false;
+    setSyncDisplay('done');
+    const timer = window.setTimeout(() => setSyncDisplay('hidden'), 1600);
+    return () => window.clearTimeout(timer);
+  }, [syncing]);
+
+  const [tab, setTab] = useState<TabId>(readStoredTab);
   const [theme, setTheme] = useState<Theme>('light');
   const [autoplanOpen, setAutoplanOpen] = useState(false);
   const autoplanTriggerRef = useRef<HTMLElement | null>(null);
@@ -67,6 +119,15 @@ function App() {
   }, [trip, selectedCity]);
 
   useStickyOffsets([tab]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(ACTIVE_TAB_STORAGE_KEY, tab);
+    } catch {
+      // Ignore (e.g. sessionStorage unavailable/full/private-mode) — this is
+      // a best-effort UX nicety, not required for correctness.
+    }
+  }, [tab]);
 
   const handleToggleTheme = useCallback(() => {
     setTheme((cur) => flipTheme(cur));
@@ -114,6 +175,22 @@ function App() {
     URL.revokeObjectURL(url);
   }, [exportJson]);
 
+  const handleSignOut = useCallback(async () => {
+    try {
+      // Order matters: invalidate any in-flight init()/background refresh
+      // and repoint the repository seam BEFORE clearing the cache, so a
+      // stale request that resolves after this point can never repaint the
+      // signed-out account's data or repopulate IndexedDB right after it's
+      // wiped (see resetTripStoreForSignOut's token-bump).
+      resetTripStoreForSignOut();
+      setTripRepository(new DexieTripRepository());
+      await clearLocalCache();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Sign out failed', err);
+    }
+  }, []);
+
   const handleImportClick = useCallback(() => importInputRef.current?.click(), []);
   const handleImportFile = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
@@ -131,12 +208,18 @@ function App() {
   );
 
   if (loading || !trip) {
+    // The store's init() flips `loading` to false as soon as it has *any*
+    // trip to show — from the local Dexie cache almost instantly, or (only
+    // on a genuine first-ever load with nothing cached) once the first
+    // network fetch lands. So reaching this branch means there is truly
+    // nothing cached yet: the mockup's blocking `.boot-cold-start` state.
+    // Every returning visit skips this entirely.
     return (
-      <div className="app-shell">
+      <div className="boot-cold-start" role="status" aria-live="polite">
         <IconSprite />
-        <main>
-          <p className="panel-hint">Loading your trip&hellip;</p>
-        </main>
+        <div className="boot-cold-start-spinner" aria-hidden="true" />
+        <div className="boot-cold-start-title">Loading your trip&hellip;</div>
+        <div className="boot-cold-start-hint">First time on this device &mdash; fetching your trip from the cloud.</div>
       </div>
     );
   }
@@ -149,7 +232,7 @@ function App() {
         <IconSprite />
 
         {!online && (
-          <div className="offline-banner">
+          <div className="offline-banner" role="status" aria-live="polite">
             <Icon name="target" /> You&rsquo;re offline &mdash; showing data saved on this device. The live map needs a
             connection.
           </div>
@@ -181,6 +264,26 @@ function App() {
                 aria-hidden="true"
                 tabIndex={-1}
               />
+              {/* Non-blocking background-sync status (mockup's
+                  .sync-indicator): hidden on a normal steady visit (cache
+                  already fresh, nothing to report), appears briefly on a
+                  returning visit while the store quietly refreshes from the
+                  active repository behind the already-rendered cached view,
+                  then settles back to hidden. Forced hidden while offline —
+                  mutually exclusive with the offline banner above so the
+                  user is never told "syncing" and "offline" at once. */}
+              <span
+                className="sync-indicator"
+                data-state={online ? syncDisplay : 'hidden'}
+                role="status"
+                aria-live="polite"
+              >
+                <span className="sync-dot" aria-hidden="true" />
+                <Icon name="check" className="sync-check" />
+                <span className="sync-indicator-label">
+                  {syncDisplay === 'done' ? 'Synced' : 'Syncing…'}
+                </span>
+              </span>
               <button
                 className="btn btn-ghost btn-icon"
                 onClick={handleToggleTheme}
@@ -191,6 +294,9 @@ function App() {
               </button>
               <button className="btn autoplan-cta" onClick={(e) => openAutoPlan(e.currentTarget)}>
                 <Icon name="sparkle" /> Auto-plan
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => void handleSignOut()} title="Sign out">
+                Sign out
               </button>
             </div>
           </div>

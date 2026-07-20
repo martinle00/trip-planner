@@ -73,3 +73,17 @@ export class TripDatabase extends Dexie {
 
 /** Singleton database instance used by the Dexie-backed repository. */
 export const db = new TripDatabase();
+
+/** Wipes the local cache. Call on sign-out so a previous account's trip data
+ *  isn't left readable offline on a shared/public device. */
+export async function clearLocalCache(): Promise<void> {
+  await db.transaction('rw', db.trips, db.days, db.places, db.itinerary, db.expenses, async () => {
+    await Promise.all([
+      db.trips.clear(),
+      db.days.clear(),
+      db.places.clear(),
+      db.itinerary.clear(),
+      db.expenses.clear(),
+    ]);
+  });
+}

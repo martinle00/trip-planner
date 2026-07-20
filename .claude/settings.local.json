@@ -4,7 +4,10 @@
       "Bash(npm run *)",
       "Bash(npm test *)",
       "Bash(npm install *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Read(//tmp/**)",
+      "Bash(npx tsc *)",
+      "Bash(npx oxlint *)"
     ]
   }
 }

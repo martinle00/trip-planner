@@ -20,7 +20,8 @@ import type {
 } from '../data/schema';
 import type { DayPlan } from '../lib/autoplan';
 import { ACTIVE_TRIP_ID } from '../data/tripRepository';
-import { tripRepository } from '../data/dexieTripRepository';
+import { getActiveRepository, tripRepository } from '../data/tripRepositoryInstance';
+import { DexieTripRepository } from '../data/dexieTripRepository';
 import { parseSnapshot, serializeSnapshot } from '../data/exportImport';
 import * as exchangeRates from '../lib/exchangeRates';
 
@@ -32,7 +33,25 @@ export interface TripState {
   /** Itinerary items keyed by dayId (each array sorted by `order`). */
   itineraryByDay: Record<ID, ItineraryItem[]>;
   expenses: Expense[];
+  /** True only while there is genuinely no cached local trip yet AND no
+   *  repository result has landed either — i.e. a true first-ever load on
+   *  this device. The UI should show its full-page "cold start" state only
+   *  while this is true; every returning visit flips it to `false` almost
+   *  instantly (as soon as the local Dexie cache is read), well before any
+   *  network call resolves. */
   loading: boolean;
+  /** True while `init()`'s background reconciliation against the
+   *  currently-active repository (Dexie pre-auth, or the Supabase-backed
+   *  `SyncedTripRepository` once signed in) is in flight. Drives the
+   *  topbar's small non-blocking sync-status pill; unrelated to `loading`,
+   *  which only ever reflects the one-time cold-start wait. */
+  syncing: boolean;
+  /** Message from the most recent background sync failure triggered by
+   *  `init()`, or undefined. Cleared at the start of every sync attempt,
+   *  mirroring the `ratesError` convention below. Only ever set for a
+   *  genuine failure (not for the ordinary offline case, which the
+   *  repository layer already handles by silently falling back to cache). */
+  syncError: string | undefined;
   /** True while a `refreshRates()` fetch is in flight. */
   ratesLoading: boolean;
   /** Message from the most recent `refreshRates()` failure, or undefined.
@@ -40,7 +59,23 @@ export interface TripState {
   ratesError: string | undefined;
 
   // ---- lifecycle ----
-  /** Load persisted data (seeding on first run). Call once on app mount. */
+  /**
+   * Cache-first, stale-while-revalidate load. Call once on app mount.
+   *
+   * 1. Reads directly from a fresh local Dexie repository instance and, if a
+   *    cached trip exists, paints it into state immediately (`loading` goes
+   *    `false` as soon as this resolves — Dexie reads are fast/local, so
+   *    this should feel instant even offline).
+   * 2. In the background (not awaited, so it never re-blocks a warm start),
+   *    re-fetches everything from the currently-active repository (plain
+   *    Dexie pre-auth, or the Supabase-backed `SyncedTripRepository` once
+   *    signed in) and silently updates state again when that lands —
+   *    `syncing` is true for the duration, and a failure sets `syncError`
+   *    rather than throwing/blocking.
+   * 3. If there is no cached local trip at all, this IS the first paint, so
+   *    the background step above is awaited instead — `loading` stays true
+   *    (the UI's blocking "cold start" state) until it settles.
+   */
   init: () => Promise<void>;
 
   // ---- places ----
@@ -164,6 +199,35 @@ const runExclusive = makeExclusiveQueue();
 // are unrelated to itinerary-linking writes.
 const runRatesExclusive = makeExclusiveQueue();
 
+// Guards against an outdated `init()` call's background refresh clobbering a
+// newer one's result (or the freshly-reset post-sign-out state) — e.g. React
+// StrictMode's dev-mode double-invoke, or a sign-out/sign-in happening while
+// a previous call's refresh is still in flight. Every `init()` call captures
+// the token at its start and re-checks it before each `set()`; a call whose
+// token no longer matches the current one silently no-ops instead of writing
+// stale data over whatever a later call (or `resetTripStoreForSignOut`) has
+// since established.
+let initToken = 0;
+
+/** Call on sign-out: invalidates any in-flight `init()`/background refresh
+ *  (so it can never repaint this account's data after the user has left) and
+ *  clears in-memory state back to its pre-load shape. Pair with pointing
+ *  `tripRepositoryInstance` back at a fresh `DexieTripRepository` and with
+ *  `clearLocalCache()` — this function only resets the Zustand store. */
+export function resetTripStoreForSignOut(): void {
+  initToken++;
+  useTripStore.setState({
+    trip: undefined,
+    places: [],
+    days: [],
+    itineraryByDay: {},
+    expenses: [],
+    loading: true,
+    syncing: false,
+    syncError: undefined,
+  });
+}
+
 export const useTripStore = create<TripState>((set, get) => ({
   trip: undefined,
   places: [],
@@ -171,28 +235,131 @@ export const useTripStore = create<TripState>((set, get) => ({
   itineraryByDay: {},
   expenses: [],
   loading: true,
+  syncing: false,
+  syncError: undefined,
   ratesLoading: false,
   ratesError: undefined,
 
   init: async () => {
-    set({ loading: true });
-    await tripRepository.seedIfEmpty();
-    const trip = await tripRepository.getTrip();
-    const tripId = trip?.id ?? ACTIVE_TRIP_ID;
-    const [places, days, itinerary, expenses] = await Promise.all([
-      tripRepository.listPlaces(tripId),
-      tripRepository.listDays(tripId),
-      tripRepository.listAllItinerary(tripId),
-      tripRepository.listExpenses(tripId),
-    ]);
-    set({
-      trip,
-      places,
-      days,
-      itineraryByDay: groupByDay(itinerary),
-      expenses,
-      loading: false,
-    });
+    const token = ++initToken;
+
+    // Unauthenticated / plain-offline mode: the currently-active repository
+    // IS the local Dexie store already (no network involved at all), so a
+    // separate cache-first probe read would just be a redundant second touch
+    // of the exact same local table for zero benefit — skip straight to the
+    // single read/seed sequence this always used, unchanged. (This also
+    // sidesteps a real Dexie/fake-indexeddb footgun: issuing two back-to-back
+    // reads against the same connection immediately after a fresh
+    // open/upgrade can race Dexie's internal reopen bookkeeping.) `syncing`
+    // never toggles in this mode — there's nothing being synced from a
+    // remote, so the topbar pill has nothing to report.
+    if (getActiveRepository() instanceof DexieTripRepository) {
+      if (token !== initToken) return;
+      set({ loading: true });
+      await tripRepository.seedIfEmpty();
+      const trip = await tripRepository.getTrip();
+      const tripId = trip?.id ?? ACTIVE_TRIP_ID;
+      const [places, days, itinerary, expenses] = await Promise.all([
+        tripRepository.listPlaces(tripId),
+        tripRepository.listDays(tripId),
+        tripRepository.listAllItinerary(tripId),
+        tripRepository.listExpenses(tripId),
+      ]);
+      if (token !== initToken) return;
+      set({
+        trip,
+        places,
+        days,
+        itineraryByDay: groupByDay(itinerary),
+        expenses,
+        loading: false,
+      });
+      return;
+    }
+
+    // Signed in (a remote-backed `SyncedTripRepository` is active): cache-
+    // first, stale-while-revalidate load.
+    //
+    // Step 1: paint straight from a dedicated local Dexie repository
+    // instance, bypassing the active (network-capable) repository entirely,
+    // so this never waits on Supabase.
+    const local = new DexieTripRepository();
+    let localTrip: Trip | undefined;
+    try {
+      localTrip = await local.getTrip();
+    } catch {
+      localTrip = undefined;
+    }
+
+    if (localTrip) {
+      const tripId = localTrip.id;
+      const [places, days, itinerary, expenses] = await Promise.all([
+        local.listPlaces(tripId),
+        local.listDays(tripId),
+        local.listAllItinerary(tripId),
+        local.listExpenses(tripId),
+      ]);
+      if (token !== initToken) return;
+      set({
+        trip: localTrip,
+        places,
+        days,
+        itineraryByDay: groupByDay(itinerary),
+        expenses,
+        loading: false,
+      });
+    } else if (token === initToken) {
+      // Genuinely nothing cached on this device yet — the background step
+      // below is this trip's first-ever paint, so `loading` stays true
+      // (the UI's blocking cold-start state) until it settles. Guarded too:
+      // an outdated call finding no local trip must not flip `loading` back
+      // to true after a newer call (or a sign-out reset) already resolved it.
+      set({ loading: true });
+    }
+
+    // Step 2: reconcile against the currently-active (Supabase-backed)
+    // repository in the background. Not awaited when a cached trip already
+    // painted above, so a warm start never re-blocks on the network; awaited
+    // below only for the genuine cold-start case, since there's nothing else
+    // to show yet. Every `set()` here is guarded by the token captured at the
+    // top of this call, so an outdated call (superseded by a newer `init()`
+    // or by `resetTripStoreForSignOut()` bumping the token on sign-out) can
+    // never overwrite newer state.
+    if (token === initToken) set({ syncing: true, syncError: undefined });
+    const refresh = (async () => {
+      try {
+        await tripRepository.seedIfEmpty();
+        const trip = await tripRepository.getTrip();
+        const tripId = trip?.id ?? ACTIVE_TRIP_ID;
+        const [places, days, itinerary, expenses] = await Promise.all([
+          tripRepository.listPlaces(tripId),
+          tripRepository.listDays(tripId),
+          tripRepository.listAllItinerary(tripId),
+          tripRepository.listExpenses(tripId),
+        ]);
+        if (token !== initToken) return;
+        set({
+          trip,
+          places,
+          days,
+          itineraryByDay: groupByDay(itinerary),
+          expenses,
+          loading: false,
+          syncing: false,
+        });
+      } catch (err) {
+        if (token !== initToken) return;
+        const message = err instanceof Error ? err.message : 'Failed to sync trip data';
+        // Still unblock a genuine cold start even on failure — there's
+        // nothing more to wait for, and staying in `loading` forever would
+        // be worse than showing whatever we have (possibly nothing).
+        set({ loading: false, syncing: false, syncError: message });
+      }
+    })();
+
+    if (!localTrip) {
+      await refresh;
+    }
   },
 
   addPlace: async (input) => {

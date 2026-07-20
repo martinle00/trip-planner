@@ -18,6 +18,11 @@
 
     --jade: #3C7A63;
     --jade-soft: #DCEAE3;
+    /* darker companion for TEXT/icons on a jade-soft background (e.g. the
+       "Synced" chip) — --jade itself is ~4.07:1 on --jade-soft, which fails
+       WCAG AA for 12px/600 text (needs 4.5:1). Same role/pattern as
+       --gold-soft-ink below. */
+    --jade-soft-ink: #2C6350;
     --gold: #B8842E;
     --gold-soft: #F1E2C4;
     /* darker companion for TEXT/icons on a gold/gold-soft background (e.g.
@@ -89,6 +94,7 @@
 
       --jade: #6BB99B;
       --jade-soft: #1F332C;
+      --jade-soft-ink: #6BB99B;
       --gold: #D9A94B;
       --gold-soft: #3A2F1A;
       --gold-soft-ink: #D9A94B;
@@ -124,7 +130,7 @@
     --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
     --line: #362E24; --line-strong: #453A2C;
     --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
-    --jade: #6BB99B; --jade-soft: #1F332C; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+    --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
     --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
     --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
     --map-water:#1E2F42; --map-land:#221F19; --map-park:#213222; --map-block:#2C2721; --map-block-stroke:#3B342A; --map-road:#3A3327;
@@ -136,7 +142,7 @@
     --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
     --line: #E6DDD0; --line-strong: #D8CBB8;
     --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
-    --jade: #3C7A63; --jade-soft: #DCEAE3; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
     --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
     --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
     --map-water:#A9D6EC; --map-land:#F1EEE5; --map-park:#C9E6C0; --map-block:#E4E1D7; --map-block-stroke:#CFC9B8; --map-road:#ffffff;
@@ -208,7 +214,7 @@
   .btn[disabled]{ opacity:.5; pointer-events:none; }
   .btn-icon{ width:38px; height:38px; padding:0; justify-content:center; border-radius:50%; flex:none; }
   .btn-icon svg{ width:17px; height:17px; }
-  .topbar-actions{ display:flex; align-items:center; gap:8px; }
+  .topbar-actions{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 
   .autoplan-cta{
     background:linear-gradient(135deg, var(--accent), var(--d-terra));
@@ -893,6 +899,110 @@
   }
   .debug-toggle:hover{ color:var(--ink-soft); border-color:var(--ink-faint); }
 
+  /* ============================= BOOT / SYNC STATUS ============================= */
+  /* Mirrors src/index.css's existing .offline-banner (already implemented in
+     the real app) — reproduced here so this mockup stays the single visual
+     spec for all boot/connectivity chrome, old and new. */
+  .offline-banner{
+    display:flex; align-items:center; gap:8px; padding:9px 16px; font-size:12.5px; font-weight:600;
+    background:var(--gold-soft); color:var(--gold-soft-ink); border-bottom:1px solid var(--line);
+  }
+  .offline-banner svg{ width:15px; height:15px; flex:none; }
+  .offline-banner[hidden]{ display:none; }
+
+  /* Sync indicator: the quiet sibling of the offline banner, not a rename of
+     it. The offline banner is persistent and full-width because it's an
+     actionable, comparatively rare state ("something is actually limited
+     right now"). A background Supabase refresh on a returning visit is the
+     opposite: routine, near-instant, and needs zero user action — it happens
+     on almost every app open. Giving it the same full-width banner treatment
+     would fire constantly and train users to stop reading that slot,
+     diluting the one case (genuinely offline) where full-width attention is
+     warranted. So it lives as a small pill inline in .topbar-actions instead,
+     sized like the other small controls already there (rates-refresh spinner
+     reuses this same look-and-feel in the Budget tab).
+     The two are mutually exclusive by construction (see setBootState): if
+     the refresh fails because the device is offline, the offline banner
+     alone explains why — the sync indicator is suppressed rather than also
+     showing a "sync failed" message, so there's never a double message. */
+  .sync-indicator{
+    display:none; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-soft);
+    padding:6px 11px; border-radius:var(--radius-full); background:var(--paper-sunk); border:1px solid var(--line);
+    white-space:nowrap;
+  }
+  .sync-indicator[data-state="hidden"]{ display:none; }
+  .sync-indicator[data-state="syncing"]{ display:inline-flex; }
+  .sync-indicator[data-state="done"]{
+    display:inline-flex; color:var(--jade-soft-ink); background:var(--jade-soft); border-color:transparent;
+    opacity:1;
+  }
+  /* Holds the "Synced" checkmark just long enough to register as a
+     confirmation, then fades the whole chip away — settling back to the
+     normal, indicator-free look of "everything's fine, nothing to tell you".
+     Gated behind no-preference: the global reduced-motion override above
+     (which forces animation-duration to ~0) would otherwise collapse this to
+     opacity:0 almost instantly while dataset.state stays "done" for the full
+     1600ms JS timeout (see setBootState) — leaving reduced-motion users an
+     invisible chip instead of a legible "Synced" confirmation. Without the
+     animation, the chip simply stays fully opaque for that same 1600ms,
+     which is exactly the intended feedback minus the fade. */
+  @media (prefers-reduced-motion: no-preference){
+    .sync-indicator[data-state="done"]{
+      animation:syncSettle 1.6s ease forwards;
+    }
+  }
+  @keyframes syncSettle{
+    0%, 55%{ opacity:1; }
+    100%{ opacity:0; }
+  }
+  /* Defensive fallback for very narrow viewports (~320-375px): .topbar-actions
+     now carries 3 widgets (sync pill, Auto-plan, theme toggle) alongside the
+     serif trip title. .topbar-row / .topbar-actions already wrap rather than
+     clip (see above), but as an extra margin of safety the sync pill drops
+     its text label and shrinks to an icon-only dot/check — same idea as
+     .btn-icon elsewhere — so it never forces the whole action row onto its
+     own line on the narrowest real devices. The label stays in the DOM
+     (visually hidden, not display:none) so the role="status" aria-live
+     announcement is unaffected. */
+  @media (max-width:380px){
+    .sync-indicator{ padding:6px; gap:0; }
+    .sync-indicator-label{
+      position:absolute; width:1px; height:1px; overflow:hidden;
+      clip:rect(0 0 0 0); white-space:nowrap;
+    }
+  }
+  .sync-dot{
+    width:9px; height:9px; border-radius:50%; flex:none;
+    border:2px solid var(--line-strong); border-top-color:var(--accent); animation:spin .7s linear infinite;
+  }
+  .sync-indicator[data-state="done"] .sync-dot{ display:none; }
+  .sync-check{ display:none; width:13px; height:13px; flex:none; }
+  .sync-indicator[data-state="done"] .sync-check{ display:block; }
+
+  /* Cold start: the ONLY blocking full-page state left — genuinely nothing
+     cached yet (brand-new device/account). Covers the whole viewport above
+     everything else so it reads as its own screen, not an app shell that
+     hasn't finished building. Every other boot outcome renders the shell
+     immediately from the local cache instead of routing through this. */
+  .boot-cold-start{
+    position:fixed; inset:0; z-index:200; background:var(--paper);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:24px;
+  }
+  .boot-cold-start[hidden]{ display:none; }
+  .boot-cold-start-spinner{
+    width:30px; height:30px; border-radius:50%; border:3px solid var(--line-strong); border-top-color:var(--accent);
+    animation:spin .8s linear infinite;
+  }
+  .boot-cold-start-title{ font-family:var(--font-display); font-size:1.1rem; font-weight:600; }
+  .boot-cold-start-hint{ font-size:12.5px; color:var(--ink-soft); max-width:32ch; }
+
+  /* design-review harness only — lets a reviewer step through the boot/sync
+     states below without wiring up real auth/network/cache behaviour. Fixed
+     so it stays reachable even while .boot-cold-start covers the rest of the
+     page. Not part of the real app. */
+  .boot-debug-bar{ position:fixed; left:12px; bottom:12px; z-index:300; }
+  .boot-debug-bar .debug-toggle{ margin:0; background:var(--paper-raised); box-shadow:var(--shadow-sm); }
+
   /* utility */
   .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 </style>
@@ -995,8 +1105,32 @@
   </defs>
 </svg>
 
+<!-- ============================= BOOT: COLD START ============================= -->
+<!-- The only blocking full-page loading state: first-ever load on this
+     device/account, nothing in the local Dexie cache yet, so there's
+     genuinely nothing to paint. Every returning visit skips this entirely —
+     see .offline-banner / .sync-indicator below, inside the app shell, for
+     those (non-blocking) states instead. -->
+<div class="boot-cold-start" id="bootColdStart" role="status" aria-live="polite" hidden>
+  <div class="boot-cold-start-spinner" aria-hidden="true"></div>
+  <div class="boot-cold-start-title">Loading your trip&hellip;</div>
+  <div class="boot-cold-start-hint">First time on this device &mdash; fetching your trip from the cloud.</div>
+</div>
+
 <!-- ============================= APP SHELL ============================= -->
-<div class="app-shell">
+<!-- id + inert (toggled in lockstep with #bootColdStart by setBootState):
+     while the cold-start overlay covers the viewport, the shell underneath
+     must be unreachable by keyboard/AT, not just visually hidden behind it. -->
+<div class="app-shell" id="appShell">
+
+  <!-- Persistent, actionable, full-width: shown whenever the device is
+       actually offline. Mutually exclusive with .sync-indicator below (see
+       setBootState) so the user is never told "syncing" and "offline" at
+       the same time. -->
+  <div class="offline-banner" id="offlineBanner" role="status" aria-live="polite" hidden>
+    <svg><use href="#i-target"/></svg>
+    You&rsquo;re offline &mdash; showing data saved on this device. The live map needs a connection.
+  </div>
 
   <header class="topbar">
     <div class="topbar-row">
@@ -1006,6 +1140,18 @@
         <span class="trip-sub">7&ndash;30 Nov &middot; 8 legs &middot; AUD home currency</span>
       </div>
       <div class="topbar-actions">
+        <!-- Non-blocking background-sync status. Hidden on a normal steady
+             visit (cache is already fresh, nothing to report); appears
+             briefly on a returning visit while the app quietly refreshes
+             from Supabase behind the already-rendered cached view, then
+             settles back to hidden once it either finishes or the device
+             turns out to be offline (in which case the banner above takes
+             over and this stays hidden — see setBootState). -->
+        <span class="sync-indicator" id="syncIndicator" data-state="hidden" role="status" aria-live="polite">
+          <span class="sync-dot" aria-hidden="true"></span>
+          <svg class="sync-check" aria-hidden="true"><use href="#i-check"/></svg>
+          <span class="sync-indicator-label">Syncing&hellip;</span>
+        </span>
         <button class="btn btn-ghost btn-icon" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Toggle light / dark">
           <svg id="themeIcon"><use href="#i-moon"/></svg>
         </button>
@@ -1816,6 +1962,18 @@
     </section>
 
   </main>
+</div>
+
+<!-- design-review helper only: lets a reviewer step through the boot/sync
+     states this file was built to spec (cold start, cache-hit + background
+     sync, sync settled, offline fallback, plus the everyday "idle" case with
+     no indicator at all) without wiring up real auth/network/cache
+     behaviour. Fixed-position so it's reachable even while the cold-start
+     screen covers everything else. Not part of the real app. -->
+<div class="boot-debug-bar">
+  <button type="button" class="debug-toggle" onclick="cycleBootPreview()" title="Design-review helper — not part of the real app">
+    <span id="bootPreviewLabel">Preview: boot state = idle</span>
+  </button>
 </div>
 
 <!-- ============================= AUTO-PLAN MODAL ============================= -->
@@ -3199,6 +3357,87 @@
     document.getElementById('budgetEmptyPreviewLabel').textContent = on ? 'Preview: show real expenses' : 'Preview: empty budget';
   }
 
+  // ---------- boot / sync status preview (design-review harness) ----------
+  // Walks through the states the real app should produce once the
+  // stale-while-revalidate boot sequence lands:
+  //   idle    — steady state. Cache already fresh, nothing to report. This is
+  //             what a returning visit looks like almost all the time.
+  //   cold    — first-ever load, nothing cached: the one case that still
+  //             blocks on a full-page screen.
+  //   syncing — returning visit: app rendered instantly from cache, quietly
+  //             refreshing from Supabase in the background.
+  //   synced  — that refresh just completed; the confirmation holds briefly
+  //             then fades, settling back to "idle" (no indicator).
+  //   offline — the refresh attempt failed because the device is offline;
+  //             the existing offline banner covers it and the sync
+  //             indicator stays hidden so there's no double message.
+  var BOOT_STATES = ['idle', 'cold', 'syncing', 'synced', 'offline'];
+  var BOOT_LABELS = {
+    idle: 'idle — steady, cache already fresh (no indicator)',
+    cold: 'cold start — first ever load, nothing cached',
+    syncing: 'returning visit — cache shown instantly, background sync running',
+    synced: 'returning visit — background sync just completed',
+    offline: 'returning visit — background sync failed (device offline)'
+  };
+  var bootIdx = 0;
+  var syncSettleTimer = null;
+
+  function setBootState(state){
+    document.getElementById('bootPreviewLabel').textContent = 'Preview: boot state = ' + BOOT_LABELS[state];
+
+    var cold = document.getElementById('bootColdStart');
+    var appShell = document.getElementById('appShell');
+    var offlineBanner = document.getElementById('offlineBanner');
+    var sync = document.getElementById('syncIndicator');
+    var syncLabel = sync.querySelector('.sync-indicator-label');
+
+    clearTimeout(syncSettleTimer);
+    // restart the fade-out animation cleanly if "synced" is picked twice in a row
+    sync.style.animation = 'none';
+    void sync.offsetHeight;
+    sync.style.animation = '';
+
+    if(state === 'cold'){
+      cold.hidden = false;
+      // .boot-cold-start is opaque and covers the whole viewport, but that
+      // alone doesn't stop a keyboard/AT user from tabbing into the topbar
+      // or tabbar underneath — inert removes the shell from both the tab
+      // order and the accessibility tree while it's covered.
+      appShell.inert = true;
+      offlineBanner.hidden = true;
+      sync.dataset.state = 'hidden';
+      return;
+    }
+    cold.hidden = true;
+    appShell.inert = false;
+
+    if(state === 'offline'){
+      offlineBanner.hidden = false;
+      sync.dataset.state = 'hidden';
+      return;
+    }
+    offlineBanner.hidden = true;
+
+    if(state === 'syncing'){
+      syncLabel.textContent = 'Syncing…';
+      sync.dataset.state = 'syncing';
+      return;
+    }
+    if(state === 'synced'){
+      syncLabel.textContent = 'Synced';
+      sync.dataset.state = 'done';
+      syncSettleTimer = setTimeout(function(){ sync.dataset.state = 'hidden'; }, 1600);
+      return;
+    }
+    // idle
+    sync.dataset.state = 'hidden';
+  }
+
+  function cycleBootPreview(){
+    bootIdx = (bootIdx + 1) % BOOT_STATES.length;
+    setBootState(BOOT_STATES[bootIdx]);
+  }
+
   // ---------- route strip: trailing scroll-fade cue, tracked as you scroll ----------
   function updateRouteStripFade(){
     var strip = document.querySelector('.route-strip');
@@ -3234,6 +3473,7 @@
   }
 
   // init
+  setBootState('idle');
   applyThemeIcon();
   initMapPanZoom();
   initPinBadges();
