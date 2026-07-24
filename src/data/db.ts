@@ -126,14 +126,12 @@ export const db = new TripDatabase();
  *  (including any unsaved place-prose drafts, which are local-only and never
  *  synced) isn't left readable offline on a shared/public device. */
 export async function clearLocalCache(): Promise<void> {
+  // Tables passed as an ARRAY, not varargs: Dexie's `transaction()` only has
+  // explicit overloads up to 5 named tables, and adding `placeDrafts` in v3
+  // made 6. The varargs form stops typechecking at that point.
   await db.transaction(
     'rw',
-    db.trips,
-    db.days,
-    db.places,
-    db.itinerary,
-    db.expenses,
-    db.placeDrafts,
+    [db.trips, db.days, db.places, db.itinerary, db.expenses, db.placeDrafts],
     async () => {
       await Promise.all([
         db.trips.clear(),

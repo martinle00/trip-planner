@@ -30,6 +30,9 @@ function makeFakeRepo(overrides: Partial<TripRepository> = {}): TripRepository &
       return place;
     },
     async deletePlace() {},
+    async updatePlaceIfUnchanged(place) {
+      return { place, conflict: false };
+    },
     async listDays() {
       return [];
     },
@@ -51,7 +54,7 @@ function makeFakeRepo(overrides: Partial<TripRepository> = {}): TripRepository &
     },
     async deleteExpense() {},
     async exportSnapshot() {
-      return { version: 2, trip: undefined as unknown as Trip, days: [], places: [], itinerary: [], expenses: [] };
+      return { version: 3, trip: undefined as unknown as Trip, days: [], places: [], itinerary: [], expenses: [] };
     },
     async importSnapshot() {},
     ...overrides,

@@ -8,7 +8,7 @@
 // orphaned.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PlacesPanel } from './PlacesPanel';
 import { useTripStore } from '../../store/useTripStore';
 import type { Place, Trip } from '../../data/schema';
@@ -29,11 +29,11 @@ const TRIP: Trip = {
 
 // Mirrors the seed's mix of canonical and legacy/free-text categories.
 const PLACES: Place[] = [
-  { id: 'p1', tripId: 't', name: 'The Bund', city: 'Shanghai', category: 'Sightseeing', lat: 1, lng: 1, status: 'wishlist' },
-  { id: 'p2', tripId: 't', name: 'Yu Garden', city: 'Shanghai', category: 'Garden', lat: 1, lng: 1, status: 'wishlist' },
-  { id: 'p3', tripId: 't', name: 'Nanjing Road', city: 'Shanghai', category: 'Shopping', lat: 1, lng: 1, status: 'wishlist' },
-  { id: 'p4', tripId: 't', name: 'Chengdu Panda Base', city: 'Chengdu', category: 'Wildlife', lat: 1, lng: 1, status: 'wishlist' },
-  { id: 'p5', tripId: 't', name: 'Jinli Street', city: 'Chengdu', category: 'Food', lat: 1, lng: 1, status: 'wishlist' },
+  { id: 'p1', tripId: 't', name: 'The Bund', city: 'Shanghai', category: 'Sightseeing', lat: 1, lng: 1, status: 'wishlist', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'p2', tripId: 't', name: 'Yu Garden', city: 'Shanghai', category: 'Garden', lat: 1, lng: 1, status: 'wishlist', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'p3', tripId: 't', name: 'Nanjing Road', city: 'Shanghai', category: 'Shopping', lat: 1, lng: 1, status: 'wishlist', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'p4', tripId: 't', name: 'Chengdu Panda Base', city: 'Chengdu', category: 'Wildlife', lat: 1, lng: 1, status: 'wishlist', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'p5', tripId: 't', name: 'Jinli Street', city: 'Chengdu', category: 'Food', lat: 1, lng: 1, status: 'wishlist', updatedAt: '2026-01-01T00:00:00.000Z' },
 ];
 
 beforeEach(() => {
@@ -46,6 +46,14 @@ beforeEach(() => {
     loading: false,
     removePlace: vi.fn(),
     assignPlaceToDay: vi.fn(),
+    // PlacesPanel always mounts a PlaceDetailModal (place=null until a card
+    // is clicked) and scans every place's draft state on mount — stub these
+    // rather than letting the real Dexie-backed store actions run, since
+    // this test file never imports fake-indexeddb.
+    getPlaceDraft: vi.fn().mockResolvedValue(undefined),
+    savePlaceDraft: vi.fn().mockResolvedValue(undefined),
+    discardPlaceDraft: vi.fn().mockResolvedValue(undefined),
+    commitPlaceDraft: vi.fn().mockResolvedValue({ place: PLACES[0], merged: false }),
   });
 });
 
@@ -83,7 +91,7 @@ describe('PlacesPanel — filters', () => {
     useTripStore.setState({
       places: [
         ...PLACES,
-        { id: 'p6', tripId: 't', name: 'Splendid China', city: 'Shanghai', category: 'Theme Park', lat: 1, lng: 1, status: 'wishlist' },
+        { id: 'p6', tripId: 't', name: 'Splendid China', city: 'Shanghai', category: 'Theme Park', lat: 1, lng: 1, status: 'wishlist', updatedAt: '2026-01-01T00:00:00.000Z' },
       ],
     });
     render(<PlacesPanel onOpenAddPlace={() => {}} />);
@@ -138,5 +146,109 @@ describe('PlacesPanel — filters', () => {
     useTripStore.setState({ places: [] });
     render(<PlacesPanel onOpenAddPlace={() => {}} />);
     expect(screen.getByText('0 saved · 0 assigned to a day')).toBeInTheDocument();
+  });
+});
+
+describe('PlacesPanel — card badges and description excerpt (Phase 4 items 3/4/7)', () => {
+  it('shows a jade "Reviewed" tag only for a place with a saved selfReview', () => {
+    useTripStore.setState({
+      places: [{ ...PLACES[0], selfReview: 'Loved it here.' }, PLACES[1]],
+    });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const reviewedCard = screen.getByText('The Bund').closest('.place-card') as HTMLElement;
+    expect(within(reviewedCard).getByText('Reviewed')).toBeInTheDocument();
+    const unreviewedCard = screen.getByText('Yu Garden').closest('.place-card') as HTMLElement;
+    expect(within(unreviewedCard).queryByText('Reviewed')).not.toBeInTheDocument();
+  });
+
+  it('renders a description excerpt on the card — the removed `note` field has no consumer left', () => {
+    useTripStore.setState({
+      places: [{ ...PLACES[0], description: 'Best seen from across the river at dusk.' }, ...PLACES.slice(1)],
+    });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    expect(screen.getByText('Best seen from across the river at dusk.')).toHaveClass('place-desc-excerpt');
+  });
+
+  it('shows a gold "Draft" tag once the initial per-place draft scan resolves', async () => {
+    useTripStore.setState({
+      getPlaceDraft: vi.fn(async (placeId: string) =>
+        placeId === 'p1' ? { placeId, description: 'wip', baseUpdatedAt: '', savedAt: '' } : undefined,
+      ),
+    });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const card = screen.getByText('The Bund').closest('.place-card') as HTMLElement;
+    await waitFor(() => expect(within(card).getByText('Draft')).toBeInTheDocument());
+    const otherCard = screen.getByText('Yu Garden').closest('.place-card') as HTMLElement;
+    expect(within(otherCard).queryByText('Draft')).not.toBeInTheDocument();
+  });
+});
+
+describe('PlacesPanel — delete confirmation (Phase 4 item 6)', () => {
+  it('a bare pin with nothing written warns plainly, and Cancel restores the card without deleting', () => {
+    const removePlace = vi.fn();
+    useTripStore.setState({ removePlace });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const card = screen.getByText('Yu Garden').closest('.place-card') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: 'Delete Yu Garden' }));
+
+    expect(screen.getByText(/This place has nothing written on it yet\./)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText(/This place has nothing written on it yet\./)).not.toBeInTheDocument();
+    expect(screen.getByText('Yu Garden')).toBeInTheDocument();
+    expect(removePlace).not.toHaveBeenCalled();
+  });
+
+  it('names the review word count and the notes, and deletes on confirm', () => {
+    const removePlace = vi.fn();
+    useTripStore.setState({
+      places: [
+        { ...PLACES[0], description: 'Bring cash', selfReview: 'A truly lovely walk along the water' },
+        ...PLACES.slice(1),
+      ],
+      removePlace,
+    });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const card = screen.getByText('The Bund').closest('.place-card') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: 'Delete The Bund' }));
+
+    expect(
+      screen.getByText(/This will also delete your review \(7 words\) and your notes\./),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete place' }));
+    expect(removePlace).toHaveBeenCalledWith('p1');
+  });
+
+  it('mentions an unsaved draft in the warning when one is pending for that place', async () => {
+    useTripStore.setState({
+      getPlaceDraft: vi.fn(async (placeId: string) =>
+        placeId === 'p1' ? { placeId, description: 'wip', baseUpdatedAt: '', savedAt: '' } : undefined,
+      ),
+    });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const card = await waitFor(() => {
+      const c = screen.getByText('The Bund').closest('.place-card') as HTMLElement;
+      expect(within(c).getByText('Draft')).toBeInTheDocument();
+      return c;
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Delete The Bund' }));
+    expect(screen.getByText(/This will also delete an unsaved draft\./)).toBeInTheDocument();
+  });
+});
+
+describe('PlacesPanel — opening the detail modal', () => {
+  it('clicking a card opens the detail modal for that place', () => {
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    fireEvent.click(screen.getByText('Yu Garden'));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Yu Garden')).toBeInTheDocument();
+  });
+
+  it('the card\'s "Add notes" link also opens the detail modal, without navigating twice', () => {
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const card = screen.getByText('Yu Garden').closest('.place-card') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: 'Add notes' }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 });

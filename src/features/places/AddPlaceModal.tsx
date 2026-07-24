@@ -74,7 +74,11 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
   const [name, setName] = useState('');
   const [category, setCategory] = useState<string>(PLACE_CATEGORIES[0]);
   const [city, setCity] = useState('');
-  const [note, setNote] = useState('');
+  // A short, optional description only — NOT the full About/My review editor
+  // the place detail modal has (Phase 4 item 3/7). Adding a place and
+  // writing about it are different moments: this stays a fast, few-second
+  // step; real long-form writing happens later, from the place's own card.
+  const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -101,7 +105,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     setManualEntry(false);
     setFlashName(false);
     setName('');
-    setNote('');
+    setDescription('');
     setCategory(PLACE_CATEGORIES[0]);
     setCity(defaultCity || cityNames[0] || '');
     setSaving(false);
@@ -226,7 +230,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
       name: trimmedName,
       category,
       city: city || defaultCity,
-      note: note.trim() || undefined,
+      description: description.trim() || undefined,
       lat,
       lng,
       address,
@@ -402,17 +406,15 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
           </div>
 
           <div style={{ marginTop: 10 }}>
-            <label htmlFor="ap-note">
-              Note <span className="field-optional">(optional)</span>
+            <label htmlFor="ap-description">
+              Description <span className="field-optional">(optional)</span>
             </label>
-            <input
-              className="text-input"
-              style={{ width: '100%' }}
-              type="text"
-              id="ap-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Why you want to go, best time, etc."
+            <textarea
+              className="text-input add-place-description"
+              id="ap-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Why you want to go, best time of day, anything worth knowing before you visit — you can always write more later."
             />
           </div>
 

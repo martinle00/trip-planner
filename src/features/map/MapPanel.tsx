@@ -309,7 +309,7 @@ function PinDetailPanel({
             <Icon name="close" />
           </button>
         </div>
-        {place.note && <p className="pin-detail-note">{place.note}</p>}
+        {place.description?.trim() && <p className="pin-detail-note">{place.description}</p>}
         <div className="field-row">
           <span className="field-label">Assign to day</span>
         </div>

@@ -268,6 +268,14 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
   background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line);
 }
 .tag.city{ background:var(--accent-soft); color:var(--accent-soft-ink); border-color:transparent; }
+/* jade = a saved review exists (this IS the "visited" signal — Phase 4 item
+   3 — deliberately not a separate `visited` status). */
+.tag.reviewed{ background:var(--jade-soft); color:var(--jade-soft-ink); border-color:transparent; }
+/* gold = "needs attention", per the design system's semantic vocabulary — an
+   unsaved local edit exists for this place. Can coexist with .reviewed: a
+   place you already reviewed can still pick up a new unsaved edit later. */
+.tag.draft{ background:var(--gold-soft); color:var(--gold-soft-ink); border-color:transparent; }
+.tag-icon{ width:10px; height:10px; }
 
 .status-pill{
   display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700;
@@ -373,7 +381,14 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
 .pin-detail-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
 .pin-detail-name{ font-size:15.5px; font-weight:700; }
 .pin-detail-tags{ display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
-.pin-detail-note{ font-size:13px; color:var(--ink-soft); font-style:italic; }
+/* Excerpt of `description` (Phase 4 item 7 — `note` is gone). Not italic —
+   see .place-desc-excerpt's comment for why — and line-clamped to keep a
+   long write-up from taking over this narrow sidebar; the full text is
+   still in the DOM for assistive tech. */
+.pin-detail-note{
+  font-size:13px; color:var(--ink-soft); line-height:1.4;
+  display:-webkit-box; -webkit-line-clamp:4; line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+}
 
 .dayplan-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .dayplan-title{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:14.5px; }
@@ -448,8 +463,9 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 @media (min-width:640px){ .place-grid{ grid-template-columns:repeat(2,1fr); } }
 @media (min-width:1000px){ .place-grid{ grid-template-columns:repeat(3,1fr); } }
 
-.place-card{ padding:14px; display:flex; flex-direction:column; gap:9px; }
-.place-card-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.place-card{ padding:14px; display:flex; flex-direction:column; gap:9px; cursor:pointer; transition:box-shadow .12s ease, border-color .12s ease; }
+.place-card:hover{ box-shadow:var(--shadow-md); border-color:var(--line-strong); }
+.place-card-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .place-title{ display:flex; align-items:center; gap:8px; min-width:0; }
 .place-icon{
   width:24px; height:24px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
@@ -460,7 +476,19 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .place-icon.unassigned svg{ stroke:var(--pin-color, var(--d-grey)); }
 .place-name{ font-size:14.5px; font-weight:700; line-height:1.3; min-width:0; }
 .place-tags{ display:flex; gap:6px; flex-wrap:wrap; }
-.place-note{ font-size:12.5px; color:var(--ink-soft); font-style:italic; }
+/* Excerpt of `description` (Phase 4 item 7 — the old one-line italic `note`
+   teaser is gone). Real text, not JS-truncated, so a screen reader still
+   gets the full description, just visually clipped — capped with line-clamp
+   rather than a fixed character count so it truncates honestly at any card
+   width instead of guessing. Not italic any more either: italic read as "a
+   little aside"; this is the lead of an actual write-up now, so it reads as
+   plain secondary text. Both the standard and -webkit- properties are set —
+   the standard one alone isn't supported everywhere yet, and the prefixed
+   one alone trips a CSS compat lint. */
+.place-desc-excerpt{
+  font-size:12.5px; color:var(--ink-soft); line-height:1.4;
+  display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
 .place-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px 10px; flex-wrap:wrap; margin-top:auto; padding-top:8px; border-top:1px solid var(--line); }
 .assign-slot{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .assign-select{
@@ -471,6 +499,48 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .assign-select.is-wishlist{ border-left-style: dashed; }
 .assign-none{ font-size:11.5px; color:var(--ink-soft); font-style:italic; }
 .place-card-actions{ display:flex; gap:2px; }
+
+/* Delete trigger: bumped from the base 26px .icon-btn to 36px specifically
+   because the stakes changed (Phase 4 item 6) — this can now destroy
+   written prose, not just a pin, and it needs to be reachable by thumb on a
+   390px card. The accent hover tint previews the destructive intent before
+   it's even pressed. */
+.icon-btn.icon-btn-danger{ width:36px; height:36px; color:var(--ink-faint); }
+.icon-btn.icon-btn-danger svg{ width:16px; height:16px; }
+.icon-btn.icon-btn-danger:hover{ color:var(--accent); background:var(--accent-soft); }
+
+/* The card's own "open detail" affordance for keyboard/screen-reader users —
+   the whole card is also clickable as a mouse convenience (see PlacesPanel's
+   PlaceCard), but a <select> and a delete <button> can't legally live inside
+   another interactive/clickable wrapper, so this explicit link is what a
+   keyboard user actually relies on. */
+.detail-link{
+  display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:var(--accent);
+  background:none; border:none; padding:0; text-align:left; align-self:flex-start;
+}
+.detail-link:hover{ text-decoration:underline; }
+.detail-link svg{ width:11px; height:11px; }
+
+/* Delete confirmation: an inline two-step control that replaces the WHOLE
+   card's normal content rather than opening Modal.tsx (Phase 4 item 6,
+   round-4 decision) — a full-screen modal would pull focus away from the
+   exact card (its name, its tags) the warning copy refers to, and the
+   content-aware message (see lib/placeDeleteWarning.ts) can run to a full
+   sentence, which doesn't fit in the footer strip alone without also hiding
+   the name/tags it references. */
+.place-card.is-delete-confirm{ justify-content:space-between; cursor:default; }
+.delete-confirm-inner{ display:flex; align-items:flex-start; gap:10px; }
+.delete-confirm-inner svg{ width:18px; height:18px; flex:none; margin-top:1px; color:var(--accent); }
+.delete-confirm-text strong{ display:block; font-size:13.5px; font-weight:700; margin-bottom:3px; }
+.delete-confirm-text span{ font-size:12px; color:var(--ink-soft); line-height:1.45; }
+.delete-confirm-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+/* No filled/destructive-red button — --accent already carries "error/danger"
+   in this design system (see DESIGN-SYSTEM.md §2), so plain accent-coloured
+   text on a ghost button reads as destructive without inventing a new
+   filled-button contrast case. Cancel stays the visually prominent
+   (btn-primary) default — safe-option-first, same as the draft-discard
+   confirm in the detail modal below. */
+.delete-btn{ color:var(--accent); }
 
 /* ============================= ITINERARY TAB ============================= */
 .it-quicknav{
@@ -786,7 +856,12 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 
 .add-place-details{ margin-top:6px; padding-top:16px; border-top:1px solid var(--line); }
 .add-place-details label{ display:block; font-size:11.5px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
-.add-place-details input, .add-place-details select{ width:100%; }
+.add-place-details input, .add-place-details select, .add-place-details textarea{ width:100%; }
+/* Short and optional, deliberately NOT the full About/My review editor the
+   place detail modal has (Phase 4 items 3/7) — adding a place and writing
+   about it are different moments. This stays a fast, few-second step; real
+   long-form writing happens later, from the place's own card. */
+.add-place-description{ min-height:64px; resize:vertical; font-family:inherit; }
 .field-optional{ font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-soft); }
 .details-back{
   display:flex; align-items:center; gap:2px; font-size:12px; font-weight:600; color:var(--ink-soft);
@@ -809,6 +884,133 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
   25%{ box-shadow:0 0 0 4px var(--jade-soft); }
   100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
 }
+
+/* ============================= PLACE DETAIL MODAL ============================= */
+/* description/selfReview view+edit, local draft, "keep both" conflict
+   divider, inline discard-draft confirm (Phase 4 items 3/4/5). Mirrors
+   mockup/place-detail-modal.html; opened from PlacesPanel's PlaceCard via
+   PlaceDetailModal.tsx, on top of the shared Modal.tsx. */
+.modal-title-block{ min-width:0; }
+.modal-title .place-icon{ width:26px; height:26px; }
+.modal-title .place-icon svg{ width:13px; height:13px; }
+.modal-tags{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 0 35px; }
+.modal-cues{ display:flex; gap:8px; flex-wrap:wrap; margin:9px 0 0 35px; }
+.editing-cue{
+  display:inline-block; align-self:flex-start; font-size:10.5px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.06em; color:var(--accent-soft-ink); background:var(--accent-soft);
+  padding:3px 9px; border-radius:var(--radius-full); border:none;
+}
+/* Visible whenever a local draft exists for this place, independent of
+   view/edit mode — a draft left behind after stepping back to read mode is
+   exactly the "forgotten draft" case this exists to prevent. A real
+   <button>, not just a badge, so it's also the fastest way back into
+   editing. */
+.draft-pill{
+  display:inline-flex; align-items:center; gap:5px; align-self:flex-start; font-size:10.5px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.06em; color:var(--gold-soft-ink); background:var(--gold-soft);
+  padding:3px 9px 3px 7px; border-radius:var(--radius-full); border:none;
+}
+.draft-pill .dot{ width:6px; height:6px; border-radius:50%; background:var(--gold); flex:none; }
+.draft-pill:hover{ box-shadow:var(--shadow-sm); }
+.modal-head-actions{ display:flex; gap:8px; flex:none; }
+/* 38px, matching the app-wide .btn-icon circle — this dialog is heavily
+   thumb-driven on mobile, so it gets the standard touch-friendly size
+   instead of the shared .modal-close's smaller 30px (kept as-is for the
+   app's other, lower-stakes modals). */
+.modal-close-lg, .modal-edit-btn{
+  width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background:var(--paper-sunk); border:none; flex:none; color:var(--ink-soft);
+}
+.modal-close-lg:hover, .modal-edit-btn:hover{ background:var(--line); color:var(--ink); }
+.modal-close-lg svg, .modal-edit-btn svg{ width:16px; height:16px; }
+.modal-close-lg[disabled], .modal-edit-btn[disabled]{ opacity:.4; pointer-events:none; }
+
+.detail-section{ margin-top:20px; }
+.detail-section .field-label{ display:flex; align-items:center; gap:5px; margin-bottom:8px; }
+.detail-section .field-label svg{ width:11px; height:11px; flex:none; }
+.detail-prose{ font-size:13.5px; color:var(--ink); white-space:pre-line; line-height:1.6; }
+.prose-block{ display:block; }
+/* The crude-by-design "keep both" conflict resolution: rendered from a
+   plain-text sentinel line stored in the field itself (see
+   lib/proseMerge.ts) — the divider is a rendering convenience over ordinary
+   text, not a second content type, so "text only" still holds for the
+   underlying data. */
+.conflict-sep-row{
+  display:flex; align-items:center; gap:10px; margin:16px 0;
+  color:var(--ink-faint); font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+}
+.conflict-sep-row::before, .conflict-sep-row::after{ content:""; flex:1; height:0; border-top:1px dashed var(--line-strong); }
+.detail-empty{
+  display:flex; align-items:center; gap:10px; padding:14px; border:1px dashed var(--line-strong); border-radius:var(--radius-md);
+  background:var(--paper-sunk);
+}
+.detail-empty svg{ width:18px; height:18px; color:var(--ink-faint); flex:none; }
+.detail-empty-text{ flex:1; min-width:0; }
+.detail-empty-text strong{ display:block; font-size:12.5px; color:var(--ink-soft); font-weight:700; }
+.detail-empty-text span{ font-size:11.5px; color:var(--ink-faint); }
+.detail-empty .btn{ flex:none; }
+.detail-edit textarea{
+  width:100%; background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+  padding:10px 11px; font-size:13.5px; font-family:inherit; color:var(--ink); resize:vertical; line-height:1.55;
+}
+.detail-edit textarea:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+/* Not the native disabled attribute while saving — that can visually mute a
+   textarea's own value inconsistently across browsers. Opacity + the
+   store's write-through blocks further edits without touching what's
+   already there. */
+.detail-edit textarea:disabled{ opacity:.7; }
+.about-field{ min-height:88px; }
+.review-field{ min-height:120px; }
+
+/* Sticky so Save/Discard — the primary action of this whole feature — stays
+   reachable when an on-screen keyboard eats half a 390px viewport while
+   typing a long review. `.modal` is the scrolling container
+   (overflow-y:auto — see the base MODAL section above), so `bottom:0` pins
+   this to the visible modal edge, not the page. */
+.modal-foot{
+  display:flex; flex-direction:column; gap:10px; margin-top:22px; padding-top:14px; padding-bottom:2px;
+  border-top:1px solid var(--line); position:sticky; bottom:0; background:var(--paper-raised); z-index:2;
+}
+.modal-foot-actions{ display:flex; justify-content:flex-end; gap:10px; }
+
+.save-error{
+  display:flex; align-items:flex-start; gap:7px; font-size:12px; font-weight:600; line-height:1.4;
+  color:var(--gold-soft-ink); background:var(--gold-soft); border-radius:var(--radius-sm); padding:9px 10px;
+}
+.save-error svg{ width:14px; height:14px; flex:none; margin-top:1px; }
+
+/* The merge-conflict notice — deliberately jade, not gold: nothing failed,
+   the save succeeded, it just also folded in an edit from the other device.
+   No auto-fade: there's a real follow-up task (go tidy the merged prose), so
+   it persists until dismissed or replaced by opening a different place. */
+.conflict-banner{
+  display:flex; align-items:flex-start; gap:8px; font-size:12px; font-weight:600; line-height:1.45;
+  color:var(--jade-soft-ink); background:var(--jade-soft); border-radius:var(--radius-sm); padding:10px 10px 10px 11px;
+  margin-bottom:18px;
+}
+.conflict-banner svg{ width:15px; height:15px; flex:none; margin-top:1px; }
+.conflict-banner p{ flex:1; margin:0; }
+.conflict-banner .icon-btn{ flex:none; color:var(--jade-soft-ink); margin:-4px -4px -4px 0; }
+.conflict-banner .icon-btn:hover{ background:rgba(0,0,0,.06); color:var(--jade-soft-ink); }
+
+/* Small inline two-step control replacing a native confirm() — the ONLY
+   confirmation left in this modal. Closing (overlay click / header × /
+   Escape) is no longer destructive under the local-draft model, so nothing
+   guards those any more; this guards the one action that IS still
+   destructive — explicitly discarding a draft via the footer's "Discard
+   draft" button. */
+.discard-confirm{
+  display:flex; flex-direction:column; gap:10px; margin-top:22px; padding-top:14px; padding-bottom:2px;
+  border-top:1px solid var(--line); position:sticky; bottom:0; background:var(--paper-raised); z-index:2;
+}
+.discard-confirm-text{ display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--ink-soft); margin:0; }
+.discard-confirm-text svg{ width:16px; height:16px; flex:none; margin-top:1px; color:var(--gold-soft-ink); }
+.discard-confirm-text strong{ display:block; color:var(--ink); font-size:13.5px; font-weight:700; margin-bottom:2px; }
+.discard-confirm-actions{ display:flex; justify-content:flex-end; gap:10px; }
+/* Deliberately not a filled/destructive-red button — --gold has no defined
+   white-on-fill "-ink" pairing (see DESIGN-SYSTEM.md §2), and the safer
+   default (Keep editing) should read as the primary action, not Discard. */
+.discard-btn{ color:var(--gold-soft-ink); }
 
 /* ============================= OFFLINE BANNER ============================= */
 .offline-banner{

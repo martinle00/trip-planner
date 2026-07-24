@@ -11,7 +11,9 @@ import type { DayPlan } from '../lib/autoplan';
 import { setTripRepository } from '../data/tripRepositoryInstance';
 import { DexieTripRepository } from '../data/dexieTripRepository';
 import type { TripRepository } from '../data/tripRepository';
-import type { Trip } from '../data/schema';
+import type { Place, Trip } from '../data/schema';
+import { db } from '../data/db';
+import { splitMergedProse } from '../lib/proseMerge';
 
 const fetchRatesMock = vi.fn();
 vi.mock('../lib/exchangeRates', async (importOriginal) => {
@@ -656,6 +658,9 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
         return p;
       },
       async deletePlace() {},
+      async updatePlaceIfUnchanged(place) {
+        return { place, conflict: false };
+      },
       async listDays() {
         return [];
       },
@@ -851,5 +856,248 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
     expect(useTripStore.getState().trip).toBeUndefined();
     expect(useTripStore.getState().loading).toBe(true);
     expect(useTripStore.getState().syncing).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// commitPlaceDraft / savePlaceDraft / removePlace-drafts (Phase 4 items 4/5).
+//
+// PlaceDetailModal.test.tsx exercises the UI against a fully stubbed
+// getPlaceDraft/savePlaceDraft/discardPlaceDraft/commitPlaceDraft (an
+// in-memory fake keyed by placeId), which is correct for that component's own
+// job but means the REAL store implementation of commitPlaceDraft — the
+// conditional-update conflict-retry loop, the MAX_DRAFT_COMMIT_ATTEMPTS
+// bound, and savePlaceDraft's "baseUpdatedAt held fixed for the session"
+// rule — had zero test coverage anywhere else. These tests close that gap,
+// running against the real Dexie-backed repository (matching this file's
+// other store-level tests) except where a controlled always-conflicting
+// repository is needed to force the pathological retry-exhaustion path.
+// ---------------------------------------------------------------------------
+describe('commitPlaceDraft — draft lifecycle against the real (Dexie) repository', () => {
+  it('commits with no conflict: place updated in store + repo, draft cleared', async () => {
+    const place = useTripStore.getState().places[0];
+    await useTripStore.getState().savePlaceDraft(place.id, { description: 'New notes', selfReview: undefined });
+    expect(await useTripStore.getState().getPlaceDraft(place.id)).toBeDefined();
+
+    const { place: saved, merged } = await useTripStore.getState().commitPlaceDraft(place.id);
+
+    expect(merged).toBe(false);
+    expect(saved.description).toBe('New notes');
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.description).toBe('New notes');
+    // The committed row is readable straight back out of the real repository too.
+    const persisted = await db.places.get(place.id);
+    expect(persisted?.description).toBe('New notes');
+    expect(await useTripStore.getState().getPlaceDraft(place.id)).toBeUndefined();
+  });
+
+  it('detects a concurrent remote edit via baseUpdatedAt, append-merges instead of overwriting, and clears the draft', async () => {
+    const place = useTripStore.getState().places[0];
+    await useTripStore.getState().savePlaceDraft(place.id, { description: 'My local notes', selfReview: undefined });
+
+    // Simulate "another device" writing directly to the underlying row
+    // between the draft starting and Save being pressed — same shape a real
+    // concurrent write would leave: a newer `updatedAt`, so the conditional
+    // update below can no longer match the draft's `baseUpdatedAt`.
+    const remoteUpdated: Place = {
+      ...place,
+      description: 'Remote notes from the other device',
+      updatedAt: new Date(Date.parse(place.updatedAt) + 1000).toISOString(),
+    };
+    await db.places.put(remoteUpdated);
+
+    const { place: saved, merged } = await useTripStore.getState().commitPlaceDraft(place.id);
+
+    expect(merged).toBe(true);
+    // Nothing discarded — both sides survive, split cleanly by the sentinel.
+    expect(splitMergedProse(saved.description)).toEqual([
+      'My local notes',
+      'Remote notes from the other device',
+    ]);
+    expect(await useTripStore.getState().getPlaceDraft(place.id)).toBeUndefined();
+  });
+});
+
+describe('commitPlaceDraft — pathological repeated-conflict bound (fake, always-conflicting repository)', () => {
+  afterEach(() => {
+    setTripRepository(new DexieTripRepository());
+  });
+
+  it('gives up after repeated conflicts, throws, and leaves the local draft intact so nothing typed is lost', async () => {
+    const place = useTripStore.getState().places[0];
+    await useTripStore.getState().savePlaceDraft(place.id, { description: 'My notes', selfReview: undefined });
+
+    let calls = 0;
+    const alwaysConflictRepo: TripRepository = {
+      async seedIfEmpty() {},
+      async getTrip() {
+        return undefined;
+      },
+      async saveTrip() {},
+      async listPlaces() {
+        return [];
+      },
+      async upsertPlace(p) {
+        return p;
+      },
+      async deletePlace() {},
+      async updatePlaceIfUnchanged(candidate) {
+        calls += 1;
+        // Every attempt loses the race against a "new" remote edit, forcing
+        // commitPlaceDraft's retry loop to run all the way to its bound.
+        return {
+          place: { ...candidate, description: `remote edit #${calls}`, updatedAt: new Date(2030, 0, calls).toISOString() },
+          conflict: true,
+        };
+      },
+      async listDays() {
+        return [];
+      },
+      async listItinerary() {
+        return [];
+      },
+      async listAllItinerary() {
+        return [];
+      },
+      async upsertItineraryItem(i) {
+        return i;
+      },
+      async deleteItineraryItem() {},
+      async listExpenses() {
+        return [];
+      },
+      async upsertExpense(e) {
+        return e;
+      },
+      async deleteExpense() {},
+      async exportSnapshot() {
+        throw new Error('not used by this test');
+      },
+      async importSnapshot() {},
+    };
+    setTripRepository(alwaysConflictRepo);
+
+    await expect(useTripStore.getState().commitPlaceDraft(place.id)).rejects.toThrow(
+      /too many concurrent edits/,
+    );
+    // Pins MAX_DRAFT_COMMIT_ATTEMPTS's current value (5, per useTripStore.ts)
+    // — a deliberate bound, so a change to it should be a conscious test
+    // update, not a silent drift.
+    expect(calls).toBe(5);
+
+    // The whole point: a pathological run of bad luck must not cost the user
+    // their typed text. Save is meant to just be retryable.
+    const draft = await useTripStore.getState().getPlaceDraft(place.id);
+    expect(draft?.description).toBe('My notes');
+    // And the store's in-memory place was never clobbered by a half-applied write.
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.description).not.toBe('My notes');
+  });
+
+  it('accumulates repeated conflicts without losing any earlier text: N sentinels -> N+1 segments', async () => {
+    const place = useTripStore.getState().places[0];
+    await useTripStore.getState().savePlaceDraft(place.id, { description: 'My notes', selfReview: undefined });
+
+    let calls = 0;
+    // Conflicts on the first two attempts (two different concurrent remote
+    // edits, e.g. two separate saves from the other device before this one
+    // finally lands), then succeeds on the third.
+    const twiceThenSucceeds: TripRepository = {
+      async seedIfEmpty() {},
+      async getTrip() {
+        return undefined;
+      },
+      async saveTrip() {},
+      async listPlaces() {
+        return [];
+      },
+      async upsertPlace(p) {
+        return p;
+      },
+      async deletePlace() {},
+      async updatePlaceIfUnchanged(candidate, baseUpdatedAt) {
+        calls += 1;
+        if (calls <= 2) {
+          return {
+            place: { ...candidate, description: `remote edit #${calls}`, updatedAt: new Date(2030, 0, calls).toISOString() },
+            conflict: true,
+          };
+        }
+        return { place: { ...candidate, updatedAt: baseUpdatedAt }, conflict: false };
+      },
+      async listDays() {
+        return [];
+      },
+      async listItinerary() {
+        return [];
+      },
+      async listAllItinerary() {
+        return [];
+      },
+      async upsertItineraryItem(i) {
+        return i;
+      },
+      async deleteItineraryItem() {},
+      async listExpenses() {
+        return [];
+      },
+      async upsertExpense(e) {
+        return e;
+      },
+      async deleteExpense() {},
+      async exportSnapshot() {
+        throw new Error('not used by this test');
+      },
+      async importSnapshot() {},
+    };
+    setTripRepository(twiceThenSucceeds);
+
+    const { place: saved, merged } = await useTripStore.getState().commitPlaceDraft(place.id);
+
+    expect(calls).toBe(3);
+    expect(merged).toBe(true);
+    expect(splitMergedProse(saved.description)).toEqual(['My notes', 'remote edit #1', 'remote edit #2']);
+    expect(await useTripStore.getState().getPlaceDraft(place.id)).toBeUndefined();
+  });
+});
+
+describe('savePlaceDraft — baseUpdatedAt held fixed across a debounced editing session', () => {
+  it('does not rebase baseUpdatedAt on a second debounced save, even if the place itself changed in between', async () => {
+    const place = useTripStore.getState().places[0];
+    await useTripStore.getState().savePlaceDraft(place.id, { description: 'First keystroke', selfReview: undefined });
+    const draft1 = await useTripStore.getState().getPlaceDraft(place.id);
+    expect(draft1?.baseUpdatedAt).toBe(place.updatedAt);
+
+    // A concurrent write lands on this exact place mid-session (e.g. the
+    // other device saved first) — bumps `updatedAt` in both the repo and the
+    // in-memory store, same as a real background sync would.
+    const bumped: Place = { ...place, updatedAt: new Date(Date.parse(place.updatedAt) + 5000).toISOString() };
+    await db.places.put(bumped);
+    useTripStore.setState((s) => ({ places: s.places.map((p) => (p.id === place.id ? bumped : p)) }));
+
+    await useTripStore.getState().savePlaceDraft(place.id, {
+      description: 'First keystroke plus more',
+      selfReview: undefined,
+    });
+    const draft2 = await useTripStore.getState().getPlaceDraft(place.id);
+
+    // If this were re-derived from "the place's current updatedAt" on every
+    // save instead of held fixed from the first save of the session, this
+    // second save would silently adopt the just-bumped `updatedAt` as its
+    // base — and commitPlaceDraft would then compare against the wrong
+    // baseline, missing the very conflict it exists to detect.
+    expect(draft2?.baseUpdatedAt).toBe(draft1?.baseUpdatedAt);
+    expect(draft2?.baseUpdatedAt).not.toBe(bumped.updatedAt);
+  });
+});
+
+describe('removePlace — also deletes any local draft for that place (no orphaned db.placeDrafts row)', () => {
+  it('clears the draft when the place it belongs to is deleted', async () => {
+    const place = useTripStore.getState().places[0];
+    await useTripStore.getState().savePlaceDraft(place.id, { description: 'WIP', selfReview: undefined });
+    expect(await useTripStore.getState().getPlaceDraft(place.id)).toBeDefined();
+
+    await useTripStore.getState().removePlace(place.id);
+
+    expect(await useTripStore.getState().getPlaceDraft(place.id)).toBeUndefined();
+    expect(await db.placeDrafts.get(place.id)).toBeUndefined();
   });
 });

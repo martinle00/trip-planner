@@ -1,32 +1,48 @@
 # Phase 4 — Place write-ups, expense editing, manual coordinates
 
-**Status: IN PROGRESS, design + backend only. No frontend work started.**
-Written 2026-07-20 as a session handoff. Read this before resuming.
+**Status: IN PROGRESS. Backend landed and reviewed; frontend not started.**
+Written 2026-07-20 as a session handoff; backend review appended 2026-07-21.
 
 ---
 
 ## ⚠️ First thing to check when resuming
 
-**The working tree may not compile.** Two agents were running in the background when
-the session ended, and their output landed on disk without being reviewed:
+**Backend review is DONE (2026-07-21).** The backend agent's output was read through,
+two real defects were fixed, and the tree now builds except for the three UI consumers
+that were deliberately left for the frontend-engineer. Current state:
 
-1. **backend-impl** — was explicitly authorised to remove `Place.note` from the schema
-   *without* fixing the three UI files that consume it, leaving them for the
-   frontend-engineer. So a broken typecheck is an EXPECTED intermediate state, not
-   necessarily a bug.
-2. **ux-designer** — was on round 4 of `mockup/place-detail-modal.html`.
+- `npm test` — **234 passing** (was 215; backend added its own coverage, +12 from the
+  new `src/lib/proseMerge.test.ts`).
+- `npm run lint` — clean apart from the known `RouteStrip.tsx` warning.
+- `npm run build` — **fails in exactly 3 files, all expected**: `MapPanel.tsx:312`,
+  `PlacesPanel.tsx:189`, `AddPlaceModal.tsx:229`, all on the removed `Place.note`.
+  These are item 7's UI consequence and belong to the frontend track.
 
-Before anything else:
+### What the review found
 
-```bash
-git status                 # see what actually landed
-npm run build              # expect failures in the 3 files listed under item 7
-npm test
-```
+1. **🔴 The sentinel trap fired.** The store had hardcoded
+   `'--- merged edit from another device ---'` as a module-private `const`, while the
+   approved mockup uses `'— Also written on another device —'`. Different strings, and
+   the store's was not exported — so the frontend renderer *could not* have imported it
+   and would have hardcoded a third copy. Fixed by extracting
+   **`src/lib/proseMerge.ts`** as the single source of truth (`CONFLICT_SENTINEL`,
+   `CONFLICT_SEPARATOR`, `appendRemoteIfDifferent`, `splitMergedProse`,
+   `hasMergedEdit`); the store now imports from it. **The frontend must import the
+   sentinel and `splitMergedProse` from there — never re-declare either.**
+2. **`db.ts` `clearLocalCache` didn't compile.** Adding `placeDrafts` made 6 tables and
+   Dexie's `transaction()` only has varargs overloads up to 5. Switched to array form.
+3. Test fixtures were backfilled for the contract change (`Place.updatedAt` now
+   required, `TripSnapshot.version: 3`, mock repos need `updatePlaceIfUnchanged`).
 
-Read the backend agent's changes before trusting them — its report was never reviewed
-by a human or by the code-reviewer agent. **Nothing in this phase has been through
-code review or QA.**
+The append-merge path had **zero test coverage**, which is how the sentinel drift went
+unnoticed — `proseMerge.test.ts` now round-trips write→render and pins the string.
+
+Otherwise the backend work is good: the migrations follow the shared-transform rule, the
+conditional update is properly atomic (not read-compare-write), `SyncedTripRepository`
+correctly refuses an offline fallback on the conditional write, and drafts are
+deliberately kept out of `TripRepository` so they never sync.
+
+**Still not through the code-reviewer or qa-tester agents.**
 
 ---
 
@@ -228,26 +244,27 @@ likely be the common path.)
 | Design — Option A chosen | ✅ modal direction approved by the user |
 | ux-designer rounds 1–3 | ✅ complete (mockup, review fixes, draft model) |
 | ux-designer round 4 | ✅ complete — delete confirmation + `note`→`description` |
-| ux-designer round 5 | ❌ NOT SENT — items 8 and 9, plus the two carry-overs below |
+| ux-designer round 5 | ❌ NOT SENT — items 8 and 9. (The two carry-overs below are now DONE.) |
 | ux-reviewer | ⏸ ran once (changes requested, all addressed). **Needs a final pass once design settles.** |
-| backend-impl | ⚠️ was RUNNING at session end — items 3,4,5,7. Report never reviewed. |
+| backend-impl | ✅ items 3,4,5,7 landed. Reviewed 2026-07-21, 2 defects fixed — see top of file. |
 | GCJ-02 conversion (item 9) | ❌ not briefed to backend yet |
-| frontend-engineer | ❌ not started, by design — sequenced after backend |
-| code-reviewer / qa-tester | ❌ not started |
+| frontend-engineer | ✅ items 3,4,6,7 complete (2026-07-21). Items 1,2 NOT done; 8,9 out of scope. |
+| code-reviewer | ✅ 2 blockers found + fixed, re-verified |
+| qa-tester | ✅ PASS — 1 defect found + fixed. Suite 282/282. |
 
 **Agreed sequencing: backend first, then frontend.** Both touch the persistence seam;
 racing them there was judged not worth it.
 
-### Carry-overs for designer round 5
+### Carry-overs for designer round 5 — ✅ BOTH DONE 2026-07-21
 
-1. **`mockup/mockup.html` still contains `note`.** Round 4 only updated
-   `place-detail-modal.html`. The main mockup's Map-tab `.pin-detail-note` and its own
-   Add Place modal are untouched and still show the old one-line note field. The
-   designer flagged this rather than reaching outside its brief — correct call, but it
-   means the *visual spec itself* now disagrees with the approved design until someone
-   fixes it.
-2. **`line-clamp` CSS compat warning** at `place-detail-modal.html:211` — the card
-   excerpt uses `-webkit-line-clamp` without the standard `line-clamp` alongside it.
+1. ~~**`mockup/mockup.html` still contains `note`.**~~ Fixed: its Add Place modal's Note
+   input became a Description textarea, and the Map tab's `placeData`/`showPin()`/
+   `.pin-detail-note` were renamed `note`→`description` and de-italicised with a
+   line-clamp. The visual spec no longer contradicts the approved design.
+2. ~~**`line-clamp` CSS compat warning**~~ — fixed in the mockup, and `src/index.css`
+   carries both `-webkit-line-clamp` and the standard `line-clamp`.
+
+Round 5 therefore only needs to cover items 8 and 9 themselves.
 
 ### Round 4 decisions worth knowing
 
@@ -291,13 +308,33 @@ and the in-place IndexedDB upgrade **share one transform function**. Follow it.
 
 ---
 
-## Verification (none of this has been done)
+## Verification
 
-- `npm run build`, `npm run lint`, `npm test` all green. ~215 tests; the
-  `RouteStrip.tsx` `only-export-components` lint warning is pre-existing — don't chase it.
-- Migration tests: `dbMigration.test.ts` shows the pattern — seed a raw old-version
-  Dexie, then assert the real repository reads back migrated values.
-- **Manual, in a real browser** (cannot be done headless):
+**Automated: ✅ DONE for items 3,4,6,7** (2026-07-21). `npm run build`, `npm run lint`,
+`npm test` all green — **282 tests**, up from 215 at the start of the phase. The
+`RouteStrip.tsx` `only-export-components` lint warning is pre-existing — don't chase it.
+Migration paths are covered per `dbMigration.test.ts`'s pattern (seed a raw old-version
+Dexie, assert the real repository reads back migrated values), and both the Dexie
+v2→v3 upgrade and the snapshot v1→v2→v3 import chain were confirmed to share the single
+`migratePlaceV2ToV3` transform.
+
+> **Three defects were found by review/QA that a fully green suite had missed** — worth
+> remembering as a pattern when judging "all tests pass":
+> 1. Unmemoized `onClose` re-triggered `Modal.tsx`'s focus trap on every keystroke, so
+>    typing more than one character was impossible in a real browser. Tests missed it
+>    because `fireEvent.change` doesn't depend on real focus.
+> 2. Debounce refs were shared across places (`PlacesPanel` reuses one modal instance
+>    and only swaps the `place` prop), so switching places mid-debounce silently
+>    destroyed the outgoing place's prose. No test switched places.
+> 3. Offline saves rendered a raw `TypeError: Failed to fetch` instead of the copy that
+>    reassures the user their draft survived.
+
+**Still MANUAL, in a real browser** (cannot be done headless — none of these are done):
+
+- ⚠️ `Modal.tsx`'s focus trap is **untestable in jsdom at all** — jsdom always reports
+  `offsetParent === null`, which its `getFocusable()` filter depends on, so every modal
+  in this app (not just Phase 4's) falls back to focusing the bare container in tests.
+  Tab-wrapping and initial-focus behaviour have never been verified anywhere.
   - Write a review, close the modal, reload the page — draft still there.
   - Write a review offline, then save when back online.
   - Conflict: edit the same place on two devices, save both, confirm both texts survive

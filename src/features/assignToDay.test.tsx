@@ -160,7 +160,11 @@ describe('Delete place — regression, no orphaned stop', () => {
     await assignViaPlacesTab('Marina Bay Sands', /Day 1/);
 
     const card = screen.getByText('Marina Bay Sands').closest('.place-card') as HTMLElement;
+    // Delete is now a two-step inline confirmation (Phase 4 item 6): the
+    // trash icon opens a content-aware warning in place of the card, and the
+    // actual destructive click happens on the follow-up "Delete place" button.
     fireEvent.click(within(card).getByRole('button', { name: /Delete Marina Bay Sands/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete place' }));
 
     fireEvent.click(itineraryTab());
     await waitFor(() => {

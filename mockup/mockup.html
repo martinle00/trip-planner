@@ -423,7 +423,15 @@
   .pin-detail-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .pin-detail-name{ font-size:15.5px; font-weight:700; }
   .pin-detail-tags{ display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
-  .pin-detail-note{ font-size:13px; color:var(--ink-soft); font-style:italic; }
+  /* Phase 4 item 7: `note` is gone — this is now an excerpt of `description`.
+     Not italic any more (see .place-desc-excerpt's rationale in
+     place-detail-modal.html: italic read as "a little aside", this is the
+     lead of an actual write-up now) and line-clamped so a long review
+     doesn't take over this narrow sidebar. */
+  .pin-detail-note{
+    font-size:13px; color:var(--ink-soft); line-height:1.4;
+    display:-webkit-box; -webkit-line-clamp:4; line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+  }
 
   .dayplan-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .dayplan-title{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:14.5px; }
@@ -2134,9 +2142,16 @@
         </div>
       </div>
 
+      <!-- Phase 4 item 7: the old one-line "Note" input is gone, replaced by
+           an optional multi-line Description field — see the approved design
+           in place-detail-modal.html's "Add place — field change only"
+           section. Deliberately NOT the full About/My review editor that
+           lives on the place's own detail modal: adding a place and writing
+           about it are different moments, so this stays a fast, few-second
+           step. -->
       <div style="margin-top:10px">
-        <label for="ap-note">Note <span class="field-optional">(optional)</span></label>
-        <input class="text-input" type="text" id="ap-note" placeholder="Why you want to go, best time, etc.">
+        <label for="ap-description">Description <span class="field-optional">(optional)</span></label>
+        <textarea class="text-input" id="ap-description" style="min-height:64px;resize:vertical" placeholder="Why you want to go, best time of day, anything worth knowing before you visit — you can always write more later."></textarea>
       </div>
 
       <button type="submit" class="btn btn-primary btn-block" style="margin-top:14px"><svg><use href="#i-check"/></svg> Save to wishlist</button>
@@ -2370,28 +2385,30 @@
   }
 
   // ---------- map: pin detail ----------
+  // Phase 4 item 7: `note` (the old one-line teaser) is gone — this is now
+  // `description` (pre-visit notes), matching the real Place schema.
   var placeData = {
     shanghai: {
-      bund: {name:'The Bund', cat:'Landmark', note:'Sunset walk along the river, skyline photos.', day:'Day 2 · Mon 10 Nov', color:'var(--d-blue)'},
-      nanjing: {name:'Nanjing Road', cat:'Street / Market', note:'Pedestrian street, dinner after.', day:'Day 2 · Mon 10 Nov', color:'var(--d-blue)'},
-      yugarden: {name:'Yu Garden', cat:'Garden', note:'Classical garden + bazaar for souvenirs.', day:'Day 3 · Tue 11 Nov', color:'var(--d-amber)'},
-      museum: {name:'Shanghai Museum', cat:'Museum', note:'Bronze & ceramics galleries, free entry.', day:'Day 3 · Tue 11 Nov', color:'var(--d-amber)'},
-      tianzifang: {name:'Tianzifang', cat:'Neighbourhood', note:'Laneway cafes — maybe day 3.', day:'Unassigned', color:'var(--d-grey)'}
+      bund: {name:'The Bund', cat:'Landmark', description:'Sunset walk along the river, skyline photos.', day:'Day 2 · Mon 10 Nov', color:'var(--d-blue)'},
+      nanjing: {name:'Nanjing Road', cat:'Street / Market', description:'Pedestrian street, dinner after.', day:'Day 2 · Mon 10 Nov', color:'var(--d-blue)'},
+      yugarden: {name:'Yu Garden', cat:'Garden', description:'Classical garden + bazaar for souvenirs.', day:'Day 3 · Tue 11 Nov', color:'var(--d-amber)'},
+      museum: {name:'Shanghai Museum', cat:'Museum', description:'Bronze & ceramics galleries, free entry.', day:'Day 3 · Tue 11 Nov', color:'var(--d-amber)'},
+      tianzifang: {name:'Tianzifang', cat:'Neighbourhood', description:'Laneway cafes — maybe day 3.', day:'Unassigned', color:'var(--d-grey)'}
     },
     suzhou: {
-      garden: {name:"Humble Administrator's Garden", cat:'Garden', note:'Largest classical garden — arrive early.', day:'Mon 16 Nov', color:'var(--d-teal)'},
-      tigerhill: {name:'Tiger Hill', cat:'Landmark', note:'Leaning pagoda, good at sunset.', day:'Mon 16 Nov', color:'var(--d-teal)'},
-      pingjiang: {name:'Pingjiang Road', cat:'Neighbourhood', note:'Canal-side street, good for dinner.', day:'Unassigned', color:'var(--d-grey)'}
+      garden: {name:"Humble Administrator's Garden", cat:'Garden', description:'Largest classical garden — arrive early.', day:'Mon 16 Nov', color:'var(--d-teal)'},
+      tigerhill: {name:'Tiger Hill', cat:'Landmark', description:'Leaning pagoda, good at sunset.', day:'Mon 16 Nov', color:'var(--d-teal)'},
+      pingjiang: {name:'Pingjiang Road', cat:'Neighbourhood', description:'Canal-side street, good for dinner.', day:'Unassigned', color:'var(--d-grey)'}
     },
     chongqing: {
-      hongya: {name:'Hongya Cave', cat:'Landmark', note:'Stilt-house complex, lit up at night.', day:'Day 1 · Fri 20 Nov', color:'var(--d-blue)'},
-      liziba: {name:'Liziba Monorail Station', cat:'Landmark', note:'Train runs right through the building.', day:'Day 1 · Fri 20 Nov', color:'var(--d-blue)'},
-      ciqikou: {name:'Ciqikou Ancient Town', cat:'Neighbourhood', note:'Old riverside town.', day:'Unassigned', color:'var(--d-grey)'}
+      hongya: {name:'Hongya Cave', cat:'Landmark', description:'Stilt-house complex, lit up at night.', day:'Day 1 · Fri 20 Nov', color:'var(--d-blue)'},
+      liziba: {name:'Liziba Monorail Station', cat:'Landmark', description:'Train runs right through the building.', day:'Day 1 · Fri 20 Nov', color:'var(--d-blue)'},
+      ciqikou: {name:'Ciqikou Ancient Town', cat:'Neighbourhood', description:'Old riverside town.', day:'Unassigned', color:'var(--d-grey)'}
     },
     chengdu: {
-      panda: {name:'Chengdu Panda Base', cat:'Nature', note:'Go early — pandas most active before 10am.', day:'Day 1 · Mon 23 Nov', color:'var(--d-indigo)'},
-      jinli: {name:'Jinli Street', cat:'Street / Market', note:'Night market, street snacks.', day:'Day 2 · Tue 24 Nov', color:'var(--d-olive)'},
-      kuanzhai: {name:'Kuanzhai Alley', cat:'Neighbourhood', note:'Teahouses — backup for a rain day.', day:'Unassigned', color:'var(--d-grey)'}
+      panda: {name:'Chengdu Panda Base', cat:'Nature', description:'Go early — pandas most active before 10am.', day:'Day 1 · Mon 23 Nov', color:'var(--d-indigo)'},
+      jinli: {name:'Jinli Street', cat:'Street / Market', description:'Night market, street snacks.', day:'Day 2 · Tue 24 Nov', color:'var(--d-olive)'},
+      kuanzhai: {name:'Kuanzhai Alley', cat:'Neighbourhood', description:'Teahouses — backup for a rain day.', day:'Unassigned', color:'var(--d-grey)'}
     }
   };
 
@@ -2420,7 +2437,7 @@
       '<div class="pin-detail-top"><div><div class="pin-detail-name">' + p.name + '</div>' +
       '<div class="pin-detail-tags"><span class="tag">' + p.cat + '</span><span class="tag city">' + (city.charAt(0).toUpperCase()+city.slice(1)) + '</span></div></div>' +
       '<button class="icon-btn" onclick="resetPinDetail()" title="Close"><svg><use href="#i-close"/></svg></button></div>' +
-      '<p class="pin-detail-note">' + p.note + '</p>' +
+      '<p class="pin-detail-note">' + p.description + '</p>' +
       '<div class="field-row"><span class="field-label">Assign to day</span></div>' +
       '<select onchange="reassignPin(this)" data-city="' + city + '">' + options + '<option' + (p.day==='Unassigned'?' selected':'') + '>Unassigned</option></select>';
   }
@@ -2476,7 +2493,7 @@
     document.getElementById('placeSearchInput').value = '';
     document.getElementById('searchClearBtn').style.display = 'none';
     document.getElementById('ap-name').value = '';
-    document.getElementById('ap-note').value = '';
+    document.getElementById('ap-description').value = '';
     document.getElementById('ap-city').value = cityLabels[activeCity] || 'Shanghai';
     document.getElementById('ap-cat').selectedIndex = 0;
     document.getElementById('addPlaceSavedMsg').classList.remove('on');

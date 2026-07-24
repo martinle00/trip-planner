@@ -4,13 +4,19 @@
 // card. "Add place" opens the shared AddPlaceModal (search-first) instead of
 // an inline form — the same modal the Map tab uses, so there's only one
 // add-place flow in the app.
+//
+// Each card also opens the PlaceDetailModal (Phase 4 item 3) for
+// description/self-review editing, and carries its own inline two-step
+// delete confirmation (Phase 4 item 6) — see PlaceCard below.
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useTripStore } from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
 import type { AddPlaceMode } from './AddPlaceModal';
-import type { Day, Place } from '../../data/schema';
+import { PlaceDetailModal } from './PlaceDetailModal';
+import type { Day, ID, Place } from '../../data/schema';
+import { buildPlaceDeleteWarning } from '../../lib/placeDeleteWarning';
 import {
   PLACE_CATEGORIES,
   buildDayColorMap,
@@ -34,18 +40,64 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
   const days = useTripStore((s) => s.days);
   const removePlace = useTripStore((s) => s.removePlace);
   const assignPlaceToDay = useTripStore((s) => s.assignPlaceToDay);
+  const getPlaceDraft = useTripStore((s) => s.getPlaceDraft);
 
   const [cityFilter, setCityFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [selectedPlaceId, setSelectedPlaceId] = useState<ID | null>(null);
+  const [draftPlaceIds, setDraftPlaceIds] = useState<Set<ID>>(new Set());
 
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
   const groups = useMemo(() => (trip ? groupPlacesByCity(places, trip.cities) : []), [places, trip]);
+
+  // Seeds which places currently carry an unsaved local draft, once on
+  // mount (e.g. after a full reload, so the "Draft" badge and the
+  // content-aware delete warning are both right immediately). Drafts live in
+  // IndexedDB, outside the Zustand store's reactive state, so there's
+  // nothing to subscribe to here — every change AFTER this initial scan is
+  // instead reported incrementally by PlaceDetailModal via markDraft, rather
+  // than re-scanning every place's draft on every keystroke.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(places.map(async (p) => ((await getPlaceDraft(p.id)) ? p.id : null)));
+      if (!cancelled) setDraftPlaceIds(new Set(entries.filter((id): id is ID => id !== null)));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const markDraft = useCallback((placeId: ID, hasDraft: boolean) => {
+    setDraftPlaceIds((prev) => {
+      if (prev.has(placeId) === hasDraft) return prev;
+      const next = new Set(prev);
+      if (hasDraft) next.add(placeId);
+      else next.delete(placeId);
+      return next;
+    });
+  }, []);
+
+  // The store's removePlace guarantees the place's local draft (if any) is
+  // cleaned up too (see useTripStore.ts) — this just keeps the in-memory
+  // badge Set in sync, and closes the detail modal if it currently has this
+  // exact place open (there's nothing left to show).
+  const handleDelete = useCallback(
+    async (placeId: ID) => {
+      await removePlace(placeId);
+      markDraft(placeId, false);
+      setSelectedPlaceId((cur) => (cur === placeId ? null : cur));
+    },
+    [removePlace, markDraft],
+  );
 
   if (!trip) return null;
 
   const totalPlaces = places.length;
   const assignedCount = places.filter((p) => p.dayId).length;
   const filtersActive = cityFilter !== 'all' || categoryFilter !== 'all';
+  const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
 
   function matchesFilters(p: Place): boolean {
     return (
@@ -142,8 +194,10 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
                     place={p}
                     cityDays={cDays}
                     dayColorMap={dayColorMap}
+                    hasDraft={draftPlaceIds.has(p.id)}
                     onAssign={(dayId) => assignPlaceToDay(p.id, dayId)}
-                    onRemove={() => removePlace(p.id)}
+                    onDelete={() => handleDelete(p.id)}
+                    onOpenDetail={() => setSelectedPlaceId(p.id)}
                   />
                 ))}
               </div>
@@ -151,6 +205,13 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
           );
         })
       )}
+
+      <PlaceDetailModal
+        place={selectedPlace}
+        pinColor={selectedPlace ? dayColor(selectedPlace.dayId, dayColorMap) : 'var(--d-grey)'}
+        onClose={() => setSelectedPlaceId(null)}
+        onDraftChange={markDraft}
+      />
     </section>
   );
 }
@@ -159,16 +220,54 @@ interface PlaceCardProps {
   place: Place;
   cityDays: Day[];
   dayColorMap: Map<string, string>;
+  hasDraft: boolean;
   onAssign: (dayId: string | undefined) => void;
-  onRemove: () => void;
+  onDelete: () => void;
+  onOpenDetail: () => void;
 }
 
-function PlaceCard({ place, cityDays, dayColorMap, onAssign, onRemove }: PlaceCardProps) {
+function PlaceCard({ place, cityDays, dayColorMap, hasDraft, onAssign, onDelete, onOpenDetail }: PlaceCardProps) {
   const color = dayColor(place.dayId, dayColorMap);
   const tintStyle: CSSProperties = { ['--select-tint' as string]: color } as CSSProperties;
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const trashRef = useRef<HTMLButtonElement>(null);
+  const wasConfirming = useRef(false);
+
+  // Restores focus to the trash trigger on Cancel — mirrors the approved
+  // mockup's cancelDeleteConfirm(), which does the same.
+  useEffect(() => {
+    if (wasConfirming.current && !confirmingDelete) {
+      trashRef.current?.focus();
+    }
+    wasConfirming.current = confirmingDelete;
+  }, [confirmingDelete]);
+
+  if (confirmingDelete) {
+    return (
+      <article className="card place-card is-delete-confirm" role="alertdialog" aria-label={`Delete ${place.name}?`}>
+        <div className="delete-confirm-inner">
+          <Icon name="alert" />
+          <div className="delete-confirm-text">
+            <strong>Delete {place.name}?</strong>
+            <span>{buildPlaceDeleteWarning(place, hasDraft)} This can&rsquo;t be undone.</span>
+          </div>
+        </div>
+        <div className="delete-confirm-actions">
+          <button type="button" className="btn delete-btn" onClick={onDelete}>
+            Delete place
+          </button>
+          <button type="button" className="btn btn-primary" autoFocus onClick={() => setConfirmingDelete(false)}>
+            Cancel
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  const hasDetail = Boolean(place.description?.trim() || place.selfReview?.trim());
 
   return (
-    <article className="place-card">
+    <article className="card place-card" onClick={onOpenDetail}>
       <div className="place-card-top">
         <span className="place-title">
           <span className={`place-icon${!place.dayId ? ' unassigned' : ''}`} style={{ ['--pin-color' as string]: color } as CSSProperties}>
@@ -177,7 +276,15 @@ function PlaceCard({ place, cityDays, dayColorMap, onAssign, onRemove }: PlaceCa
           <span className="place-name">{place.name}</span>
         </span>
         <div className="place-card-actions">
-          <button className="icon-btn" aria-label={`Delete ${place.name}`} onClick={onRemove}>
+          <button
+            ref={trashRef}
+            className="icon-btn icon-btn-danger"
+            aria-label={`Delete ${place.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmingDelete(true);
+            }}
+          >
             <Icon name="trash" />
           </button>
         </div>
@@ -185,8 +292,28 @@ function PlaceCard({ place, cityDays, dayColorMap, onAssign, onRemove }: PlaceCa
       <div className="place-tags">
         {place.category && <span className="tag">{place.category}</span>}
         <span className="tag city">{place.city}</span>
+        {/* A non-empty selfReview IS the "visited" signal (Phase 4 item 3) —
+            deliberately not a `visited` status field, so this never has to
+            touch PlaceStatus/autoplan/map marker colours. */}
+        {place.selfReview?.trim() && (
+          <span className="tag reviewed">
+            <Icon name="check" className="tag-icon" />
+            Reviewed
+          </span>
+        )}
+        {hasDraft && <span className="tag draft">Draft</span>}
       </div>
-      {place.note && <p className="place-note">{place.note}</p>}
+      {place.description?.trim() && <p className="place-desc-excerpt">{place.description}</p>}
+      <button
+        type="button"
+        className="detail-link"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenDetail();
+        }}
+      >
+        {hasDetail ? 'Notes & review' : 'Add notes'} <Icon name="chevron-right" />
+      </button>
       <div className="place-foot">
         {cityDays.length > 0 ? (
           <span className="assign-slot">
@@ -195,6 +322,7 @@ function PlaceCard({ place, cityDays, dayColorMap, onAssign, onRemove }: PlaceCa
               style={tintStyle}
               aria-label={`Assign day for ${place.name}`}
               value={place.dayId ?? ''}
+              onClick={(e) => e.stopPropagation()}
               onChange={(e) => onAssign(e.target.value || undefined)}
             >
               <option value="">Wishlist</option>

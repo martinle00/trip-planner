@@ -26,6 +26,7 @@ import { parseSnapshot, serializeSnapshot } from '../data/exportImport';
 import { draftRepository } from '../data/draftRepository';
 import type { PlaceDraft } from '../data/draftRepository';
 import * as exchangeRates from '../lib/exchangeRates';
+import { appendRemoteIfDifferent } from '../lib/proseMerge';
 
 export interface TripState {
   // ---- data ----
@@ -255,36 +256,11 @@ const runRatesExclusive = makeExclusiveQueue();
 // block) assignPlaceToDay/applyAutoPlan calls for other places.
 const runDraftExclusive = makeExclusiveQueue();
 
-/** Separator inserted between local and remote text when `commitPlaceDraft`
- *  detects a concurrent edit from another device and append-merges rather
- *  than overwriting. Deliberately owned by the store (not the persistence
- *  layer) — it's presentation-ish text specific to this one conflict-
- *  resolution policy, not something either repository implementation should
- *  need to know about. */
-const DRAFT_MERGE_SEPARATOR = '\n\n--- merged edit from another device ---\n\n';
-
 /** Bounds `commitPlaceDraft`'s conflict-retry loop. A real repeated race
  *  this deep is not expected in a two-device household app — this exists to
  *  fail loudly rather than spin forever if something is pathologically
  *  wrong. */
 const MAX_DRAFT_COMMIT_ATTEMPTS = 5;
-
-/**
- * Append-both merge for one free-text field: if `remote` is empty or
- * identical to `local` (after trimming), there's nothing to preserve, so
- * `local` is returned unchanged. If `local` is empty, `remote` is returned
- * as-is (no pointless leading separator). Otherwise the two are joined with
- * `DRAFT_MERGE_SEPARATOR` — this NEVER discards either side, matching the
- * "nothing is ever lost" conflict-resolution policy for Place.description/
- * selfReview (see commitPlaceDraft).
- */
-function appendRemoteIfDifferent(local: string | undefined, remote: string | undefined): string | undefined {
-  const localTrimmed = (local ?? '').trim();
-  const remoteTrimmed = (remote ?? '').trim();
-  if (!remoteTrimmed || remoteTrimmed === localTrimmed) return local;
-  if (!localTrimmed) return remote;
-  return `${local}${DRAFT_MERGE_SEPARATOR}${remote}`;
-}
 
 // Guards against an outdated `init()` call's background refresh clobbering a
 // newer one's result (or the freshly-reset post-sign-out state) — e.g. React
@@ -480,14 +456,24 @@ export const useTripStore = create<TripState>((set, get) => ({
 
   // Also strips any itinerary item(s) linked to this place (item.placeId ===
   // id) from every day — otherwise a deleted place leaves a dangling stop
-  // that still renders in the Itinerary tab / Map day-view.
+  // that still renders in the Itinerary tab / Map day-view. Also clears any
+  // local (never-synced) prose draft for this place — deliberately
+  // unconditional, not left to callers, so this guarantee lives here rather
+  // than depending on every future call site remembering to pair a delete
+  // with `discardPlaceDraft` first (a place deleted before a caller's own
+  // draft check has even resolved would otherwise orphan a row in
+  // db.placeDrafts forever, since nothing else reconciles drafts against
+  // live places).
   removePlace: async (id) => {
     await tripRepository.deletePlace(id);
     const orphanedItemIds = Object.values(get().itineraryByDay)
       .flat()
       .filter((i) => i.placeId === id)
       .map((i) => i.id);
-    await Promise.all(orphanedItemIds.map((itemId) => tripRepository.deleteItineraryItem(itemId)));
+    await Promise.all([
+      ...orphanedItemIds.map((itemId) => tripRepository.deleteItineraryItem(itemId)),
+      draftRepository.deleteDraft(id),
+    ]);
     set((s) => {
       const next: Record<ID, ItineraryItem[]> = {};
       for (const [dayId, items] of Object.entries(s.itineraryByDay)) {

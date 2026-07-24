@@ -74,8 +74,8 @@ describe('categoryIcon', () => {
 describe('suggestPlaceLocation', () => {
   it('returns the centroid of existing places in that city when there are any', () => {
     const places = [
-      { id: '1', tripId: 't', name: 'A', city: 'Shanghai', lat: 10, lng: 20, status: 'wishlist' as const },
-      { id: '2', tripId: 't', name: 'B', city: 'Shanghai', lat: 20, lng: 30, status: 'wishlist' as const },
+      { id: '1', tripId: 't', name: 'A', city: 'Shanghai', lat: 10, lng: 20, status: 'wishlist' as const, updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: '2', tripId: 't', name: 'B', city: 'Shanghai', lat: 20, lng: 30, status: 'wishlist' as const, updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
     expect(suggestPlaceLocation('Shanghai', places)).toEqual({ lat: 15, lng: 25 });
   });

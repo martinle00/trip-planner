@@ -14,7 +14,7 @@ const trip: Trip = {
   cities: [],
 };
 
-const snapshot: TripSnapshot = { version: 2, trip, days: [], places: [], itinerary: [], expenses: [] };
+const snapshot: TripSnapshot = { version: 3, trip, days: [], places: [], itinerary: [], expenses: [] };
 
 function makeRepo(overrides: Partial<TripRepository>): TripRepository {
   return {
@@ -30,6 +30,9 @@ function makeRepo(overrides: Partial<TripRepository>): TripRepository {
       return p;
     },
     async deletePlace() {},
+    async updatePlaceIfUnchanged(place) {
+      return { place, conflict: false };
+    },
     async listDays() {
       return [];
     },

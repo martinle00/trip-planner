@@ -96,6 +96,15 @@ export function IconSprite() {
         <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M15 6l-6 6 6 6" />
         </symbol>
+        <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 6l6 6-6 6" />
+        </symbol>
+        <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5v-15z" /><path d="M4 20.5A2.5 2.5 0 006.5 18H20" />
+        </symbol>
+        <symbol id="i-quote" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 8c-2 1-3 3-3 5.5S6 18 8 18" /><path d="M17 8c-2 1-3 3-3 5.5S20 18 22 18" />
+        </symbol>
         <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 11A8.1 8.1 0 006.3 6.3L4 8.6" /><path d="M4 4v4.6h4.6" />
           <path d="M4 13a8.1 8.1 0 0013.7 4.7L20 15.4" /><path d="M20 20v-4.6h-4.6" />
