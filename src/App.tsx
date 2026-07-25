@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { IconSprite, Icon } from './components/Icons';
 import { RouteStrip } from './components/RouteStrip';
@@ -10,6 +10,7 @@ import { clearLocalCache } from './data/db';
 import { DexieTripRepository } from './data/dexieTripRepository';
 import { setTripRepository } from './data/tripRepositoryInstance';
 import { orderedCities } from './lib/tripView';
+import { citiesWithPendingChanges } from './features/map/mapStaging';
 import { fmtCompactRange } from './lib/dates';
 import { useStickyOffsets } from './hooks/useStickyOffsets';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -61,6 +62,11 @@ function App() {
   const syncing = useTripStore((s) => s.syncing);
   const exportJson = useTripStore((s) => s.exportJson);
   const importJson = useTripStore((s) => s.importJson);
+  // Drives the route-strip's per-city "unsaved changes" dot (see the Map
+  // save-changes spec) — computed here, in the topbar, since the strip is
+  // shared across every tab, not just Map.
+  const stagedAssignments = useTripStore((s) => s.stagedAssignments);
+  const pendingCities = useMemo(() => citiesWithPendingChanges(stagedAssignments), [stagedAssignments]);
   const online = useOnlineStatus();
 
   // Drives the topbar's small sync-status pill (mockup's .sync-indicator):
@@ -301,7 +307,7 @@ function App() {
             </div>
           </div>
 
-          <RouteStrip cities={baseCities} selectedCity={selectedCity} onSelect={selectCity} />
+          <RouteStrip cities={baseCities} selectedCity={selectedCity} onSelect={selectCity} pendingCities={pendingCities} />
         </header>
 
         <nav className="tabbar" role="tablist" aria-label="Trip planner sections">

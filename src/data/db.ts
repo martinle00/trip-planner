@@ -29,6 +29,31 @@ export interface PlaceDraft {
   savedAt: string;
 }
 
+/**
+ * A staged (not-yet-saved) Map day reassignment, local-only and NEVER synced
+ * to Supabase — see `data/stagedAssignmentRepository.ts`, the only module
+ * that touches this table. Mirrors `PlaceDraft` above: it exists purely so
+ * an in-progress Map edit survives a city switch/reload/offline before the
+ * user explicitly hits Save (see `useTripStore.ts`'s `stagePlaceAssignment`/
+ * `saveStagedAssignments`/`discardStagedAssignmentsForCity`). Kept here
+ * (rather than in schema.ts, the synced-domain-model contract) because it
+ * isn't part of `TripSnapshot`/`TripRepository` at all.
+ */
+export interface StagedAssignment {
+  placeId: ID;
+  /** The staged target day; `undefined` stages "unassign" (back to
+   *  wishlist). Compared against the place's current SAVED `dayId` by
+   *  `stagePlaceAssignment` -- if they end up equal, the staged row is
+   *  deleted instead of written (nothing left to commit). */
+  dayId?: ID;
+  /** The place's `City.name` at staging time -- lets discard/count-by-city
+   *  scope correctly without cross-referencing the live places list. */
+  city: string;
+  /** ISO date-time this staged row was last written. Informational only --
+   *  staging never syncs, so there is no remote copy for it to race. */
+  stagedAt: string;
+}
+
 // Index layout has never changed between v1 and v2 — same `.stores()` shape
 // for both declared Dexie versions below.
 const STORES = {
@@ -46,6 +71,7 @@ export class TripDatabase extends Dexie {
   itinerary!: Table<ItineraryItem, string>;
   expenses!: Table<Expense, string>;
   placeDrafts!: Table<PlaceDraft, string>;
+  stagedAssignments!: Table<StagedAssignment, string>;
 
   constructor() {
     super('china-trip-planner');
@@ -116,6 +142,20 @@ export class TripDatabase extends Dexie {
             delete raw.note;
           });
       });
+
+    // v4 (Map "Save changes" staging model): introduces the local-only
+    // `stagedAssignments` table (see `StagedAssignment` above / the
+    // `data/stagedAssignmentRepository.ts` module that owns it). No upgrade
+    // function needed -- it's a brand new table, so Dexie just creates it
+    // empty; there is no existing data of this shape to migrate. Indexed on
+    // `city` (in addition to the primary key `placeId`) so
+    // `discardStagedAssignmentsForCity`/per-city counts can query by it
+    // directly rather than scanning every row.
+    this.version(4).stores({
+      ...STORES,
+      placeDrafts: 'placeId',
+      stagedAssignments: 'placeId, city',
+    });
   }
 }
 
@@ -128,10 +168,11 @@ export const db = new TripDatabase();
 export async function clearLocalCache(): Promise<void> {
   // Tables passed as an ARRAY, not varargs: Dexie's `transaction()` only has
   // explicit overloads up to 5 named tables, and adding `placeDrafts` in v3
-  // made 6. The varargs form stops typechecking at that point.
+  // made 6 (now 7 with `stagedAssignments` in v4). The varargs form stops
+  // typechecking at that point.
   await db.transaction(
     'rw',
-    [db.trips, db.days, db.places, db.itinerary, db.expenses, db.placeDrafts],
+    [db.trips, db.days, db.places, db.itinerary, db.expenses, db.placeDrafts, db.stagedAssignments],
     async () => {
       await Promise.all([
         db.trips.clear(),
@@ -140,6 +181,7 @@ export async function clearLocalCache(): Promise<void> {
         db.itinerary.clear(),
         db.expenses.clear(),
         db.placeDrafts.clear(),
+        db.stagedAssignments.clear(),
       ]);
     },
   );

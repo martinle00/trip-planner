@@ -8,21 +8,42 @@
 // coordinate already known) instead of jumping to the Places tab. Offline
 // shows a fallback message instead of the live map (data itself stays
 // available via the other tabs).
+//
+// STAGED CHANGES (approved via mockup/map-save-changes.html): the day-assign
+// select below no longer writes through immediately — it calls the store's
+// `stagePlaceAssignment`, and every pin/select/chip in this file reads a
+// place's EFFECTIVE day (`getEffectiveDayId` — the staged value if one is
+// pending, else the saved `dayId`) instead of `place.dayId` directly, so a
+// staged reassignment is reflected everywhere at once, before Save is ever
+// pressed. `<MapSaveBar>` (a separate, store-agnostic component) is the only
+// thing that actually commits or reverts staging.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
-import { useTripStore } from '../../store/useTripStore';
+import {
+  getEffectiveDayId,
+  getStagedAssignmentCount,
+  getStagedAssignmentCountForCity,
+  useTripStore,
+} from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { AddPlaceMode, AddPlacePoint } from '../places/AddPlaceModal';
-import type { Day, Place } from '../../data/schema';
+import type { Day, ID, Place } from '../../data/schema';
 import { buildDayColorMap, dayColor, dayLabel, daysForCity } from '../../lib/tripView';
 import { fmtCompactRange, parseISODate } from '../../lib/dates';
 import { buildPinIcon } from './markerIcon';
+import { MapSaveBar, MAP_SAVE_BAR_ID } from './MapSaveBar';
+import { crossCityHint, isPlacePending } from './mapStaging';
+import type { StagedAssignments } from './mapStaging';
 
 const DEFAULT_CENTER: [number, number] = [30.5, 112];
 const DEFAULT_ZOOM = 5;
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
 
 interface MapPanelProps {
   /** The city currently selected on the route-strip timeline (lifted to App). */
@@ -37,11 +58,17 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
   const places = useTripStore((s) => s.places);
   const days = useTripStore((s) => s.days);
   const itineraryByDay = useTripStore((s) => s.itineraryByDay);
-  const assignPlaceToDay = useTripStore((s) => s.assignPlaceToDay);
+  const stagedAssignments = useTripStore((s) => s.stagedAssignments);
+  const stagePlaceAssignment = useTripStore((s) => s.stagePlaceAssignment);
+  const discardStagedAssignmentsForCity = useTripStore((s) => s.discardStagedAssignmentsForCity);
+  const saveStagedAssignments = useTripStore((s) => s.saveStagedAssignments);
   const online = useOnlineStatus();
 
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  // Focused when a Discard empties the Save bar entirely (nothing staged left
+  // anywhere) — there's no control left inside the bar to land focus on.
+  const panelTitleRef = useRef<HTMLHeadingElement>(null);
 
   // Reset the day/pin selection whenever the timeline switches cities.
   useEffect(() => {
@@ -56,6 +83,11 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
   const selectedDay = days.find((d) => d.id === selectedDayId) ?? null;
   const cityMeta = trip?.cities.find((c) => c.name === selectedCity);
 
+  const totalPending = getStagedAssignmentCount(stagedAssignments);
+  const pendingInCity = getStagedAssignmentCountForCity(stagedAssignments, selectedCity);
+  const saveBarHint = crossCityHint(stagedAssignments, selectedCity);
+  const selectedPlacePending = selectedPlace ? isPlacePending(selectedPlace.id, stagedAssignments) : false;
+
   function handleSelectDay(dayId: string | null) {
     setSelectedDayId(dayId);
     setSelectedPlaceId(null);
@@ -69,13 +101,29 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
     onOpenAddPlace('pin', { lat, lng });
   }
 
+  /** Scrolls the sticky Save bar into view and, if it's not disabled, moves
+   *  focus to its Save button — used by the pin-detail panel's "Unsaved
+   *  change" pill so a change staged from a pin far from the bar is easy to
+   *  act on immediately. */
+  function handleJumpToSaveBar() {
+    const bar = document.getElementById(MAP_SAVE_BAR_ID);
+    if (!bar) return;
+    bar.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'end' });
+    const saveBtn = bar.querySelector<HTMLButtonElement>('.map-save-bar-actions .btn-primary');
+    if (saveBtn && !saveBtn.disabled) {
+      window.setTimeout(() => saveBtn.focus(), 250);
+    }
+  }
+
   if (!trip) return null;
 
   return (
     <section className="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
       <div className="panel-head">
         <div>
-          <h2 className="panel-title">Map</h2>
+          <h2 className="panel-title" ref={panelTitleRef} tabIndex={-1}>
+            Map
+          </h2>
           <span className="panel-hint">Your home screen &middot; tap a city in the timeline above to change what&rsquo;s shown</span>
         </div>
         <button className="btn btn-primary btn-sm" onClick={() => onOpenAddPlace('search')}>
@@ -122,6 +170,7 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
                   places={cityPlaces}
                   cityDays={cityDays}
                   dayColorMap={dayColorMap}
+                  stagedAssignments={stagedAssignments}
                   selectedDayId={selectedDayId}
                   selectedPlaceId={selectedPlaceId}
                   onSelectPlace={handleSelectPlace}
@@ -159,22 +208,40 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
                 <span className="legend-dot dashed" />
                 Unassigned
               </div>
+              <div className="legend-item">
+                <span className="legend-dot pending-ring" aria-hidden="true" />
+                Unsaved change
+              </div>
             </div>
           )}
         </div>
 
         <PinDetailPanel
           place={selectedPlace}
+          effectivePlaceDayId={selectedPlace ? getEffectiveDayId(selectedPlace, stagedAssignments) : undefined}
+          pending={selectedPlacePending}
           selectedDay={selectedDay}
           cityDays={cityDays}
           dayColorMap={dayColorMap}
           itineraryByDay={itineraryByDay}
-          onAssign={(dayId) => selectedPlace && assignPlaceToDay(selectedPlace.id, dayId)}
+          onAssign={(dayId) => selectedPlace && stagePlaceAssignment(selectedPlace.id, dayId)}
           onClose={() => setSelectedPlaceId(null)}
           onClearDayFilter={() => handleSelectDay(null)}
           onOpenInItinerary={(city) => onJumpToItinerary(`it-${city.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)}
+          onJumpToSaveBar={handleJumpToSaveBar}
         />
       </div>
+
+      <MapSaveBar
+        pendingTotal={totalPending}
+        pendingInCity={pendingInCity}
+        cityLabel={selectedCity}
+        hint={saveBarHint}
+        online={online}
+        onSave={saveStagedAssignments}
+        onDiscardCity={() => discardStagedAssignmentsForCity(selectedCity)}
+        fallbackFocusRef={panelTitleRef}
+      />
     </section>
   );
 }
@@ -185,6 +252,7 @@ interface LeafletMapProps {
   places: Place[];
   cityDays: Day[];
   dayColorMap: Map<string, string>;
+  stagedAssignments: StagedAssignments;
   selectedDayId: string | null;
   selectedPlaceId: string | null;
   onSelectPlace: (id: string) => void;
@@ -195,6 +263,7 @@ function LeafletMap({
   places,
   cityDays,
   dayColorMap,
+  stagedAssignments,
   selectedDayId,
   selectedPlaceId,
   onSelectPlace,
@@ -209,13 +278,15 @@ function LeafletMap({
       <FitToPlaces places={places} />
       <ClickToAdd onMapClick={onMapClick} />
       {places.map((p) => {
-        const day = cityDays.find((d) => d.id === p.dayId);
-        const color = dayColor(p.dayId, dayColorMap);
-        const unassigned = !p.dayId;
-        const emph = selectedDayId ? p.dayId === selectedDayId : false;
-        const dim = selectedDayId ? p.dayId !== selectedDayId : false;
+        const effDayId = getEffectiveDayId(p, stagedAssignments);
+        const pending = isPlacePending(p.id, stagedAssignments);
+        const day = cityDays.find((d) => d.id === effDayId);
+        const color = dayColor(effDayId, dayColorMap);
+        const unassigned = !effDayId;
+        const emph = selectedDayId ? effDayId === selectedDayId : false;
+        const dim = selectedDayId ? effDayId !== selectedDayId : false;
         const badgeText = day ? String(parseISODate(day.date).getDate()) : undefined;
-        const tooltipText = day ? dayLabel(day, cityDays) : 'Unassigned';
+        const tooltipText = (day ? dayLabel(day, cityDays) : 'Unassigned') + (pending ? ' (unsaved)' : '');
         return (
           <Marker
             key={p.id}
@@ -228,6 +299,7 @@ function LeafletMap({
               selected: p.id === selectedPlaceId,
               emph,
               dim,
+              pending,
             })}
             eventHandlers={{ click: () => onSelectPlace(p.id) }}
           >
@@ -272,6 +344,11 @@ function ClickToAdd({ onMapClick }: { onMapClick: (lat: number, lng: number) => 
 
 interface PinDetailPanelProps {
   place: Place | null;
+  /** The place's staged day if one is pending, else its saved `dayId` — what
+   *  the "Assign to day" select should actually show. */
+  effectivePlaceDayId: ID | undefined;
+  /** Whether `place` has an unsaved (staged) day reassignment right now. */
+  pending: boolean;
   selectedDay: Day | null;
   cityDays: Day[];
   dayColorMap: Map<string, string>;
@@ -280,10 +357,13 @@ interface PinDetailPanelProps {
   onClose: () => void;
   onClearDayFilter: () => void;
   onOpenInItinerary: (city: string) => void;
+  onJumpToSaveBar: () => void;
 }
 
 function PinDetailPanel({
   place,
+  effectivePlaceDayId,
+  pending,
   selectedDay,
   cityDays,
   dayColorMap,
@@ -292,8 +372,12 @@ function PinDetailPanel({
   onClose,
   onClearDayFilter,
   onOpenInItinerary,
+  onJumpToSaveBar,
 }: PinDetailPanelProps) {
   if (place) {
+    // "Open in Itinerary" reflects the place's actually-SAVED assignment —
+    // the itinerary tab has nothing linked yet for a staged-but-not-saved
+    // reassignment (that link is only created once Save commits it).
     const assignedDay = cityDays.find((d) => d.id === place.dayId);
     return (
       <div className="pin-detail" id="pinDetail">
@@ -304,6 +388,17 @@ function PinDetailPanel({
               {place.category && <span className="tag">{place.category}</span>}
               <span className="tag city">{place.city}</span>
             </div>
+            {/* Same visual language as PlaceDetailModal's "Unsaved changes"
+                draft pill — this is the same kind of risk (an edit that only
+                exists on this device so far), so it reads as the same
+                product handling it the same way. Doubles as a shortcut to
+                the Save bar. */}
+            {pending && (
+              <button type="button" className="draft-pill" onClick={onJumpToSaveBar}>
+                <span className="dot" aria-hidden="true" />
+                Unsaved change
+              </button>
+            )}
           </div>
           <button className="icon-btn" onClick={onClose} title="Close">
             <Icon name="close" />
@@ -314,7 +409,8 @@ function PinDetailPanel({
           <span className="field-label">Assign to day</span>
         </div>
         <select
-          value={place.dayId ?? ''}
+          value={effectivePlaceDayId ?? ''}
+          aria-label={`Assign ${place.name} to a day`}
           onChange={(e) => onAssign(e.target.value || undefined)}
         >
           <option value="">Unassigned</option>

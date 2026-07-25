@@ -25,6 +25,8 @@ import { DexieTripRepository } from '../data/dexieTripRepository';
 import { parseSnapshot, serializeSnapshot } from '../data/exportImport';
 import { draftRepository } from '../data/draftRepository';
 import type { PlaceDraft } from '../data/draftRepository';
+import { stagedAssignmentRepository } from '../data/stagedAssignmentRepository';
+import type { StagedAssignment } from '../data/stagedAssignmentRepository';
 import * as exchangeRates from '../lib/exchangeRates';
 import { appendRemoteIfDifferent } from '../lib/proseMerge';
 
@@ -60,6 +62,17 @@ export interface TripState {
   /** Message from the most recent `refreshRates()` failure, or undefined.
    *  Cleared at the start of the next `refreshRates()` call. */
   ratesError: string | undefined;
+  /**
+   * In-memory mirror of the local (never-synced) Map day-assignment staging
+   * table, keyed by placeId -- see `stagedAssignmentRepository.ts`. A place
+   * with an entry here has an unsaved Map day reassignment pending. Loaded
+   * from the staging table on `init()`; survives a city switch or a full
+   * reload the same way place prose drafts do (`draftRepository.ts`), but
+   * (like those drafts) is NEVER synced to Supabase. Read it via the
+   * `getEffectiveDayId`/`getStagedAssignmentCount*` helpers exported
+   * alongside this store, rather than re-deriving the same lookups ad hoc.
+   */
+  stagedAssignments: Record<ID, { dayId: ID | undefined; city: string }>;
 
   // ---- lifecycle ----
   /**
@@ -96,8 +109,55 @@ export interface TripState {
    *  (non-prose) fields, e.g. name/category/position. */
   updatePlace: (place: Place) => Promise<void>;
   removePlace: (id: ID) => Promise<void>;
-  /** Assign (or clear, with undefined) a place's day; keeps status in sync. */
+  /** Assign (or clear, with undefined) a place's day; keeps status in sync.
+   *  Writes straight through the repository -- used by auto-plan and any
+   *  other direct caller. The Map's pin-detail day dropdown does NOT call
+   *  this directly; it calls `stagePlaceAssignment` below instead, which
+   *  stages the edit locally and only reaches this write path in a batch,
+   *  via `saveStagedAssignments`, once the user hits Save. */
   assignPlaceToDay: (placeId: ID, dayId: ID | undefined) => Promise<void>;
+
+  // ---- Map: staged day-assignment edits ("Save changes" model) ----
+  /**
+   * Stage (or update) a day reassignment for a place -- called by the Map's
+   * pin-detail day dropdown INSTEAD OF `assignPlaceToDay`. `dayId: undefined`
+   * stages "unassign" (back to wishlist). If the staged value ends up equal
+   * to the place's current SAVED `dayId`, the staged entry is removed
+   * instead of written (typing back to the saved value leaves nothing to
+   * commit for this place). Persists to the local staging table immediately
+   * -- see `stagedAssignmentRepository.ts` -- so the change survives a
+   * reload before Save is ever pressed. No-ops if `placeId` isn't a known
+   * place.
+   */
+  stagePlaceAssignment: (placeId: ID, dayId: ID | undefined) => Promise<void>;
+  /**
+   * Discard every staged assignment scoped to ONE city; other cities' staged
+   * assignments are untouched (Discard's scope is deliberately narrower than
+   * Save's -- see `saveStagedAssignments`). No-ops if the city has nothing
+   * staged.
+   */
+  discardStagedAssignmentsForCity: (city: string) => Promise<void>;
+  /**
+   * Batch-commit every staged assignment, across EVERY city, by calling
+   * `assignPlaceToDay` (the existing write-through path -- remote-first; the
+   * local Dexie cache is only mirrored after each remote write succeeds) for
+   * each staged placeId/dayId pair, IN ORDER, stopping at the first failure.
+   * Refuses to even attempt this while offline (`!navigator.onLine`) -- the
+   * UI already disables the Save control offline, this is a defensive second
+   * guard -- and throws in that case without touching staging.
+   *
+   * On full success, clears the staging table and in-memory state entirely.
+   * On a failure partway through, staging is left reflecting REALITY, not
+   * left unconditionally untouched: every entry that already committed
+   * before the failure (real remote write + local mirror + in-memory
+   * `places`/itinerary update -- cloud is source of truth, so that change is
+   * real) is removed from staging, since there is nothing left to save for
+   * it; the entry that failed and any not-yet-attempted entries stay staged.
+   * The error is then rethrown so the UI can show its "still here, safe on
+   * this device" message -- which is now actually true for whatever remains
+   * staged. No-ops (resolves immediately) if nothing is staged.
+   */
+  saveStagedAssignments: () => Promise<void>;
 
   // ---- place prose drafts (description/selfReview) ----
   /** Read the local (never-synced) WIP draft for a place, if any — e.g. to
@@ -186,6 +246,74 @@ function sortByOrder(items: ItineraryItem[]): ItineraryItem[] {
   return [...items].sort((a, b) => a.order - b.order);
 }
 
+/** Converts a flat list of persisted staging rows into the in-memory
+ *  `Record<placeId, ...>` shape `TripState.stagedAssignments` uses. */
+function stagedAssignmentsToRecord(
+  entries: StagedAssignment[],
+): Record<ID, { dayId: ID | undefined; city: string }> {
+  const record: Record<ID, { dayId: ID | undefined; city: string }> = {};
+  for (const entry of entries) {
+    record[entry.placeId] = { dayId: entry.dayId, city: entry.city };
+  }
+  return record;
+}
+
+/**
+ * Builds the `stagedAssignments` field to include in an `init()` `set()`
+ * call -- but only if nothing else changed staging while this read was in
+ * flight. `versionAtRead` must be `stagedAssignmentsVersion`'s value
+ * captured synchronously (no `await` in between) right before the
+ * `stagedAssignmentRepository.listAll()` call this `entries` came from. If
+ * the counter has since moved on (a `stagePlaceAssignment`/
+ * `discardStagedAssignmentsForCity`/`saveStagedAssignments`/`importJson`
+ * call completed in the meantime), this returns `{}` so the caller's `set()`
+ * leaves `stagedAssignments` exactly as that more-recent action left it,
+ * rather than clobbering it with this now-stale snapshot. See
+ * `stagedAssignmentsVersion`'s module comment for the full race this guards
+ * against.
+ */
+function stagedAssignmentsInitPatch(
+  entries: StagedAssignment[],
+  versionAtRead: number,
+): Partial<Pick<TripState, 'stagedAssignments'>> {
+  if (versionAtRead !== stagedAssignmentsVersion) return {};
+  return { stagedAssignments: stagedAssignmentsToRecord(entries) };
+}
+
+/**
+ * Builds the `places`/`days`/`itineraryByDay`/`expenses` fields to include
+ * in an `init()` `set()` call -- but only if no place/itinerary/expense
+ * write landed while this read was in flight. Exactly mirrors
+ * `stagedAssignmentsInitPatch` above, guarding a DIFFERENT set of fields
+ * against a DIFFERENT counter (`mutationVersion`) -- see its module comment
+ * for the full race this closes (a background refresh's stale `listPlaces()`
+ * etc. snapshot silently reverting a write, e.g. a `saveStagedAssignments()`
+ * commit, that completed while that read was still in flight).
+ * `versionAtRead` must be `mutationVersion`'s value captured synchronously
+ * (no `await` in between) right before the `listPlaces`/`listDays`/
+ * `listAllItinerary`/`listExpenses` calls this data came from. A mismatch
+ * means a write landed in the meantime, so this returns `{}` and the
+ * caller's `set()` leaves all four fields exactly as that more-recent write
+ * left them -- a later `init()`/reload naturally re-reads current data, so
+ * skipping this one stale refresh never leaves anything permanently behind.
+ * `trip` is deliberately NOT one of these fields -- it isn't written by any
+ * of the actions that bump `mutationVersion`, only by `setHomeCurrency`/
+ * `refreshRates` (each already serialized by their own dedicated queue) and
+ * the cache-first paint steps below, none of which race this same way.
+ */
+function domainDataInitPatch(
+  data: { places: Place[]; days: Day[]; itinerary: ItineraryItem[]; expenses: Expense[] },
+  versionAtRead: number,
+): Partial<Pick<TripState, 'places' | 'days' | 'itineraryByDay' | 'expenses'>> {
+  if (versionAtRead !== mutationVersion) return {};
+  return {
+    places: data.places,
+    days: data.days,
+    itineraryByDay: groupByDay(data.itinerary),
+    expenses: data.expenses,
+  };
+}
+
 function groupByDay(items: ItineraryItem[]): Record<ID, ItineraryItem[]> {
   const itineraryByDay: Record<ID, ItineraryItem[]> = {};
   for (const item of items) {
@@ -256,6 +384,24 @@ const runRatesExclusive = makeExclusiveQueue();
 // block) assignPlaceToDay/applyAutoPlan calls for other places.
 const runDraftExclusive = makeExclusiveQueue();
 
+// Dedicated queue for saveStagedAssignments(): guards against a rapid
+// double-click on "Save" starting two overlapping batch-commits (e.g. before
+// the UI's own disabled-while-saving state has painted). Deliberately its
+// OWN queue instance, never `runExclusive` -- saveStagedAssignments' body
+// itself calls `assignPlaceToDay`, which queues on `runExclusive` internally;
+// if saveStagedAssignments queued on that SAME instance, its own call would
+// be waiting on `queue` while `queue` was simultaneously waiting on it to
+// finish -- a self-deadlock. Two independent queue instances nest safely.
+const runSaveExclusive = makeExclusiveQueue();
+
+/** True when the browser (or a test) reports no network connectivity.
+ *  Mirrors `syncedTripRepository.ts`'s private `isOffline()` -- kept as its
+ *  own copy here rather than exported/shared, since the two call sites have
+ *  no other coupling and this is a one-line check. */
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
 /** Bounds `commitPlaceDraft`'s conflict-retry loop. A real repeated race
  *  this deep is not expected in a two-device household app — this exists to
  *  fail loudly rather than spin forever if something is pathologically
@@ -272,6 +418,51 @@ const MAX_DRAFT_COMMIT_ATTEMPTS = 5;
 // since established.
 let initToken = 0;
 
+// Guards against a DIFFERENT race than `initToken`: `initToken` protects an
+// outdated `init()` call's background refresh from clobbering a NEWER
+// `init()` call's result. This counter protects `stagedAssignments`
+// specifically from an `init()` call's background refresh clobbering a
+// STAGING-side action (`stagePlaceAssignment`/`discardStagedAssignmentsForCity`/
+// `saveStagedAssignments`/`importJson`) that committed WHILE that refresh's
+// own `stagedAssignmentRepository.listAll()` read was still in flight --
+// e.g. the user hits Save (which clears staging) a moment after `init()`
+// already started re-reading the (soon to be stale) staged rows; without
+// this guard, `init()`'s Promise.all would still resolve with the
+// pre-Save snapshot and resurrect the just-cleared entries in memory (the
+// Dexie table itself stays correct either way, so this is a display-only
+// hazard, but a real one). Bumped by every one of those staging actions
+// immediately alongside their own `set({ stagedAssignments: ... })`; `init()`
+// snapshots this counter right before kicking off its staged-assignments
+// read and re-checks it right before applying that read's result -- a
+// mismatch means someone else changed staging in the meantime, so `init()`
+// leaves that field alone (every OTHER field it refreshes is unaffected).
+let stagedAssignmentsVersion = 0;
+
+// Guards a THIRD race, in the same family as the two above but against the
+// DOMAIN-DATA fields `init()`'s background refresh also touches --
+// `places`/`days`/`itineraryByDay`/`expenses`. Those four are read by the
+// exact same `Promise.all` as the staged-assignments read, but (unlike
+// `stagedAssignments`) had no equivalent guard: a write that lands (e.g. a
+// `saveStagedAssignments()` commit, or any other place/itinerary/expense
+// write) WHILE that refresh's own `listPlaces()`/`listDays()`/
+// `listAllItinerary()`/`listExpenses()` reads were still in flight would get
+// silently reverted in memory the moment that now-stale snapshot resolved
+// and its `set()` ran -- the remote/Dexie data stays correct either way (so
+// this was never data loss, and a later `init()`/reload self-heals it), but
+// a save visibly "undoing itself" on screen directly undercuts the trust the
+// whole staged-Save feature depends on. Bumped by every store action that
+// writes one of those four tables: addPlace/updatePlace/removePlace/
+// assignPlaceToDay/commitPlaceDraft/applyAutoPlan (places);
+// addItineraryItem/updateItineraryItem/removeItineraryItem/reorderItinerary
+// (itineraryByDay); addExpense/updateExpense/removeExpense (expenses); and
+// importSnapshot's whole-trip replace. `init()` snapshots this counter right
+// before dispatching those four reads and re-checks it right before applying
+// them via `domainDataInitPatch` below -- a mismatch means one of those
+// actions completed in the meantime, so `init()` leaves all four fields
+// alone (every OTHER field -- `trip`, `loading`, `syncing`, `stagedAssignments`
+// -- is refreshed independently and unaffected by this guard).
+let mutationVersion = 0;
+
 /** Call on sign-out: invalidates any in-flight `init()`/background refresh
  *  (so it can never repaint this account's data after the user has left) and
  *  clears in-memory state back to its pre-load shape. Pair with pointing
@@ -279,6 +470,8 @@ let initToken = 0;
  *  `clearLocalCache()` — this function only resets the Zustand store. */
 export function resetTripStoreForSignOut(): void {
   initToken++;
+  stagedAssignmentsVersion++;
+  mutationVersion++;
   useTripStore.setState({
     trip: undefined,
     places: [],
@@ -288,7 +481,60 @@ export function resetTripStoreForSignOut(): void {
     loading: true,
     syncing: false,
     syncError: undefined,
+    stagedAssignments: {},
   });
+}
+
+// ---------------------------------------------------------------------------
+// Plain exported selector helpers for the Map "Save changes" staging model.
+// Deliberately NOT derived/stored state on TripState itself -- these are
+// cheap, pure lookups over `stagedAssignments`, so components (and future
+// selectors) can call them directly against whatever slice of the store they
+// already have, without the store needing to keep a second, denormalized
+// copy in sync.
+// ---------------------------------------------------------------------------
+
+/** Effective (about-to-be-shown) dayId for a place: the staged value if one
+ *  is pending, otherwise the place's own saved `dayId`. Lets the Map render
+ *  a pin at its staged day/colour immediately, without waiting for Save. */
+export function getEffectiveDayId(
+  place: Place,
+  stagedAssignments: TripState['stagedAssignments'],
+): ID | undefined {
+  const staged = stagedAssignments[place.id];
+  return staged ? staged.dayId : place.dayId;
+}
+
+/** Total number of staged (unsaved) day assignments across every city. */
+export function getStagedAssignmentCount(
+  stagedAssignments: TripState['stagedAssignments'],
+): number {
+  return Object.keys(stagedAssignments).length;
+}
+
+/** Number of staged (unsaved) day assignments scoped to one city. */
+export function getStagedAssignmentCountForCity(
+  stagedAssignments: TripState['stagedAssignments'],
+  city: string,
+): number {
+  let count = 0;
+  for (const entry of Object.values(stagedAssignments)) {
+    if (entry.city === city) count++;
+  }
+  return count;
+}
+
+/** Staged (unsaved) counts broken down per city -- e.g. to badge every
+ *  route-strip node with a pending dot, or drive the Save bar's "+N more in
+ *  <city>" hint line. */
+export function getStagedAssignmentCountsByCity(
+  stagedAssignments: TripState['stagedAssignments'],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const entry of Object.values(stagedAssignments)) {
+    counts[entry.city] = (counts[entry.city] ?? 0) + 1;
+  }
+  return counts;
 }
 
 export const useTripStore = create<TripState>((set, get) => ({
@@ -302,6 +548,7 @@ export const useTripStore = create<TripState>((set, get) => ({
   syncError: undefined,
   ratesLoading: false,
   ratesError: undefined,
+  stagedAssignments: {},
 
   init: async () => {
     const token = ++initToken;
@@ -313,29 +560,34 @@ export const useTripStore = create<TripState>((set, get) => ({
     // single read/seed sequence this always used, unchanged. (This also
     // sidesteps a real Dexie/fake-indexeddb footgun: issuing two back-to-back
     // reads against the same connection immediately after a fresh
-    // open/upgrade can race Dexie's internal reopen bookkeeping.) `syncing`
-    // never toggles in this mode — there's nothing being synced from a
-    // remote, so the topbar pill has nothing to report.
+    // open/upgrade can race Dexie's internal reopen bookkeeping. The staged-
+    // assignments read below is deliberately folded into the SAME
+    // `Promise.all` as the other post-seed reads rather than issued as an
+    // earlier, separate read, for exactly this reason — it hit this exact
+    // footgun during development, see git history if this comment outlives
+    // the fix.) `syncing` never toggles in this mode — there's nothing being
+    // synced from a remote, so the topbar pill has nothing to report.
     if (getActiveRepository() instanceof DexieTripRepository) {
       if (token !== initToken) return;
       set({ loading: true });
       await tripRepository.seedIfEmpty();
       const trip = await tripRepository.getTrip();
       const tripId = trip?.id ?? ACTIVE_TRIP_ID;
-      const [places, days, itinerary, expenses] = await Promise.all([
+      const stagedVersionAtRead = stagedAssignmentsVersion;
+      const mutationVersionAtRead = mutationVersion;
+      const [places, days, itinerary, expenses, stagedEntries] = await Promise.all([
         tripRepository.listPlaces(tripId),
         tripRepository.listDays(tripId),
         tripRepository.listAllItinerary(tripId),
         tripRepository.listExpenses(tripId),
+        stagedAssignmentRepository.listAll(),
       ]);
       if (token !== initToken) return;
       set({
         trip,
-        places,
-        days,
-        itineraryByDay: groupByDay(itinerary),
-        expenses,
         loading: false,
+        ...domainDataInitPatch({ places, days, itinerary, expenses }, mutationVersionAtRead),
+        ...stagedAssignmentsInitPatch(stagedEntries, stagedVersionAtRead),
       });
       return;
     }
@@ -356,20 +608,21 @@ export const useTripStore = create<TripState>((set, get) => ({
 
     if (localTrip) {
       const tripId = localTrip.id;
-      const [places, days, itinerary, expenses] = await Promise.all([
+      const stagedVersionAtRead = stagedAssignmentsVersion;
+      const mutationVersionAtRead = mutationVersion;
+      const [places, days, itinerary, expenses, stagedEntries] = await Promise.all([
         local.listPlaces(tripId),
         local.listDays(tripId),
         local.listAllItinerary(tripId),
         local.listExpenses(tripId),
+        stagedAssignmentRepository.listAll(),
       ]);
       if (token !== initToken) return;
       set({
         trip: localTrip,
-        places,
-        days,
-        itineraryByDay: groupByDay(itinerary),
-        expenses,
         loading: false,
+        ...domainDataInitPatch({ places, days, itinerary, expenses }, mutationVersionAtRead),
+        ...stagedAssignmentsInitPatch(stagedEntries, stagedVersionAtRead),
       });
     } else if (token === initToken) {
       // Genuinely nothing cached on this device yet — the background step
@@ -387,28 +640,39 @@ export const useTripStore = create<TripState>((set, get) => ({
     // to show yet. Every `set()` here is guarded by the token captured at the
     // top of this call, so an outdated call (superseded by a newer `init()`
     // or by `resetTripStoreForSignOut()` bumping the token on sign-out) can
-    // never overwrite newer state.
+    // never overwrite newer state. Staged assignments are ALWAYS read from
+    // the local `stagedAssignmentRepository` (never remote — see its module
+    // comment); `stagedAssignmentsInitPatch` below guards this specific field
+    // against a DIFFERENT race than `initToken` covers -- see
+    // `stagedAssignmentsVersion`'s module comment. `domainDataInitPatch`
+    // guards `places`/`days`/`itineraryByDay`/`expenses` the exact same way,
+    // against its own `mutationVersion` counter -- this is the step where
+    // that race is most likely to actually bite in practice (a real network
+    // round-trip, not just a few IndexedDB reads, so the window for a write
+    // like `saveStagedAssignments()` to land while this is in flight is far
+    // wider here than in the cache-first steps above).
     if (token === initToken) set({ syncing: true, syncError: undefined });
     const refresh = (async () => {
       try {
         await tripRepository.seedIfEmpty();
         const trip = await tripRepository.getTrip();
         const tripId = trip?.id ?? ACTIVE_TRIP_ID;
-        const [places, days, itinerary, expenses] = await Promise.all([
+        const stagedVersionAtRead = stagedAssignmentsVersion;
+        const mutationVersionAtRead = mutationVersion;
+        const [places, days, itinerary, expenses, stagedEntries] = await Promise.all([
           tripRepository.listPlaces(tripId),
           tripRepository.listDays(tripId),
           tripRepository.listAllItinerary(tripId),
           tripRepository.listExpenses(tripId),
+          stagedAssignmentRepository.listAll(),
         ]);
         if (token !== initToken) return;
         set({
           trip,
-          places,
-          days,
-          itineraryByDay: groupByDay(itinerary),
-          expenses,
           loading: false,
           syncing: false,
+          ...domainDataInitPatch({ places, days, itinerary, expenses }, mutationVersionAtRead),
+          ...stagedAssignmentsInitPatch(stagedEntries, stagedVersionAtRead),
         });
       } catch (err) {
         if (token !== initToken) return;
@@ -435,6 +699,7 @@ export const useTripStore = create<TripState>((set, get) => ({
       updatedAt: new Date().toISOString(),
     };
     await tripRepository.upsertPlace(place);
+    mutationVersion++;
     set((s) => ({ places: [...s.places, place] }));
     // A place created already assigned to a day gets a linked (untimed)
     // itinerary stop too, for consistency with assignPlaceToDay/applyAutoPlan.
@@ -451,6 +716,7 @@ export const useTripStore = create<TripState>((set, get) => ({
   updatePlace: async (place) => {
     const updated: Place = { ...place, updatedAt: new Date().toISOString() };
     await tripRepository.upsertPlace(updated);
+    mutationVersion++;
     set((s) => ({ places: s.places.map((p) => (p.id === updated.id ? updated : p)) }));
   },
 
@@ -474,6 +740,7 @@ export const useTripStore = create<TripState>((set, get) => ({
       ...orphanedItemIds.map((itemId) => tripRepository.deleteItineraryItem(itemId)),
       draftRepository.deleteDraft(id),
     ]);
+    mutationVersion++;
     set((s) => {
       const next: Record<ID, ItineraryItem[]> = {};
       for (const [dayId, items] of Object.entries(s.itineraryByDay)) {
@@ -514,6 +781,19 @@ export const useTripStore = create<TripState>((set, get) => ({
       const existing = get().places.find((p) => p.id === placeId);
       if (!existing) return;
       const oldDayId = existing.dayId;
+
+      if (oldDayId === dayId) {
+        // No actual day change (incl. undefined -> undefined): nothing to
+        // write or link/unlink. Checked BEFORE the write below (not after)
+        // so a no-op re-assignment (e.g. a retry, or re-applying the same
+        // staged batch entry twice) never bumps `updatedAt` for nothing --
+        // that write would be silently discarded here anyway, but it could
+        // still spuriously trip `updatePlaceIfUnchanged`'s conflict
+        // detection for an unrelated, genuinely in-flight prose draft on
+        // this same place.
+        return;
+      }
+
       const updated: Place = {
         ...existing,
         dayId,
@@ -521,15 +801,10 @@ export const useTripStore = create<TripState>((set, get) => ({
         updatedAt: new Date().toISOString(),
       };
       await tripRepository.upsertPlace(updated);
+      mutationVersion++;
       set((s) => ({
         places: s.places.map((p) => (p.id === placeId ? updated : p)),
       }));
-
-      if (oldDayId === dayId) {
-        // No actual day change (incl. undefined -> undefined): nothing to
-        // link/unlink.
-        return;
-      }
 
       const linkedOnOldDay = oldDayId
         ? (get().itineraryByDay[oldDayId] ?? []).filter((i) => i.placeId === placeId)
@@ -568,6 +843,115 @@ export const useTripStore = create<TripState>((set, get) => ({
         placeId,
         title: updated.name,
       });
+    }),
+
+  stagePlaceAssignment: async (placeId, dayId) => {
+    const place = get().places.find((p) => p.id === placeId);
+    if (!place) return;
+
+    if (dayId === place.dayId) {
+      // Typing back to the currently-saved value -- nothing left to commit
+      // for this place. Only actually remove/bump if a staged row existed at
+      // all -- otherwise this is a genuine no-op (nothing changed, so no
+      // staging-version bump either; see `stagedAssignmentsVersion`).
+      if (!(placeId in get().stagedAssignments)) return;
+      await stagedAssignmentRepository.remove(placeId);
+      stagedAssignmentsVersion++;
+      set((s) => {
+        const next = { ...s.stagedAssignments };
+        delete next[placeId];
+        return { stagedAssignments: next };
+      });
+      return;
+    }
+
+    await stagedAssignmentRepository.upsert({
+      placeId,
+      dayId,
+      city: place.city,
+      stagedAt: new Date().toISOString(),
+    });
+    stagedAssignmentsVersion++;
+    set((s) => ({
+      stagedAssignments: { ...s.stagedAssignments, [placeId]: { dayId, city: place.city } },
+    }));
+  },
+
+  discardStagedAssignmentsForCity: async (city) => {
+    const idsToRemove = Object.entries(get().stagedAssignments)
+      .filter(([, entry]) => entry.city === city)
+      .map(([placeId]) => placeId);
+    if (idsToRemove.length === 0) return;
+
+    await stagedAssignmentRepository.removeForCity(city);
+    stagedAssignmentsVersion++;
+    set((s) => {
+      const next = { ...s.stagedAssignments };
+      for (const placeId of idsToRemove) delete next[placeId];
+      return { stagedAssignments: next };
+    });
+  },
+
+  // NOT wrapped in `runExclusive` -- see the `runSaveExclusive` comment
+  // above for why nesting it on that same queue would deadlock (this body
+  // itself calls `assignPlaceToDay`, which queues on `runExclusive`
+  // internally). `runSaveExclusive` is a separate instance, so it nests
+  // safely and only serializes overlapping *saves* against each other.
+  //
+  // Commits SEQUENTIALLY, in staged order, stopping at the first failure --
+  // deliberately not `Promise.allSettled` over every entry. Cloud is the
+  // source of truth (see CLAUDE.md's write-through model): once
+  // `assignPlaceToDay` resolves for an entry, that change is REAL --
+  // written remotely and mirrored locally -- and staging must stop
+  // representing it as "pending" immediately, in the same pass, not just on
+  // a subsequent full-batch success. Running every entry independently
+  // (the previous approach) let entries AFTER a failing one keep committing
+  // for real while the whole batch still got reported+left staged as one
+  // undifferentiated failure -- which both mis-informs the "still here, safe
+  // on this device" error (untrue for the ones that landed) and makes
+  // Discard silently wrong (it would only touch the local overlay, leaving
+  // an already-remote-committed change with no way to revert it). Stopping
+  // at the first failure also avoids firing more remote writes once we
+  // already know we're in a failing state (e.g. offline mid-batch).
+  saveStagedAssignments: () =>
+    runSaveExclusive(async () => {
+      if (isOffline()) {
+        throw new Error('You’re offline — reconnect to save changes.');
+      }
+
+      const entries = Object.entries(get().stagedAssignments);
+      if (entries.length === 0) return;
+
+      const committedPlaceIds: ID[] = [];
+      try {
+        for (const [placeId, { dayId }] of entries) {
+          await get().assignPlaceToDay(placeId, dayId);
+          committedPlaceIds.push(placeId);
+        }
+      } catch (err) {
+        // Staging must end up matching reality: drop exactly the entries
+        // that demonstrably committed before the failure (there's nothing
+        // left to save for them) and leave the failed + not-yet-attempted
+        // entries staged, so a retry (or Discard) acts on a staging table
+        // that's actually still true.
+        if (committedPlaceIds.length > 0) {
+          await stagedAssignmentRepository.removeMany(committedPlaceIds);
+          stagedAssignmentsVersion++;
+          set((s) => {
+            const next = { ...s.stagedAssignments };
+            for (const placeId of committedPlaceIds) delete next[placeId];
+            return { stagedAssignments: next };
+          });
+        }
+        const message = err instanceof Error ? err.message : 'Failed to save changes';
+        throw new Error(message);
+      }
+
+      // Every staged assignment committed successfully -- clear the staging
+      // table and in-memory state together.
+      await stagedAssignmentRepository.clearAll();
+      stagedAssignmentsVersion++;
+      set({ stagedAssignments: {} });
     }),
 
   getPlaceDraft: (placeId) => draftRepository.getDraft(placeId),
@@ -636,6 +1020,7 @@ export const useTripStore = create<TripState>((set, get) => ({
         );
       }
 
+      mutationVersion++;
       set((s) => ({ places: s.places.map((p) => (p.id === placeId ? result.place : p)) }));
       await draftRepository.deleteDraft(placeId);
       return { place: result.place, merged };
@@ -646,6 +1031,7 @@ export const useTripStore = create<TripState>((set, get) => ({
     const order = input.order ?? existing.length;
     const item: ItineraryItem = { id: newId('item'), order, ...input };
     await tripRepository.upsertItineraryItem(item);
+    mutationVersion++;
     set((s) => ({
       itineraryByDay: {
         ...s.itineraryByDay,
@@ -677,6 +1063,7 @@ export const useTripStore = create<TripState>((set, get) => ({
       : item;
 
     await tripRepository.upsertItineraryItem(finalItem);
+    mutationVersion++;
     set((s) => {
       const next: Record<ID, ItineraryItem[]> = {};
       for (const [dayId, items] of Object.entries(s.itineraryByDay)) {
@@ -689,6 +1076,7 @@ export const useTripStore = create<TripState>((set, get) => ({
 
   removeItineraryItem: async (id) => {
     await tripRepository.deleteItineraryItem(id);
+    mutationVersion++;
     set((s) => {
       const next: Record<ID, ItineraryItem[]> = {};
       for (const [dayId, items] of Object.entries(s.itineraryByDay)) {
@@ -708,6 +1096,7 @@ export const useTripStore = create<TripState>((set, get) => ({
       })
       .filter((i): i is ItineraryItem => Boolean(i));
     await Promise.all(reordered.map((item) => tripRepository.upsertItineraryItem(item)));
+    mutationVersion++;
     set((s) => ({ itineraryByDay: { ...s.itineraryByDay, [dayId]: reordered } }));
   },
 
@@ -719,17 +1108,20 @@ export const useTripStore = create<TripState>((set, get) => ({
       ...input,
     };
     await tripRepository.upsertExpense(expense);
+    mutationVersion++;
     set((s) => ({ expenses: [...s.expenses, expense] }));
     return expense;
   },
 
   updateExpense: async (expense) => {
     await tripRepository.upsertExpense(expense);
+    mutationVersion++;
     set((s) => ({ expenses: s.expenses.map((e) => (e.id === expense.id ? expense : e)) }));
   },
 
   removeExpense: async (id) => {
     await tripRepository.deleteExpense(id);
+    mutationVersion++;
     set((s) => ({ expenses: s.expenses.filter((e) => e.id !== id) }));
   },
 
@@ -824,6 +1216,7 @@ export const useTripStore = create<TripState>((set, get) => ({
             updatedAt: new Date().toISOString(),
           };
           await tripRepository.upsertPlace(updatedPlace);
+          mutationVersion++;
           set((s) => ({
             places: s.places.map((p) => (p.id === stop.placeId ? updatedPlace : p)),
           }));
@@ -866,7 +1259,11 @@ export const useTripStore = create<TripState>((set, get) => ({
     // replace can reuse/reassign those ids to entirely different places, so
     // any pending draft text is no longer meaningfully associated with
     // anything and must not silently resurface against an unrelated place.
-    await draftRepository.clearAll();
+    // Staged Map day-assignments have the exact same problem (staged rows
+    // are keyed by the old placeId too) and get the same treatment.
+    await Promise.all([draftRepository.clearAll(), stagedAssignmentRepository.clearAll()]);
+    stagedAssignmentsVersion++;
+    mutationVersion++;
     set({
       trip: snapshot.trip,
       places: snapshot.places,
@@ -874,6 +1271,7 @@ export const useTripStore = create<TripState>((set, get) => ({
       itineraryByDay: groupByDay(snapshot.itinerary),
       expenses: snapshot.expenses,
       loading: false,
+      stagedAssignments: {},
     });
   },
 }));

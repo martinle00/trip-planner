@@ -14,6 +14,11 @@ export interface PinIconOptions {
   selected?: boolean;
   emph?: boolean;
   dim?: boolean;
+  /** True when this place has an unsaved (staged, not yet committed) day
+   *  reassignment — draws a gold ring via `.pin-marker.pending` plus a small
+   *  gold dot, the map's "unsaved change" signal (see the Map save-changes
+   *  spec, mockup/map-save-changes.html, and its legend entry). */
+  pending?: boolean;
 }
 
 export function buildPinIcon(opts: PinIconOptions): L.DivIcon {
@@ -22,14 +27,16 @@ export function buildPinIcon(opts: PinIconOptions): L.DivIcon {
   if (opts.selected) classes.push('selected');
   if (opts.emph) classes.push('emph');
   if (opts.dim) classes.push('dim');
+  if (opts.pending) classes.push('pending');
 
   const iconName = categoryIcon(opts.category);
   const badge = !opts.unassigned && opts.badgeText
     ? `<span class="pin-badge" aria-hidden="true">${opts.badgeText}</span>`
     : '';
+  const pendingDot = opts.pending ? '<span class="pin-pending-dot" aria-hidden="true"></span>' : '';
   const html =
     `<span class="${classes.join(' ')}" style="--pin-color:${opts.color}">` +
-    `<svg aria-hidden="true"><use href="#i-${iconName}"></use></svg>${badge}</span>`;
+    `<svg aria-hidden="true"><use href="#i-${iconName}"></use></svg>${badge}${pendingDot}</span>`;
 
   return L.divIcon({
     html,

@@ -14,6 +14,8 @@ import Dexie from 'dexie';
 import { DexieTripRepository } from './dexieTripRepository';
 import { ACTIVE_TRIP_ID } from './tripRepository';
 import { convert } from '../lib/exchangeRates';
+import { clearLocalCache } from './db';
+import { stagedAssignmentRepository } from './stagedAssignmentRepository';
 
 const DB_NAME = 'china-trip-planner';
 
@@ -248,5 +250,45 @@ describe('Dexie v2 -> v3 in-place migration (db.ts version(3).upgrade)', () => {
     for (const place of places) {
       expect(place.updatedAt).toBeDefined();
     }
+  });
+});
+
+// v4 (Map "Save changes" staging model) — a brand-new, local-only table with
+// no upgrade function (nothing of this shape existed before), so unlike v2/v3
+// there's no old-shaped-data migration to prove; what's worth pinning is that
+// a fresh install actually gets a working table, and that sign-out's
+// `clearLocalCache()` reaches it alongside every other table (a previous
+// account's staged-but-unsaved Map edits must not leak onto a shared device).
+describe('Dexie v4 (Map staging) — stagedAssignments table', () => {
+  it('a fresh database has a working stagedAssignments table from first open', async () => {
+    const repo = new DexieTripRepository();
+    await repo.seedIfEmpty();
+
+    await stagedAssignmentRepository.upsert({
+      placeId: 'place-1',
+      dayId: 'day-1',
+      city: 'Shanghai',
+      stagedAt: new Date().toISOString(),
+    });
+
+    expect(await stagedAssignmentRepository.listAll()).toEqual([
+      { placeId: 'place-1', dayId: 'day-1', city: 'Shanghai', stagedAt: expect.any(String) },
+    ]);
+  });
+
+  it('clearLocalCache wipes stagedAssignments alongside every other table (sign-out)', async () => {
+    const repo = new DexieTripRepository();
+    await repo.seedIfEmpty();
+    await stagedAssignmentRepository.upsert({
+      placeId: 'place-1',
+      dayId: 'day-1',
+      city: 'Shanghai',
+      stagedAt: new Date().toISOString(),
+    });
+
+    await clearLocalCache();
+
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
+    expect(await repo.getTrip()).toBeUndefined();
   });
 });

@@ -7,7 +7,9 @@
       "Bash(npx vitest *)",
       "Read(//tmp/**)",
       "Bash(npx tsc *)",
-      "Bash(npx oxlint *)"
+      "Bash(npx oxlint *)",
+      "Bash(git stash *)",
+      "Bash(node *)"
     ]
   }
 }

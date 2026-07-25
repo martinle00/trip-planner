@@ -51,4 +51,25 @@ describe('RouteStrip', () => {
     expect(screen.getByText('Shanghai').closest('button')).not.toHaveAttribute('aria-current');
     expect(screen.getByText('Chengdu').closest('button')).not.toHaveAttribute('aria-current');
   });
+
+  it('marks a city with a staged Map change via .has-pending, on any node — active or not', () => {
+    render(
+      <RouteStrip
+        cities={CITIES}
+        selectedCity="Shanghai"
+        onSelect={() => {}}
+        pendingCities={new Set(['Chengdu'])}
+      />,
+    );
+    const chengdu = screen.getByText('Chengdu').closest('button')!;
+    const shanghai = screen.getByText('Shanghai').closest('button')!;
+    expect(chengdu.className).toContain('has-pending');
+    expect(shanghai.className).not.toContain('has-pending');
+    expect(screen.getByText(', has unsaved changes')).toBeInTheDocument();
+  });
+
+  it('omits the pending dot entirely when pendingCities is not passed', () => {
+    render(<RouteStrip cities={CITIES} selectedCity="Shanghai" onSelect={() => {}} />);
+    expect(document.querySelector('.route-pending-dot')).not.toBeInTheDocument();
+  });
 });

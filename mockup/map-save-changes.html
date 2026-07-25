@@ -1,0 +1,1580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map — Save changes affordance</title>
+<style>
+  /* ============================= TOKENS (ported from mockup/mockup.html — do not hand-edit values here, port again if the source changes) ============================= */
+  :root{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350;
+    --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --map-water: #A9D6EC; --map-land: #F1EEE5; --map-park: #C9E6C0; --map-block: #E4E1D7; --map-block-stroke: #CFC9B8; --map-road: #ffffff;
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-full: 999px;
+    --shadow-sm: 0 1px 2px rgba(60,40,20,.08), 0 1px 1px rgba(60,40,20,.05);
+    --shadow-md: 0 8px 24px -8px rgba(60,40,20,.22), 0 2px 6px rgba(60,40,20,.08);
+    --shadow-lg: 0 24px 60px -16px rgba(30,20,10,.35);
+    --font-display: 'Songti SC','STSong','Noto Serif SC', Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Consolas', 'Roboto Mono', monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+      --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+      --line: #362E24; --line-strong: #453A2C;
+      --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+      --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B;
+      --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+      --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+      --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+      --map-water: #1E2F42; --map-land: #221F19; --map-park: #213222; --map-block: #2C2721; --map-block-stroke: #3B342A; --map-road: #3A3327;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+    --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+    --line: #362E24; --line-strong: #453A2C;
+    --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+    --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+    --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+    --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+    --map-water:#1E2F42; --map-land:#221F19; --map-park:#213222; --map-block:#2C2721; --map-block-stroke:#3B342A; --map-road:#3A3327;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --map-water:#A9D6EC; --map-land:#F1EEE5; --map-park:#C9E6C0; --map-block:#E4E1D7; --map-block-stroke:#CFC9B8; --map-road:#ffffff;
+    color-scheme: light;
+  }
+
+  /* ============================= RESET ============================= */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,p{ margin:0; }
+  button{ font:inherit; color:inherit; }
+  select{ font:inherit; color:inherit; }
+  button, select, .pin, .chip{ cursor:pointer; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  svg{ display:block; }
+  .tabular{ font-variant-numeric: tabular-nums; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
+  .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+  /* ============================= SCAFFOLDING (review tooling — not shipped UI) ============================= */
+  .spec-bar{
+    position:sticky; top:0; z-index:200; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    flex-wrap:wrap; background:var(--ink); color:var(--paper); padding:12px 18px; font-size:13px;
+  }
+  .spec-bar strong{ font-size:14px; }
+  .spec-bar span.sub{ color:#cabfae; }
+  .spec-bar-tools{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .debug-toggle{
+    font-size:10.5px; font-weight:600; color:#cabfae; background:transparent;
+    border:1px dashed rgba(255,255,255,.35); border-radius:var(--radius-full); padding:5px 12px;
+  }
+  .debug-toggle:hover{ color:var(--paper); border-color:rgba(255,255,255,.6); }
+  .debug-toggle.is-on{ color:var(--gold); border-color:var(--gold); border-style:solid; }
+  .spec-bar .btn-icon{ background:transparent; border:1px solid rgba(255,255,255,.3); color:var(--paper); }
+  .spec-bar .btn-icon:hover{ background:rgba(255,255,255,.12); }
+
+  .frame-label{ max-width:1180px; margin:26px auto 4px; padding:0 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); }
+  .frame-hint{ display:block; max-width:1180px; margin:0 auto 12px; padding:0 18px; font-size:12.5px; color:var(--ink-soft); font-weight:400; text-transform:none; letter-spacing:0; }
+  .frame-wrap{ max-width:1180px; margin:0 auto 40px; padding:0 18px; }
+
+  /* per-frame quick preview controls — jump straight to any state named in the
+     brief, without having to hand-drive the pin taps every review pass. Kept
+     visually distinct (dashed, monospace-free, small) from real app chrome so
+     nobody mistakes it for shipped UI. */
+  .preview-row{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+  .preview-row .lbl{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); margin-right:2px; }
+  .preview-btn{
+    font-size:11px; font-weight:700; color:var(--ink-soft); background:var(--paper-sunk);
+    border:1px solid var(--line); border-radius:var(--radius-full); padding:5px 11px;
+  }
+  .preview-btn:hover{ border-color:var(--line-strong); color:var(--ink); }
+
+  /* ============================= BUTTONS / CHIPS / TAGS ============================= */
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; border-radius:var(--radius-full);
+    padding:9px 16px; font-size:13.5px; font-weight:600; background:var(--paper-raised); border-color:var(--line-strong); color:var(--ink);
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease; white-space:nowrap;
+  }
+  .btn:hover{ box-shadow:var(--shadow-sm); }
+  .btn:active{ transform:scale(.97); }
+  .btn svg{ width:15px; height:15px; flex:none; }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-ghost{ background:transparent; border-color:var(--line-strong); }
+  .btn-ghost:hover{ background:var(--paper-sunk); }
+  .btn-sm{ padding:6px 12px; font-size:12.5px; }
+  /* real disabled attribute (not a CSS-only look) — toggled by JS while a
+     save is in flight, same convention as place-detail-modal.html, so the
+     buttons are genuinely inert/unfocusable mid-save, not just dimmed. */
+  .btn[disabled]{ opacity:.5; pointer-events:none; }
+  .icon-btn{ width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--ink-faint); flex:none; }
+  .icon-btn:hover{ background:var(--paper-sunk); color:var(--ink); }
+  .icon-btn svg{ width:14px; height:14px; }
+
+  .chiprow{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .chip{ padding:7px 13px; border-radius:var(--radius-full); border:1px solid var(--line-strong); background:var(--paper-raised); font-size:12.5px; font-weight:600; color:var(--ink-soft); }
+  .chip.active{ background:var(--ink); border-color:var(--ink); color:var(--paper); }
+  .chip:hover{ border-color:var(--accent); }
+  .chip-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:1px; }
+  .chip.day-all{ display:flex; align-items:center; }
+
+  .tag{
+    display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700;
+    padding:3px 9px; border-radius:var(--radius-full); letter-spacing:.02em;
+    background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line);
+  }
+  .tag.city{ background:var(--accent-soft); color:var(--accent-soft-ink); border-color:transparent; }
+
+  /* reused as-is — the app's established "it worked" pulse, preferred over toasts */
+  .flash-confirm{ animation:flashOk .8s ease; }
+  @keyframes flashOk{
+    0%{ box-shadow:0 0 0 0 var(--jade-soft); }
+    25%{ box-shadow:0 0 0 4px var(--jade-soft); }
+    100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+  }
+  /* INVISIBLE PULSE, resolved — plain .flash-confirm pulses --jade-soft, which
+     is also the Save bar's own background in the 'saved' state (see
+     .map-save-bar[data-state="saved"] below): a jade-soft ring on a
+     jade-soft bar is invisible. Used ONLY for that one spot, pulsing the
+     stronger --jade instead so the "it worked" motion is still perceptible;
+     every other flash-confirm use in the app keeps the original softer pulse. */
+  .flash-confirm-strong{ animation:flashOkStrong .8s ease; }
+  @keyframes flashOkStrong{
+    0%{ box-shadow:0 0 0 0 var(--jade); }
+    25%{ box-shadow:0 0 0 4px var(--jade); }
+    100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  select{
+    background-color:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:8px 26px 8px 10px; font-size:13px; font-weight:600; color:var(--ink); appearance:none; -webkit-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239C9184' stroke-width='2'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 9px center; background-size:14px; width:100%;
+  }
+  .field-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .field-label{ font-size:11.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; }
+  /* tinted-left-border-as-status — the app's existing shorthand for "which
+     day does this belong to" (see .city-section / Places-tab .assign-select).
+     Reused verbatim here rather than inventing a second way to show it. */
+  .assign-select{ border-left:4px solid var(--select-tint, var(--line-strong)); }
+  .assign-select.is-wishlist{ border-left-style:dashed; }
+
+  /* ============================= PANEL / MAP TAB (cloned from mockup/mockup.html) ============================= */
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .panel-title{ font-family:var(--font-display); font-size:1.25rem; font-weight:600; }
+  .panel-hint{ font-size:12.5px; color:var(--ink-soft); display:block; margin-top:2px; }
+
+  .map-showing{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink-soft); margin:0 0 14px; }
+  .map-showing-dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none; }
+  .map-showing strong{ color:var(--ink); font-weight:700; }
+  .map-showing .range{ color:var(--ink-faint); }
+
+  .map-layout{ display:grid; grid-template-columns:1fr; gap:16px; }
+  @media (min-width:860px){ .map-layout{ grid-template-columns:1fr 300px; align-items:start; } }
+
+  .map-stage-wrap{ position:relative; }
+  .map-stage{
+    position:relative; width:100%; aspect-ratio:4/3; border-radius:var(--radius-lg);
+    overflow:hidden; border:1px solid var(--line); box-shadow:var(--shadow-sm); background:var(--map-land);
+  }
+  .map-stage svg{ position:absolute; inset:0; width:100%; height:100%; }
+  .map-badge{
+    position:absolute; top:12px; left:12px; z-index:5; display:flex; align-items:center; gap:6px;
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-full);
+    padding:5px 11px 5px 8px; font-size:11px; font-weight:700; color:var(--ink-soft); box-shadow:var(--shadow-sm);
+  }
+  .map-badge svg{ width:13px; height:13px; flex:none; }
+  .map-badge b{ color:var(--ink); }
+
+  .pin{
+    position:absolute; transform:translate(-50%,-50%); width:28px; height:28px; border-radius:50%;
+    background:var(--pin-color, var(--d-grey)); border:3px solid var(--paper-raised);
+    box-shadow:0 2px 6px rgba(0,0,0,.28); display:flex; align-items:center; justify-content:center; z-index:2;
+    transition:box-shadow .15s ease, filter .15s ease, outline-color .15s ease;
+  }
+  .pin.unassigned{ border-style:dashed; }
+  .pin:hover{ filter:brightness(1.08); }
+  .pin.selected{ outline:2px solid var(--ink); outline-offset:2px; }
+  .pin.emph{ outline:3px solid var(--pin-color); outline-offset:3px; }
+  .pin.dim{ opacity:.35; filter:grayscale(.4); }
+  .pin svg{ width:13px; height:13px; stroke:#fff; fill:none; }
+  /* "unsaved" cue on the pin itself — a gold RING via box-shadow rather than
+     `outline`, deliberately: outline is already spoken for by .selected
+     (ink) and .emph (day-filter match), and a pin can legitimately be both
+     of those AND pending at once. box-shadow layers as a second ring instead
+     of fighting the single `outline` property for the same pin. Gold per
+     DESIGN-SYSTEM.md's semantic vocabulary — "pending / needs attention" —
+     not a colour picked for prettiness. */
+  .pin.pending{ box-shadow:0 2px 6px rgba(0,0,0,.28), 0 0 0 3px var(--gold); }
+  .pin.pending:hover{ box-shadow:0 3px 10px rgba(0,0,0,.38), 0 0 0 3px var(--gold); }
+  /* CONTRAST CHECK (reviewed): --gold (#B8842E) and --d-amber (#C07A2E) are
+     close in hue, so it's fair to ask whether the ring stays legible on a
+     Day-3-amber pin. It does, because the two colours are never adjacent —
+     the ring (this box-shadow) sits OUTSIDE the pin's existing 3px
+     --paper-raised border, so there's always a full ring of paper between
+     the coloured fill and the gold ring, in both themes. Confirmed against
+     both --d-amber and --d-blue fills in light and dark mode. */
+  .pin-pending-dot{
+    position:absolute; top:-4px; right:-4px; width:10px; height:10px; border-radius:50%;
+    background:var(--gold); border:2px solid var(--paper-raised); pointer-events:none;
+  }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:8px 16px; padding:12px 4px 0; }
+  .legend-item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); }
+  .legend-dot{ width:10px; height:10px; border-radius:50%; flex:none; }
+  .legend-dot.dashed{ background:transparent !important; border:1.5px dashed var(--d-grey); }
+  /* LEGEND KEY, resolved: the gold ring/dot on a pending pin (see .pin.pending
+     above) is a signal with no existing key in this legend — day colours and
+     "Unassigned" were covered, "has an unsaved change" wasn't. Neutral
+     paper-fill + gold outline (not a solid gold dot) so it reads as "a ring
+     drawn around whatever the pin already is," not as a day colour of its
+     own — the same distinction .pin.pending itself makes. */
+  .legend-dot.pending-ring{ background:var(--paper-raised); border:1.5px solid var(--line-strong); box-shadow:0 0 0 2px var(--gold); }
+
+  /* ============================= ROUTE STRIP (ported from mockup/mockup.html's
+     header-level trip timeline) — CROSS-CITY STAGING, resolved.
+     In the real app this lives in the sticky topbar, above the tabbar, and is
+     the ONE city selector for the whole app (Map/Places/Itinerary all read
+     off it). It's reproduced here, scoped to the top of this panel instead
+     of a persistent header, purely because this file has no app shell — the
+     component and its behaviour are identical. Only 2 of the trip's 8 legs
+     (Shanghai, Suzhou) are modelled, which is enough to demonstrate "stage a
+     change, switch cities, switch back" without transcribing the whole trip;
+     the total-count and hint logic below is written generically and scales
+     to however many legs actually have something pending. */
+  .route-strip{ display:flex; gap:0; margin:0 0 2px; padding:2px 2px 4px; overflow-x:auto; scrollbar-width:thin; }
+  .route-node{
+    flex:none; display:flex; flex-direction:column; align-items:center; gap:6px;
+    width:104px; text-align:center; background:none; border:none; padding:4px 2px 0; position:relative;
+  }
+  .route-node .line{ position:absolute; top:11px; left:-52px; width:104px; height:2px; background:var(--line-strong); z-index:0; }
+  .route-node:first-child .line{ display:none; }
+  .route-dot{
+    width:10px; height:10px; border-radius:50%; background:var(--ink-soft); border:2px solid var(--paper);
+    box-shadow:0 0 0 1.5px var(--line-strong); position:relative; z-index:1;
+    transition:width .12s ease, height .12s ease, background .12s ease, box-shadow .12s ease;
+  }
+  .route-city{ font-size:12px; font-weight:700; transition:color .12s ease; }
+  .route-date{ font-size:10.5px; color:var(--ink-soft); transition:color .12s ease; }
+  .route-node:hover .route-city{ color:var(--accent); }
+  .route-node.active .route-dot{ width:13px; height:13px; background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+  .route-node.active .route-city{ color:var(--accent); font-weight:800; }
+  .route-node.active .route-date{ color:var(--accent-soft-ink); }
+  .route-node::before{
+    content:""; position:absolute; left:50%; bottom:-3px; transform:translateX(-50%);
+    width:0; height:2.5px; background:var(--accent); border-radius:2px; transition:width .15s ease;
+  }
+  .route-node.active::before{ width:26px; }
+  /* pending badge on a route-node — same gold dot-on-pin-border language as
+     .pin-pending-dot, so "this city has unsaved changes" reads as the same
+     signal wherever it shows up. Shown on ANY city with pending edits,
+     active or not — including the one currently on screen, so it doesn't
+     mysteriously disappear/reappear as you switch. */
+  .route-pending-dot{
+    position:absolute; top:1px; left:calc(50% + 8px); width:8px; height:8px; border-radius:50%;
+    background:var(--gold); border:2px solid var(--paper); display:none;
+  }
+  .route-node.has-pending .route-pending-dot{ display:block; }
+
+  .pin-detail{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-md);
+    box-shadow:var(--shadow-md); padding:16px; display:flex; flex-direction:column; gap:10px;
+  }
+  .pin-detail.empty{ align-items:center; text-align:center; color:var(--ink-faint); padding:28px 16px; box-shadow:none; border-style:dashed; }
+  .pin-detail.empty svg{ width:22px; height:22px; opacity:.55; margin-bottom:2px; }
+  .pin-detail-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .pin-detail-name{ font-size:15.5px; font-weight:700; }
+  .pin-detail-tags{ display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; align-items:center; }
+  .pin-detail-note{ font-size:13px; color:var(--ink-soft); line-height:1.4; }
+
+  /* "unsaved change" pill on the pin-detail panel — same visual language as
+     place-detail-modal.html's .draft-pill ("Unsaved changes"), reused rather
+     than invented, so this reads as the same product handling the same kind
+     of risk (an edit that only exists on this device so far). Rendered as a
+     real <button> so it also doubles as a quick way to jump to the Save bar. */
+  .pin-pending-pill{
+    display:none; align-items:center; gap:5px; font-size:10.5px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.06em; color:var(--gold-soft-ink); background:var(--gold-soft);
+    padding:3px 9px 3px 7px; border-radius:var(--radius-full); border:none; margin-top:4px;
+  }
+  .pin-pending-pill.show{ display:inline-flex; }
+  .pin-pending-pill .dot{ width:6px; height:6px; border-radius:50%; background:var(--gold); flex:none; }
+  .pin-pending-pill:hover{ box-shadow:var(--shadow-sm); }
+
+  /* ============================================================================
+     PLACEMENT DECISION — read before moving this.
+
+     Chosen: a bar DOCKED TO THE BOTTOM OF THE MAP PANEL'S OWN SCROLL AREA
+     (sticky, full-bleed, rounded top corners only — the app's established
+     bottom-sheet edge treatment), NOT floating over the map and NOT living
+     inside the pin-detail panel. Reasoning:
+
+     - Staged changes can span MULTIPLE pins (the brief explicitly asks for
+       "several such changes before the user saves"). A Save control docked
+       inside .pin-detail only exists while that one place happens to be
+       open — it would vanish the moment the user taps a different pin or
+       closes the panel, right when there might be 3 other unsaved
+       reassignments still sitting there. A panel-level bar is the only
+       placement that stays honest about "how many changes are staged" no
+       matter what's currently selected.
+     - A floating FAB near the map stage was considered and rejected: that
+       corner real estate is already spoken for by the Auto-plan FAB and the
+       "Tap map to add" hint, and a third floating control there gets
+       cramped on a 390px phone precisely when thumbs matter most.
+     - A bar at the TOP of the panel (next to "Add place") was also
+       considered and rejected: on the narrow stacked layout the pin-detail
+       panel sits below the map, so a user mid-way through assigning a pin
+       has already scrolled past the top of the panel — the one moment
+       trustworthy save feedback matters most is exactly when a top bar is
+       off-screen.
+     - Docking to the bottom of the Map panel's own scroll container (rather
+       than `position:fixed` to the viewport) is a mockup-only adaptation:
+       this file renders the panel in an isolated demo viewport so two
+       independent frames can sit on one review page. In the real app there
+       is no competing bottom chrome (tabs live at the TOP, under the
+       topbar — see mockup/mockup.html's .tabbar), so the equivalent
+       real-app treatment is `position:sticky` to the Map panel's own
+       scroll position, which reduces to the same visual result.
+
+     A secondary/rejected option (docked inside .pin-detail) is sketched,
+     non-functionally, near the bottom of this file for comparison.
+     ============================================================================ */
+  .map-save-bar{
+    display:none; position:sticky; bottom:0; z-index:6; margin:16px -16px -16px;
+    background:var(--paper-raised); border-top:1px solid var(--line);
+    border-radius:var(--radius-md) var(--radius-md) 0 0;
+    box-shadow:0 -8px 20px -10px rgba(60,40,20,.22);
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .map-save-bar[data-state="pending"],
+  .map-save-bar[data-state="saving"],
+  .map-save-bar[data-state="error"],
+  .map-save-bar[data-state="saved"],
+  .map-save-bar[data-state="confirm-discard"]{ display:block; }
+
+  .map-save-bar-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .map-save-bar[data-state="confirm-discard"] .map-save-bar-row{ display:none; }
+  /* column, not row: the count line and the (optional) cross-city hint line
+     stack vertically underneath each other, both left-aligned with the dot. */
+  .map-save-bar-info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .map-save-bar-info-row{ display:flex; align-items:center; gap:8px; min-width:0; }
+  .map-save-bar-dot{ width:8px; height:8px; border-radius:50%; background:var(--gold); flex:none; }
+  /* CROSS-CITY STAGING, resolved — the bar tracks the TOTAL pending count
+     across every city, not just the one on screen, so it can legitimately be
+     visible while showing zero unsaved pins. This line is what keeps that
+     from reading as a bug: it says where the "invisible" changes actually
+     are. Deliberately quieter than the count above it (smaller, no
+     background) — but it's still real information a user needs to act on
+     correctly, not decoration, so it uses --ink-soft (same convention as
+     .panel-hint, ~6:1) rather than --ink-faint. --ink-faint fails AA at this
+     weight/size and is reserved for decorative/placeholder/disabled text —
+     see DESIGN-SYSTEM.md's -soft-ink contrast rule. */
+  .map-save-bar-subtext{
+    display:none; font-size:11px; font-weight:600; color:var(--ink-soft); margin-left:16px;
+  }
+  .map-save-bar-subtext.show{ display:block; }
+  /* saving: same spinner treatment as the app's .sync-dot in mockup.html */
+  .map-save-bar[data-state="saving"] .map-save-bar-dot{
+    background:transparent; border:2px solid var(--line-strong); border-top-color:var(--accent);
+    animation:spin .7s linear infinite;
+  }
+  .map-save-bar-check{ display:none; width:14px; height:14px; color:var(--jade); flex:none; }
+  .map-save-bar[data-state="saved"] .map-save-bar-dot{ display:none; }
+  .map-save-bar[data-state="saved"] .map-save-bar-check{ display:block; }
+  .map-save-bar[data-state="saved"] .map-save-bar-text{ color:var(--jade-soft-ink); font-weight:700; }
+  .map-save-bar[data-state="saved"]{ background:var(--jade-soft); }
+  .map-save-bar-text{ font-size:12.5px; font-weight:600; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .map-save-bar-actions{ display:flex; gap:8px; flex:none; }
+
+  .map-save-bar-msg{
+    display:none; align-items:flex-start; gap:7px; font-size:12px; font-weight:600; line-height:1.4;
+    color:var(--gold-soft-ink); background:var(--gold-soft); border-radius:var(--radius-sm); padding:9px 10px; margin-top:10px;
+  }
+  .map-save-bar-msg svg{ width:14px; height:14px; flex:none; margin-top:1px; }
+  /* error copy matches place-detail-modal.html's save-error verbatim in
+     tone — same reassurance ("still here, safe on this device"), because
+     this bar and that modal are the same product handling the same failure
+     mode: a write-through save that needs the network and just didn't get
+     it. See CLAUDE.md "Sync model: write-through, cloud is source of truth". */
+  .map-save-bar[data-state="error"] .map-save-bar-error{ display:flex; }
+  /* offline is an orthogonal modifier — it can be true while the bar is
+     "pending" OR "error" (a failed save while still offline), so it's a
+     class, not a value of data-state. */
+  .map-save-bar.is-offline .map-save-bar-offline{ display:flex; }
+  /* STACKED MESSAGING, resolved — .map-save-bar-error (driven by data-state)
+     and .map-save-bar-offline (driven by .is-offline) are independent flags
+     and COULD both be true at once (e.g. a save fails while online, then the
+     connection drops before the failure is dismissed). Precedence: offline
+     wins. Save can't even be attempted while offline (the button is
+     disabled), so a generic "couldn't save, check your connection" message
+     is actively misleading once we already know the connection is the
+     problem and are already saying so via the offline note — showing both
+     is redundant at best, contradictory at worst. The error paragraph is
+     therefore only ever shown for a failure that happened while online.
+     Higher specificity (4 selectors vs. 3) than the plain error rule above,
+     so this wins regardless of source order. */
+  .map-save-bar[data-state="error"].is-offline .map-save-bar-error{ display:none; }
+
+  .map-save-bar-confirm{ display:none; }
+  .map-save-bar[data-state="confirm-discard"] .map-save-bar-confirm{ display:flex; flex-direction:column; gap:10px; }
+  .map-save-bar-confirm-text{ display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--ink-soft); }
+  .map-save-bar-confirm-text svg{ width:16px; height:16px; flex:none; margin-top:1px; color:var(--gold-soft-ink); }
+  .map-save-bar-confirm-text strong{ display:block; color:var(--ink); font-size:13.5px; font-weight:700; margin-bottom:2px; }
+  .map-save-bar-confirm-actions{ display:flex; justify-content:flex-end; gap:10px; }
+  /* same reasoning as place-detail-modal.html's .discard-btn: no filled
+     destructive button here — gold has no defined white-on-fill "-ink"
+     pairing, and the safe default (Keep editing) should read as primary. */
+  .discard-btn{ color:var(--gold-soft-ink); }
+
+  /* ============================= OFFLINE BANNER (mirrors mockup/mockup.html) ============================= */
+  .offline-banner{
+    display:flex; align-items:center; gap:8px; padding:9px 14px; font-size:12.5px; font-weight:600;
+    background:var(--gold-soft); color:var(--gold-soft-ink); border-radius:var(--radius-md); margin-bottom:14px;
+  }
+  .offline-banner svg{ width:15px; height:15px; flex:none; }
+  .offline-banner[hidden]{ display:none; }
+
+  /* ============================= DEMO VIEWPORTS (mockup scaffolding only) ============================= */
+  .demo-viewport{
+    position:relative; max-height:640px; overflow-y:auto; overflow-x:hidden;
+    border:1px solid var(--line-strong); border-radius:var(--radius-lg); background:var(--paper);
+    padding:16px; box-shadow:var(--shadow-sm);
+  }
+  .phone-frame{
+    position:relative; width:390px; max-width:100%; margin:0 auto; padding:12px;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:34px; box-shadow:var(--shadow-md);
+  }
+  .phone-screen{ position:relative; background:var(--paper); border-radius:22px; overflow:auto; max-height:700px; padding:16px; }
+
+  /* ============================= SECONDARY / REJECTED OPTION — illustrative only ============================= */
+  .alt-illustration{
+    border:1px dashed var(--line-strong); border-radius:var(--radius-md); padding:14px 16px; background:var(--paper-sunk);
+    opacity:.85;
+  }
+  .alt-illustration .pin-detail{ box-shadow:none; margin-top:10px; }
+  .alt-illustration-tag{
+    display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--ink-faint); background:var(--paper-raised); border:1px solid var(--line);
+    border-radius:var(--radius-full); padding:3px 9px;
+  }
+</style>
+</head>
+<body>
+
+<div class="spec-bar">
+  <div><strong>Map — Save changes affordance</strong> <span class="sub">&middot; staged edits, explicit Save, trustworthy saving/saved/failed states</span></div>
+  <div class="spec-bar-tools">
+    <button type="button" class="debug-toggle" id="failureToggleBtn" onclick="toggleFailure()" title="Design-review helper — not part of the real app">
+      <span id="failureToggleLabel">Preview: simulate save failure</span>
+    </button>
+    <button type="button" class="debug-toggle" id="offlineToggleBtn" onclick="toggleOffline()" title="Design-review helper — not part of the real app">
+      <span id="offlineToggleLabel">Preview: simulate offline</span>
+    </button>
+    <button type="button" class="debug-toggle" onclick="resetDemo()" title="Design-review helper — not part of the real app">Reset demo</button>
+    <button class="btn btn-icon" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Toggle light / dark" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+      <svg id="themeIcon" aria-hidden="true" style="width:16px;height:16px"><use href="#i-moon"/></svg>
+    </button>
+  </div>
+</div>
+
+<svg class="visually-hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.3l9.7 17.4H2.3L12 3.3z"/><path d="M12 10v4.2"/><circle cx="12" cy="17.4" r="0.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0112 2a7 7 0 017 7.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-cat-landmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 6h-8l4-6z"/><path d="M6 22V10M18 22V10M2 22h20"/></symbol>
+    <symbol id="i-cat-garden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V12"/><path d="M12 12C12 12 5 11 5 4c7 0 7 7 7 8z"/><path d="M12 15C12 15 19 14 19 7c-7 0-7 7-7 8z"/></symbol>
+    <symbol id="i-cat-museum" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6"/><path d="M4 9h16v11H4z"/><path d="M9 20v-7M15 20v-7"/></symbol>
+    <symbol id="i-cat-market" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l1.5-4h13L20 8"/><path d="M4 8h16l-1 12H5L4 8z"/><path d="M9 12a3 3 0 006 0"/></symbol>
+    <symbol id="i-cat-neighbourhood" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V11l4-3 4 3v10"/><path d="M13 21V8l4-4 4 4v13"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.5 8.5 0 1110 3.3 6.7 6.7 0 0020 14.2z"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============================= DESKTOP / TABLET WIDTH ============================= -->
+<h2 class="frame-label">Desktop / tablet width</h2>
+<span class="frame-hint">Map tab. Tap <strong>Tianzifang</strong> (unassigned) and give it a day, then switch to <strong>Suzhou</strong> in the timeline and reassign <strong>Pingjiang Road</strong> too &mdash; the Save bar keeps a running total across both cities, and switching back to Shanghai still shows Tianzifang&rsquo;s gold ring. Note Save and Discard have different reach: Save commits everything, in every city, in one action; Discard only undoes what&rsquo;s staged in whichever city you&rsquo;re currently looking at &mdash; try it while viewing Suzhou (only Pingjiang reverts, the bar stays up reporting Shanghai&rsquo;s change) versus while viewing Shanghai (only Tianzifang reverts). If Suzhou has nothing staged, its Discard button goes inert rather than doing nothing. Reloading this page (a real reload, not the Reset button) restores whatever&rsquo;s still staged &mdash; it&rsquo;s kept in this browser&rsquo;s localStorage here, standing in for the real app&rsquo;s IndexedDB, the same way place-detail-modal.html&rsquo;s drafts do. Or jump straight to a state with the Preview buttons below.</span>
+<div class="frame-wrap">
+  <div class="demo-viewport">
+    <div class="offline-banner" id="offlineBanner-desktop" role="status" aria-live="polite" hidden>
+      <svg aria-hidden="true"><use href="#i-target"/></svg>
+      You&rsquo;re offline &mdash; showing data saved on this device. The live map needs a connection.
+    </div>
+
+    <!-- Timeline / city switcher — see the ROUTE STRIP comment in <style>.
+         Only 2 of the trip's 8 legs are modelled here (enough to demonstrate
+         cross-city staging); tapping a node is how the "switch cities" half
+         of this feature is actually exercised in this mockup. -->
+    <div class="route-strip" id="routeStrip-desktop" aria-label="Trip legs &middot; tap a city to show it on the map">
+      <button type="button" class="route-node" data-city="shanghai" aria-pressed="true" onclick="switchCity('desktop','shanghai')"><span class="line"></span><span class="route-dot"></span><span class="route-pending-dot" aria-hidden="true"></span><span class="route-city">Shanghai<span class="visually-hidden route-pending-sr"></span></span><span class="route-date">9&ndash;15 Nov</span></button>
+      <button type="button" class="route-node" data-city="suzhou" aria-pressed="false" onclick="switchCity('desktop','suzhou')"><span class="line"></span><span class="route-dot"></span><span class="route-pending-dot" aria-hidden="true"></span><span class="route-city">Suzhou<span class="visually-hidden route-pending-sr"></span></span><span class="route-date">15&ndash;17 Nov</span></button>
+    </div>
+
+    <div class="panel-head">
+      <div>
+        <h2 class="panel-title" id="panelTitle-desktop">Map</h2>
+        <span class="panel-hint">Your home screen &middot; tap a city in the timeline above to change what&rsquo;s shown</span>
+      </div>
+      <button class="btn btn-primary btn-sm" disabled title="Not part of this focused mockup"><svg aria-hidden="true"><use href="#i-plus"/></svg> Add place</button>
+    </div>
+
+    <div class="map-showing">
+      <span class="map-showing-dot" aria-hidden="true"></span>
+      Showing <strong id="mapShowingCity-desktop">Shanghai</strong><span class="range" id="mapShowingRange-desktop">&middot; 9&ndash;15 Nov</span>
+    </div>
+
+    <div class="chiprow" id="dayChips-desktop"></div>
+
+    <div class="preview-row">
+      <span class="lbl">Preview state:</span>
+      <button type="button" class="preview-btn" onclick="previewState('desktop','resting')">1&middot; Resting (no changes)</button>
+      <button type="button" class="preview-btn" onclick="previewState('desktop','pending')">2&middot; Pending changes</button>
+      <button type="button" class="preview-btn" onclick="previewState('desktop','saving')">3&middot; Saving&hellip;</button>
+      <button type="button" class="preview-btn" onclick="previewState('desktop','saved')">4&middot; Saved</button>
+      <button type="button" class="preview-btn" onclick="previewState('desktop','error')">5&middot; Save failed</button>
+      <button type="button" class="preview-btn" onclick="previewState('desktop','offline')">6&middot; Offline + pending</button>
+      <button type="button" class="preview-btn" onclick="previewState('desktop','cross-city')">7&middot; Cross-city (viewing Shanghai, edit also staged in Suzhou)</button>
+    </div>
+
+    <div class="map-layout">
+      <div>
+        <div class="map-stage-wrap">
+          <div class="map-stage" id="mapStage-desktop"></div>
+        </div>
+        <div class="legend" id="legend-desktop"></div>
+      </div>
+
+      <div class="pin-detail empty" id="pinDetail-desktop">
+        <svg aria-hidden="true"><use href="#i-pin"/></svg>
+        <div><strong>Tap a pin</strong><br>Place details and the day assignment will show here.</div>
+      </div>
+    </div>
+
+    <!-- ================= SAVE BAR — see the PLACEMENT DECISION comment in <style> ================= -->
+    <div class="map-save-bar" id="saveBar-desktop" data-state="hidden" role="region" aria-label="Map save status">
+      <div class="map-save-bar-row">
+        <div class="map-save-bar-info">
+          <div class="map-save-bar-info-row">
+            <span class="map-save-bar-dot" aria-hidden="true"></span>
+            <svg class="map-save-bar-check" aria-hidden="true"><use href="#i-check"/></svg>
+            <span class="map-save-bar-text" id="saveBarText-desktop">0 unsaved changes</span>
+          </div>
+          <span class="map-save-bar-subtext" id="saveBarSubtext-desktop"></span>
+        </div>
+        <div class="map-save-bar-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="discardBtn-desktop" onclick="requestDiscard('desktop')" aria-describedby="discardHint-desktop">Discard <span id="discardBtnScope-desktop">(Shanghai)</span></button>
+          <button type="button" class="btn btn-primary btn-sm" id="saveBtn-desktop" onclick="saveChanges('desktop')">
+            <svg aria-hidden="true"><use href="#i-check"/></svg> <span id="saveBtnLabel-desktop">Save changes</span>
+          </button>
+        </div>
+      </div>
+      <span class="visually-hidden" id="discardHint-desktop"></span>
+      <p class="map-save-bar-msg map-save-bar-error" id="saveError-desktop" role="alert">
+        <svg aria-hidden="true"><use href="#i-alert"/></svg>
+        <span>Couldn&rsquo;t save &mdash; check your connection. Your changes are still here, safe on this device.</span>
+      </p>
+      <p class="map-save-bar-msg map-save-bar-offline" id="saveOffline-desktop">
+        <svg aria-hidden="true"><use href="#i-target"/></svg>
+        <span>You&rsquo;re offline &mdash; Save is off until you&rsquo;re reconnected. Your changes are safe on this device, even after a reload.</span>
+      </p>
+      <div class="map-save-bar-confirm">
+        <p class="map-save-bar-confirm-text"><svg aria-hidden="true"><use href="#i-alert"/></svg><span><strong id="discardCountText-desktop">Discard 2 unsaved changes in Shanghai?</strong>They&rsquo;ll revert to how they were last saved. This can&rsquo;t be undone.</span></p>
+        <div class="map-save-bar-confirm-actions">
+          <button type="button" class="btn discard-btn" onclick="confirmDiscard('desktop')">Discard changes</button>
+          <button type="button" class="btn btn-primary" id="keepBtn-desktop" onclick="cancelDiscardConfirm('desktop')">Keep editing</button>
+        </div>
+      </div>
+    </div>
+    <span class="visually-hidden" role="status" aria-live="polite" id="saveAnnounce-desktop"></span>
+  </div>
+</div>
+
+<!-- ============================= MOBILE — 390px WIDTH ============================= -->
+<h2 class="frame-label">Mobile &mdash; 390px width</h2>
+<span class="frame-hint">Same data, same logic, confined to a 390px frame so the phone rendering is honest regardless of your browser width. The map and pin-detail stack (narrow layout); the Save bar stays docked to the bottom of this frame&rsquo;s own scroll area exactly as it would to the viewport in the real app. Try the same cross-city flow as the desktop frame: stage a change here, tap Suzhou in the strip, stage another, tap back to Shanghai &mdash; the gold ring and the bar&rsquo;s total both hold. Remember Discard is per-city (only clears whatever&rsquo;s staged in the city on screen) while Save is cross-city (commits all of it at once) &mdash; if you Discard here after switching to a city with nothing staged, the button&rsquo;s disabled. These two frames keep fully independent state (and independent localStorage keys), so you can park one on a different preview state than the other.</span>
+<div class="frame-wrap" style="margin-bottom:60px">
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <!-- overflow deliberately unset here (not just a shorter max-height) —
+           .phone-screen below is the real scrolling container (overflow:auto
+           + max-height), and position:sticky binds to the NEAREST ancestor
+           with overflow != visible. Leaving .demo-viewport's own
+           overflow-y:auto in place would make it (not .phone-screen) the
+           sticky containing block, and since this div never itself
+           scrolls (unconstrained height), the Save bar would silently stop
+           sticking at all — it'd sit in normal flow instead of docking to
+           the visible phone screen. -->
+      <div class="demo-viewport" style="max-height:none; overflow:visible; border:none; box-shadow:none; padding:0;">
+        <div class="offline-banner" id="offlineBanner-mobile" role="status" aria-live="polite" hidden>
+          <svg aria-hidden="true"><use href="#i-target"/></svg>
+          You&rsquo;re offline &mdash; showing data saved on this device.
+        </div>
+
+        <div class="route-strip" id="routeStrip-mobile" aria-label="Trip legs &middot; tap a city to show it on the map">
+          <button type="button" class="route-node" data-city="shanghai" aria-pressed="true" onclick="switchCity('mobile','shanghai')"><span class="line"></span><span class="route-dot"></span><span class="route-pending-dot" aria-hidden="true"></span><span class="route-city">Shanghai<span class="visually-hidden route-pending-sr"></span></span><span class="route-date">9&ndash;15 Nov</span></button>
+          <button type="button" class="route-node" data-city="suzhou" aria-pressed="false" onclick="switchCity('mobile','suzhou')"><span class="line"></span><span class="route-dot"></span><span class="route-pending-dot" aria-hidden="true"></span><span class="route-city">Suzhou<span class="visually-hidden route-pending-sr"></span></span><span class="route-date">15&ndash;17 Nov</span></button>
+        </div>
+
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title" id="panelTitle-mobile">Map</h2>
+            <span class="panel-hint">Your home screen</span>
+          </div>
+          <button class="btn btn-primary btn-sm" disabled title="Not part of this focused mockup"><svg aria-hidden="true"><use href="#i-plus"/></svg> Add</button>
+        </div>
+
+        <div class="map-showing">
+          <span class="map-showing-dot" aria-hidden="true"></span>
+          Showing <strong id="mapShowingCity-mobile">Shanghai</strong><span class="range" id="mapShowingRange-mobile">&middot; 9&ndash;15 Nov</span>
+        </div>
+
+        <div class="chiprow" id="dayChips-mobile"></div>
+
+        <div class="preview-row">
+          <span class="lbl">Preview:</span>
+          <button type="button" class="preview-btn" onclick="previewState('mobile','resting')">1</button>
+          <button type="button" class="preview-btn" onclick="previewState('mobile','pending')">2</button>
+          <button type="button" class="preview-btn" onclick="previewState('mobile','saving')">3</button>
+          <button type="button" class="preview-btn" onclick="previewState('mobile','saved')">4</button>
+          <button type="button" class="preview-btn" onclick="previewState('mobile','error')">5</button>
+          <button type="button" class="preview-btn" onclick="previewState('mobile','offline')">6</button>
+          <button type="button" class="preview-btn" onclick="previewState('mobile','cross-city')">7&middot; Cross-city</button>
+        </div>
+
+        <div class="map-layout">
+          <div>
+            <div class="map-stage-wrap">
+              <div class="map-stage" id="mapStage-mobile"></div>
+            </div>
+            <div class="legend" id="legend-mobile"></div>
+          </div>
+
+          <div class="pin-detail empty" id="pinDetail-mobile">
+            <svg aria-hidden="true"><use href="#i-pin"/></svg>
+            <div><strong>Tap a pin</strong><br>Place details and the day assignment will show here.</div>
+          </div>
+        </div>
+
+        <div class="map-save-bar" id="saveBar-mobile" data-state="hidden" role="region" aria-label="Map save status">
+          <div class="map-save-bar-row">
+            <div class="map-save-bar-info">
+              <div class="map-save-bar-info-row">
+                <span class="map-save-bar-dot" aria-hidden="true"></span>
+                <svg class="map-save-bar-check" aria-hidden="true"><use href="#i-check"/></svg>
+                <span class="map-save-bar-text" id="saveBarText-mobile">0 unsaved changes</span>
+              </div>
+              <span class="map-save-bar-subtext" id="saveBarSubtext-mobile"></span>
+            </div>
+            <!-- MOBILE SIZING, resolved: regular .btn (not .btn-sm) on this
+                 frame only — this is the highest-consequence action pinned
+                 to the bottom of a thumb-critical 390px dock, not a place to
+                 shave a few px of padding. Desktop keeps .btn-sm; there's no
+                 thumb-reach constraint there. -->
+            <div class="map-save-bar-actions">
+              <button type="button" class="btn btn-ghost" id="discardBtn-mobile" onclick="requestDiscard('mobile')" aria-describedby="discardHint-mobile">Discard <span id="discardBtnScope-mobile">(Shanghai)</span></button>
+              <button type="button" class="btn btn-primary" id="saveBtn-mobile" onclick="saveChanges('mobile')">
+                <svg aria-hidden="true"><use href="#i-check"/></svg> <span id="saveBtnLabel-mobile">Save changes</span>
+              </button>
+            </div>
+          </div>
+          <span class="visually-hidden" id="discardHint-mobile"></span>
+          <p class="map-save-bar-msg map-save-bar-error" id="saveError-mobile" role="alert">
+            <svg aria-hidden="true"><use href="#i-alert"/></svg>
+            <span>Couldn&rsquo;t save &mdash; check your connection. Your changes are still here, safe on this device.</span>
+          </p>
+          <p class="map-save-bar-msg map-save-bar-offline" id="saveOffline-mobile">
+            <svg aria-hidden="true"><use href="#i-target"/></svg>
+            <span>You&rsquo;re offline &mdash; Save is off for now. Your changes are safe here, even after a reload.</span>
+          </p>
+          <div class="map-save-bar-confirm">
+            <p class="map-save-bar-confirm-text"><svg aria-hidden="true"><use href="#i-alert"/></svg><span><strong id="discardCountText-mobile">Discard 2 unsaved changes in Shanghai?</strong>They&rsquo;ll revert to how they were last saved. This can&rsquo;t be undone.</span></p>
+            <div class="map-save-bar-confirm-actions">
+              <button type="button" class="btn discard-btn" onclick="confirmDiscard('mobile')">Discard changes</button>
+              <button type="button" class="btn btn-primary" id="keepBtn-mobile" onclick="cancelDiscardConfirm('mobile')">Keep editing</button>
+            </div>
+          </div>
+        </div>
+        <span class="visually-hidden" role="status" aria-live="polite" id="saveAnnounce-mobile"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= OPEN QUESTIONS ============================= -->
+<h2 class="frame-label">Open questions</h2>
+<div class="frame-wrap" style="margin-bottom:60px">
+  <div class="alt-illustration" style="opacity:1">
+    <ol style="margin:0; padding-left:0; list-style:none; display:flex; flex-direction:column; gap:4px;">
+      <li>
+        <span class="tag" style="background:var(--jade-soft); color:var(--jade-soft-ink); border-color:transparent;"><svg aria-hidden="true" style="width:11px;height:11px"><use href="#i-check"/></svg> RESOLVED</span>
+        <strong style="display:block; color:var(--ink); font-size:14px; margin:6px 0 4px;">#1 &middot; Cross-city staging</strong>
+        <p style="margin:0; font-size:13px; color:var(--ink-soft); line-height:1.55;">
+          Staged changes are kept <strong style="color:var(--ink)">per place</strong>, independent of whichever city
+          happens to be on screen &mdash; stage a reassignment in Shanghai, switch to Suzhou via the timeline, switch
+          back, and the pin&rsquo;s gold ring plus its &ldquo;Unsaved change&rdquo; pill are exactly as you left them.
+          They also persist across a full reload (this mockup backs them with real <code>localStorage</code>,
+          standing in for the real app&rsquo;s IndexedDB cache &mdash; same durability guarantee as
+          place-detail-modal.html&rsquo;s drafts, just per staged reassignment instead of per free-text field).
+        </p>
+        <p style="margin:8px 0 0; font-size:13px; color:var(--ink-soft); line-height:1.55;">
+          The Save bar&rsquo;s count reads as a <strong style="color:var(--ink)">total across every city</strong>, not
+          just the one shown &mdash; stage 2 changes in Shanghai, switch to Suzhou (which has none of its own), and the
+          bar stays visible reporting &ldquo;2 unsaved changes.&rdquo; (See &ldquo;#2 &middot; Save vs Discard scope&rdquo;
+          below for what each of the bar&rsquo;s two actions actually acts on &mdash; they&rsquo;re not symmetric.)
+        </p>
+        <p style="margin:8px 0 0; font-size:13px; color:var(--ink-soft); line-height:1.55;">
+          Because a Save bar can now be visible with zero unsaved pins in view, a subtle secondary line under the
+          count says where the rest live &mdash; &ldquo;All changes are in Suzhou&rdquo; when the current city has none
+          of its own, or &ldquo;+1 more in Suzhou&rdquo; when it has some too. The timeline&rsquo;s city nodes also carry
+          a small gold dot when that city has anything pending, so the cue is visible before you even open the bar.
+          This mockup only models 2 of the trip&rsquo;s 8 legs (Shanghai + Suzhou, reusing their real names/places/days
+          from mockup/mockup.html) &mdash; enough to prove the switch-and-persist mechanic; the total/hint logic itself
+          is written generically and holds regardless of how many legs end up with pending edits at once.
+        </p>
+      </li>
+      <li style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">
+        <span class="tag" style="background:var(--jade-soft); color:var(--jade-soft-ink); border-color:transparent;"><svg aria-hidden="true" style="width:11px;height:11px"><use href="#i-check"/></svg> RESOLVED</span>
+        <strong style="display:block; color:var(--ink); font-size:14px; margin:6px 0 4px;">#2 &middot; Save vs Discard scope</strong>
+        <p style="margin:0; font-size:13px; color:var(--ink-soft); line-height:1.55;">
+          Save and Discard deliberately act on <strong style="color:var(--ink)">different scopes</strong>. Save commits
+          every staged change, in every city, in one action &mdash; it&rsquo;s &ldquo;commit all my work.&rdquo; Discard
+          only reverts what&rsquo;s staged in whichever city is <strong style="color:var(--ink)">currently on
+          screen</strong> &mdash; it&rsquo;s a localized &ldquo;undo what I did here,&rdquo; not a global undo. Stage
+          changes in both Shanghai and Suzhou, discard from Suzhou, and only Pingjiang reverts: the bar stays up,
+          its count drops by exactly the one change that was cleared, the cross-city hint line and the timeline&rsquo;s
+          pending-dots update to match what&rsquo;s left, and Shanghai&rsquo;s staged change (and its gold-ringed pin)
+          are untouched. The confirm step names the city outright (&ldquo;Discard 2 unsaved changes in Shanghai?&rdquo;)
+          so the narrower scope is never ambiguous &mdash; the old cross-city discard copy (&ldquo;&hellip;across 2
+          cities&rdquo;) no longer applies now that Discard doesn&rsquo;t reach across cities at all. Because Save and
+          Discard would otherwise look like a plain symmetric pair, the city name also sits on the
+          <strong style="color:var(--ink)">trigger button itself</strong> &mdash; &ldquo;Discard (Shanghai)&rdquo; &mdash;
+          not just inside the confirm dialog, so the asymmetry is visible before the destructive gate, not after.
+        </p>
+        <p style="margin:8px 0 0; font-size:13px; color:var(--ink-soft); line-height:1.55;">
+          Edge case: if the current city has nothing staged but the bar is visible because some other city does,
+          Discard has nothing to act on &mdash; rather than leaving it clickable and silently doing nothing, it&rsquo;s
+          disabled (same real-<code>disabled</code>-attribute treatment as Save mid-flight or offline). The reason is
+          exposed two ways: a <code>title</code> tooltip for mouse users, and a visually-hidden hint span wired up via
+          <code>aria-describedby</code> for keyboard/AT users, who wouldn&rsquo;t otherwise get a hover to read. The
+          hint line above the button already says where the pending changes actually live, so nobody needs to
+          discover the reason by trial and error.
+        </p>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<!-- ============================= SECONDARY OPTION — considered, not chosen ============================= -->
+<h2 class="frame-label">Secondary option considered (illustrative only, not wired up)</h2>
+<span class="frame-hint">Docking Save/Discard inside the pin-detail panel itself, footer-style (same pattern as place-detail-modal.html's .modal-foot). Reads cleanly for a single change, but the control disappears the moment the panel closes or shows a different pin — it can't represent "3 changes staged across 3 different pins," which is the scenario this feature exists for. Kept here for comparison, not implemented interactively.</span>
+<div class="frame-wrap" style="margin-bottom:60px">
+  <div class="alt-illustration">
+    <span class="alt-illustration-tag">Illustrative — not interactive</span>
+    <div class="pin-detail">
+      <div class="pin-detail-top">
+        <div>
+          <div class="pin-detail-name">The Bund</div>
+          <div class="pin-detail-tags"><span class="tag">Landmark</span><span class="tag city">Shanghai</span>
+            <span class="pin-pending-pill show"><span class="dot" aria-hidden="true"></span>Unsaved change</span>
+          </div>
+        </div>
+        <button class="icon-btn" aria-label="Close" tabindex="-1"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+      </div>
+      <p class="pin-detail-note">Sunset walk along the river, skyline photos.</p>
+      <div class="field-row"><span class="field-label">Assign to day</span></div>
+      <select class="assign-select" style="--select-tint:var(--d-amber)" tabindex="-1">
+        <option>Day 2 &middot; Mon 10 Nov</option>
+        <option selected>Day 3 &middot; Tue 11 Nov</option>
+        <option>Unassigned</option>
+      </select>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <button class="btn btn-ghost btn-sm" tabindex="-1">Discard</button>
+        <button class="btn btn-primary btn-sm" tabindex="-1"><svg aria-hidden="true"><use href="#i-check"/></svg> Save this change</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============================================================================
+  // Data model — mirrors mockup/mockup.html's Shanghai AND Suzhou legs
+  // exactly (same names, descriptions, days, colours, pin positions) so this
+  // reads as the same trip, not a different demo dataset. Two cities is the
+  // minimum needed to demonstrate cross-city staging; see the ROUTE STRIP
+  // comment in <style> for why only 2 of the trip's 8 legs are modelled.
+  // ============================================================================
+  var FRAMES = ['desktop', 'mobile'];
+  var CITY_KEYS = ['shanghai', 'suzhou'];
+
+  function makeCityData(){
+    return {
+      shanghai: {
+        label: 'Shanghai', range: '9–15 Nov',
+        days: [
+          { day: 'Day 2 · Mon 10 Nov', desktopLabel: 'Day 2 · Mon 10 Nov', mobileLabel: 'Day 2', color: 'var(--d-blue)' },
+          { day: 'Day 3 · Tue 11 Nov', desktopLabel: 'Day 3 · Tue 11 Nov', mobileLabel: 'Day 3', color: 'var(--d-amber)' }
+        ],
+        mapBadge: 'OpenStreetMap', mapBadgeShort: 'OSM',
+        mapSvg:
+          '<rect width="400" height="300" fill="var(--map-land)"/>' +
+          '<path d="M400,0 L260,0 220,60 250,130 210,200 240,300 400,300 Z" fill="var(--map-water)"/>' +
+          '<rect x="150" y="150" width="70" height="55" rx="6" fill="var(--map-park)"/>' +
+          '<rect x="40" y="40" width="60" height="40" rx="3" fill="var(--map-block)"/>' +
+          '<rect x="60" y="110" width="50" height="35" rx="3" fill="var(--map-block)"/>' +
+          '<rect x="30" y="190" width="55" height="45" rx="3" fill="var(--map-block)"/>' +
+          '<rect x="120" y="60" width="45" height="30" rx="3" fill="var(--map-block)"/>' +
+          '<path d="M0,90 L230,90" stroke="var(--map-road)" stroke-width="5"/>' +
+          '<path d="M100,0 L100,300" stroke="var(--map-road)" stroke-width="4"/>' +
+          '<path d="M0,200 L245,200" stroke="var(--map-road)" stroke-width="4"/>' +
+          '<path d="M0,150 L150,150" stroke="var(--map-road)" stroke-width="3"/>',
+        pinKeys: ['bund', 'nanjing', 'yugarden', 'museum', 'tianzifang'],
+        pins: {
+          bund:       { left: '63%', top: '44%', icon: 'i-cat-landmark' },
+          nanjing:    { left: '49%', top: '33%', icon: 'i-cat-market' },
+          yugarden:   { left: '40%', top: '60%', icon: 'i-cat-garden' },
+          museum:     { left: '46%', top: '52%', icon: 'i-cat-museum' },
+          tianzifang: { left: '34%', top: '70%', icon: 'i-cat-neighbourhood' }
+        },
+        places: {
+          bund:       { name: 'The Bund',           cat: 'Landmark',        description: 'Sunset walk along the river, skyline photos.',     day: 'Day 2 · Mon 10 Nov', color: 'var(--d-blue)' },
+          nanjing:    { name: 'Nanjing Road',        cat: 'Street / Market', description: 'Pedestrian street, dinner after.',                  day: 'Day 2 · Mon 10 Nov', color: 'var(--d-blue)' },
+          yugarden:   { name: 'Yu Garden',           cat: 'Garden',          description: 'Classical garden + bazaar for souvenirs.',           day: 'Day 3 · Tue 11 Nov', color: 'var(--d-amber)' },
+          museum:     { name: 'Shanghai Museum',     cat: 'Museum',          description: 'Bronze & ceramics galleries, free entry.',           day: 'Day 3 · Tue 11 Nov', color: 'var(--d-amber)' },
+          tianzifang: { name: 'Tianzifang',          cat: 'Neighbourhood',   description: 'Laneway cafes — maybe day 3.',                       day: 'Unassigned',         color: 'var(--d-grey)' }
+        }
+      },
+      suzhou: {
+        label: 'Suzhou', range: '15–17 Nov',
+        days: [
+          { day: 'Mon 16 Nov', desktopLabel: 'Mon 16 Nov', mobileLabel: 'Mon 16 Nov', color: 'var(--d-teal)' }
+        ],
+        mapBadge: 'OpenStreetMap', mapBadgeShort: 'OSM',
+        mapSvg:
+          '<rect width="400" height="300" fill="var(--map-land)"/>' +
+          '<path d="M0,40 C120,60 90,120 220,110 C320,105 300,180 400,170" stroke="var(--map-water)" stroke-width="16" fill="none"/>' +
+          '<path d="M0,220 C140,200 180,260 400,240" stroke="var(--map-water)" stroke-width="14" fill="none"/>' +
+          '<rect x="60" y="150" width="70" height="55" rx="6" fill="var(--map-park)"/>' +
+          '<rect x="250" y="60" width="55" height="40" rx="3" fill="var(--map-block)"/>' +
+          '<rect x="180" y="180" width="50" height="35" rx="3" fill="var(--map-block)"/>' +
+          '<path d="M0,150 L400,150" stroke="var(--map-road)" stroke-width="3"/>' +
+          '<path d="M150,0 L150,300" stroke="var(--map-road)" stroke-width="3"/>',
+        pinKeys: ['garden', 'tigerhill', 'pingjiang'],
+        pins: {
+          garden:    { left: '24%', top: '58%', icon: 'i-cat-garden' },
+          tigerhill: { left: '70%', top: '32%', icon: 'i-cat-landmark' },
+          pingjiang: { left: '52%', top: '64%', icon: 'i-cat-neighbourhood' }
+        },
+        places: {
+          garden:    { name: "Humble Administrator's Garden", cat: 'Garden',        description: 'Largest classical garden — arrive early.', day: 'Mon 16 Nov', color: 'var(--d-teal)' },
+          tigerhill: { name: 'Tiger Hill',                     cat: 'Landmark',      description: 'Leaning pagoda, good at sunset.',           day: 'Mon 16 Nov', color: 'var(--d-teal)' },
+          pingjiang: { name: 'Pingjiang Road',                 cat: 'Neighbourhood', description: 'Canal-side street, good for dinner.',       day: 'Unassigned',  color: 'var(--d-grey)' }
+        }
+      }
+    };
+  }
+
+  // ---------- local persistence for staged changes ----------
+  // CROSS-CITY STAGING, resolved: staged reassignments are kept on this
+  // device and survive a full reload, exactly like place-detail-modal.html's
+  // draft cache (see that file's "local draft cache" comment) — same
+  // guarantee, same reasoning (never lose an edit to a flaky connection or an
+  // accidental tab close before Save is pressed). The real app persists this
+  // to IndexedDB via the TripRepository seam (CLAUDE.md); this mockup uses
+  // real localStorage so "survives a reload" is demonstrated, not just
+  // claimed. Keyed per demo frame so the two independent review frames don't
+  // clobber each other's storage.
+  function pendingStorageKey(frame){ return 'mockup-map-save-changes:' + frame + ':pending'; }
+  function loadPendingFromStorage(frame){
+    try{
+      var raw = localStorage.getItem(pendingStorageKey(frame));
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){ return {}; }
+  }
+  function persistPending(frame){
+    try{ localStorage.setItem(pendingStorageKey(frame), JSON.stringify(F[frame].pending)); }catch(e){}
+  }
+  function clearPersistedPending(frame){
+    try{ localStorage.removeItem(pendingStorageKey(frame)); }catch(e){}
+  }
+  function pendingKey(cityKey, placeKey){ return cityKey + '::' + placeKey; }
+
+  // Per-frame runtime state. The two frames (desktop/mobile demo) are kept
+  // fully independent — including their own copy of `cities` and their own
+  // localStorage key — purely so a reviewer can park one frame on "Error"
+  // and the other on "Pending" at the same time for comparison. In the real
+  // app there's exactly one Map view.
+  var F = {};
+  FRAMES.forEach(function(frame){
+    F[frame] = {
+      cities: makeCityData(),
+      currentCity: 'shanghai',
+      // "cityKey::placeKey" -> { cityKey, placeKey, originalDay, originalColor, newDay, newColor }
+      // NOT scoped to currentCity — this is the whole point of the resolved
+      // behaviour: one dict spans every city, so pendingCount() below is
+      // already the cross-city total for free.
+      pending: loadPendingFromStorage(frame),
+      currentPin: null,
+      barState: 'hidden', // hidden | pending | saving | saved | error | confirm-discard
+      preConfirmState: 'pending',
+      offline: false,
+      simulateFailure: false,
+      saveTimer: null,
+      hideTimer: null
+    };
+  });
+
+  function colorForDay(cityData, label){
+    if(label === 'Unassigned') return 'var(--d-grey)';
+    var match = cityData.days.find(function(d){ return d.day === label; });
+    return match ? match.color : 'var(--d-grey)';
+  }
+
+  function effectiveDayColor(frame, cityKey, key){
+    var f = F[frame];
+    var p = f.cities[cityKey].places[key];
+    var pend = f.pending[pendingKey(cityKey, key)];
+    return { day: pend ? pend.newDay : p.day, color: pend ? pend.newColor : p.color, pending: !!pend };
+  }
+
+  // ---------- rendering a city into the map stage / chips / legend / route-strip ----------
+  function pinButtonHtml(frame, cityKey, key){
+    var city = F[frame].cities[cityKey];
+    var p = city.places[key];
+    var pos = city.pins[key];
+    var eff = effectiveDayColor(frame, cityKey, key);
+    var classes = 'pin' + (eff.day === 'Unassigned' ? ' unassigned' : '') + (eff.pending ? ' pending' : '');
+    var title = eff.day + (eff.pending ? ' (unsaved)' : '');
+    var label = p.name + (eff.pending ? ' — unsaved change, now set to ' + eff.day : eff.day === 'Unassigned' ? ' — unassigned' : ' — assigned to ' + eff.day);
+    var dot = eff.pending ? '<span class="pin-pending-dot" aria-hidden="true"></span>' : '';
+    return '<button type="button" class="' + classes + '" data-key="' + key + '" data-day="' + eff.day + '" style="left:' + pos.left + ';top:' + pos.top + ';--pin-color:' + eff.color + '" title="' + title + '" aria-label="' + label + '" onclick="showPin(\'' + frame + '\',\'' + key + '\')"><svg aria-hidden="true"><use href="#' + pos.icon + '"/></svg>' + dot + '</button>';
+  }
+
+  function renderCity(frame){
+    var f = F[frame];
+    var cityKey = f.currentCity;
+    var city = f.cities[cityKey];
+    var isMobile = frame === 'mobile';
+
+    // route-strip: active state + per-city "has unsaved changes" badge
+    CITY_KEYS.forEach(function(ck){
+      var btn = document.querySelector('#routeStrip-' + frame + ' .route-node[data-city="' + ck + '"]');
+      if(!btn) return;
+      var isActive = ck === cityKey;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
+      var has = cityHasPending(frame, ck);
+      btn.classList.toggle('has-pending', has);
+      var sr = btn.querySelector('.route-pending-sr');
+      if(sr) sr.textContent = has ? ', has unsaved changes' : '';
+    });
+
+    // "Showing X · range"
+    var showingCity = document.getElementById('mapShowingCity-' + frame);
+    var showingRange = document.getElementById('mapShowingRange-' + frame);
+    if(showingCity) showingCity.textContent = city.label;
+    if(showingRange) showingRange.textContent = '· ' + city.range;
+
+    // day chips
+    var chipsHtml = '<button type="button" class="chip day-all active" data-day="" onclick="selectDay(\'' + frame + '\', null, this)">All days</button>';
+    city.days.forEach(function(d){
+      var label = isMobile ? d.mobileLabel : d.desktopLabel;
+      chipsHtml += '<button type="button" class="chip" data-day="' + d.day + '" onclick="selectDay(\'' + frame + '\', \'' + d.day + '\', this)"><span class="chip-dot" style="background:' + d.color + '"></span>' + label + '</button>';
+    });
+    var chipWrap = document.getElementById('dayChips-' + frame);
+    if(chipWrap) chipWrap.innerHTML = chipsHtml;
+
+    // legend — day colours + Unassigned + (LEGEND KEY, resolved) the
+    // gold-ring "Unsaved change" key, always present rather than only
+    // appearing once something happens to be pending, same convention as
+    // "Unassigned" always showing even when nothing is currently unassigned.
+    var legendHtml = city.days.map(function(d){
+      return '<div class="legend-item"><span class="legend-dot" style="background:' + d.color + '"></span>' + (isMobile ? d.mobileLabel : d.desktopLabel) + '</div>';
+    }).join('') +
+      '<div class="legend-item"><span class="legend-dot dashed"></span>Unassigned</div>' +
+      '<div class="legend-item"><span class="legend-dot pending-ring" aria-hidden="true"></span>Unsaved change</div>';
+    var legendWrap = document.getElementById('legend-' + frame);
+    if(legendWrap) legendWrap.innerHTML = legendHtml;
+
+    // map stage — badge + background + pins, all city-specific
+    var badgeLabel = isMobile ? city.mapBadgeShort : city.mapBadge;
+    var pinsHtml = city.pinKeys.map(function(key){ return pinButtonHtml(frame, cityKey, key); }).join('');
+    var stage = document.getElementById('mapStage-' + frame);
+    if(stage){
+      stage.innerHTML =
+        '<div class="map-badge"><svg aria-hidden="true"><use href="#i-map"/></svg> Map: <b>' + badgeLabel + '</b></div>' +
+        '<svg viewBox="0 0 400 300" preserveAspectRatio="none">' + city.mapSvg + '</svg>' +
+        pinsHtml;
+    }
+
+    // switching cities deselects any open pin — it belonged to the city we just left
+    closePinDetail(frame);
+    refreshBar(frame); // recomputes the cross-city hint for the newly-current city
+  }
+
+  function switchCity(frame, cityKey){
+    var f = F[frame];
+    if(f.currentCity === cityKey) return;
+    f.currentCity = cityKey;
+    renderCity(frame);
+  }
+
+  // ---------- pin detail panel ----------
+  function showPin(frame, key){
+    var f = F[frame];
+    var cityKey = f.currentCity;
+    f.currentPin = key;
+    var city = f.cities[cityKey];
+    var p = city.places[key];
+    var eff = effectiveDayColor(frame, cityKey, key);
+    var isUnassigned = eff.day === 'Unassigned';
+
+    var options = city.days.map(function(d){
+      return '<option' + (d.day === eff.day ? ' selected' : '') + '>' + d.day + '</option>';
+    }).join('');
+
+    var el = document.getElementById('pinDetail-' + frame);
+    el.classList.remove('empty');
+    el.innerHTML =
+      '<div class="pin-detail-top"><div>' +
+        '<div class="pin-detail-name">' + p.name + '</div>' +
+        '<div class="pin-detail-tags"><span class="tag">' + p.cat + '</span><span class="tag city">' + city.label + '</span></div>' +
+        '<button type="button" class="pin-pending-pill' + (eff.pending ? ' show' : '') + '" onclick="scrollToSaveBar(\'' + frame + '\')"><span class="dot" aria-hidden="true"></span>Unsaved change</button>' +
+      '</div>' +
+      '<button class="icon-btn" onclick="closePinDetail(\'' + frame + '\')" title="Close" aria-label="Close place details"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>' +
+      '<p class="pin-detail-note">' + p.description + '</p>' +
+      '<div class="field-row"><span class="field-label">Assign to day</span></div>' +
+      '<select class="assign-select' + (isUnassigned ? ' is-wishlist' : '') + '" style="--select-tint:' + eff.color + '" aria-label="Assign ' + p.name + ' to a day" onchange="reassignPin(\'' + frame + '\', this)">' +
+        options + '<option' + (isUnassigned ? ' selected' : '') + '>Unassigned</option>' +
+      '</select>';
+
+    document.querySelectorAll('#mapStage-' + frame + ' .pin').forEach(function(btn){
+      btn.classList.toggle('selected', btn.dataset.key === key);
+    });
+  }
+
+  function closePinDetail(frame){
+    F[frame].currentPin = null;
+    var el = document.getElementById('pinDetail-' + frame);
+    el.classList.add('empty');
+    el.innerHTML = '<svg aria-hidden="true"><use href="#i-pin"/></svg><div><strong>Tap a pin</strong><br>Place details and the day assignment will show here.</div>';
+    document.querySelectorAll('#mapStage-' + frame + ' .pin').forEach(function(btn){ btn.classList.remove('selected'); });
+  }
+
+  // ---------- day filter chips (visual only — dim/emphasise pins) ----------
+  function selectDay(frame, label, chipBtn){
+    document.querySelectorAll('#dayChips-' + frame + ' .chip').forEach(function(ch){ ch.classList.remove('active'); });
+    chipBtn.classList.add('active');
+    document.querySelectorAll('#mapStage-' + frame + ' .pin').forEach(function(p){
+      if(!label){ p.classList.remove('dim', 'emph'); return; }
+      var match = p.dataset.day === label;
+      p.classList.toggle('emph', match);
+      p.classList.toggle('dim', !match);
+    });
+    closePinDetail(frame);
+  }
+
+  // ---------- staging a reassignment (the core of this feature) — always
+  // stages into whichever city is currently shown; you can only edit what's
+  // on screen, but what's already staged elsewhere is untouched either way. ----------
+  function stageChange(frame, key, newDay){
+    var f = F[frame];
+    // AUTO-HIDE RACE, resolved (part 1 of 2 — see scheduleAutoHide() for the
+    // other half): if the 'saved' flash's auto-hide timer is still pending
+    // when a NEW change gets staged, kill it outright. Without this, a
+    // change staged during that brief window could still get force-hidden
+    // 1.5s later even though the bar has since gone legitimately 'pending'
+    // again via refreshBar() below.
+    clearTimeout(f.hideTimer);
+    var cityKey = f.currentCity;
+    var pKey = pendingKey(cityKey, key);
+    var p = f.cities[cityKey].places[key];
+    var existing = f.pending[pKey];
+    var originalDay = existing ? existing.originalDay : p.day;
+    var originalColor = existing ? existing.originalColor : p.color;
+
+    if(newDay === originalDay){
+      // edited back to exactly what's already saved — nothing left to
+      // protect, same logic as place-detail-modal.html's handleDraftInput.
+      delete f.pending[pKey];
+    } else {
+      f.pending[pKey] = { cityKey: cityKey, placeKey: key, originalDay: originalDay, originalColor: originalColor, newDay: newDay, newColor: colorForDay(f.cities[cityKey], newDay) };
+    }
+    persistPending(frame);
+    applyPinVisual(frame, key);
+    refreshRouteStripPending(frame);
+    refreshBar(frame);
+  }
+
+  // Only ever needs to touch the CURRENTLY shown city's DOM — a pin can only
+  // be reassigned from its own city's pin-detail panel, so this never needs
+  // to reach into a city that isn't rendered right now.
+  function applyPinVisual(frame, key){
+    var f = F[frame];
+    var cityKey = f.currentCity;
+    var p = f.cities[cityKey].places[key];
+    var eff = effectiveDayColor(frame, cityKey, key);
+    var btn = document.querySelector('#mapStage-' + frame + ' .pin[data-key="' + key + '"]');
+    if(!btn) return;
+    btn.style.setProperty('--pin-color', eff.color);
+    btn.classList.toggle('unassigned', eff.day === 'Unassigned');
+    btn.classList.toggle('pending', eff.pending);
+    btn.dataset.day = eff.day;
+    btn.title = eff.day + (eff.pending ? ' (unsaved)' : '');
+    btn.setAttribute('aria-label', p.name + (eff.pending ? ' — unsaved change, now set to ' + eff.day : eff.day === 'Unassigned' ? ' — unassigned' : ' — assigned to ' + eff.day));
+
+    var dot = btn.querySelector('.pin-pending-dot');
+    if(eff.pending && !dot){
+      dot = document.createElement('span');
+      dot.className = 'pin-pending-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      btn.appendChild(dot);
+    } else if(!eff.pending && dot){
+      dot.remove();
+    }
+  }
+
+  function reassignPin(frame, sel){
+    var f = F[frame];
+    var key = f.currentPin;
+    if(!key) return;
+    stageChange(frame, key, sel.value);
+    // refresh the open select's own tint/pill in place, so focus stays put
+    var eff = effectiveDayColor(frame, f.currentCity, key);
+    sel.style.setProperty('--select-tint', eff.color);
+    sel.classList.toggle('is-wishlist', sel.value === 'Unassigned');
+    var pill = document.querySelector('#pinDetail-' + frame + ' .pin-pending-pill');
+    if(pill) pill.classList.toggle('show', eff.pending);
+  }
+
+  function scrollToSaveBar(frame){
+    var bar = document.getElementById('saveBar-' + frame);
+    if(bar) bar.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'end' });
+    var btn = document.getElementById('saveBtn-' + frame);
+    if(btn && !btn.disabled) setTimeout(function(){ btn.focus(); }, 250);
+  }
+
+  // ---------- the Save bar's state machine ----------
+  // Deliberately NOT scoped to currentCity — this is the cross-city total.
+  function pendingCount(frame){ return Object.keys(F[frame].pending).length; }
+  function pendingCountForCity(frame, cityKey){
+    var f = F[frame];
+    return Object.keys(f.pending).filter(function(k){ return f.pending[k].cityKey === cityKey; }).length;
+  }
+  function citiesWithPending(frame){
+    var f = F[frame];
+    var seen = {};
+    Object.keys(f.pending).forEach(function(k){ seen[f.pending[k].cityKey] = true; });
+    return Object.keys(seen);
+  }
+  function cityHasPending(frame, cityKey){ return pendingCountForCity(frame, cityKey) > 0; }
+
+  function refreshRouteStripPending(frame){
+    var f = F[frame];
+    CITY_KEYS.forEach(function(ck){
+      var btn = document.querySelector('#routeStrip-' + frame + ' .route-node[data-city="' + ck + '"]');
+      if(!btn) return;
+      var has = cityHasPending(frame, ck);
+      btn.classList.toggle('has-pending', has);
+      var sr = btn.querySelector('.route-pending-sr');
+      if(sr) sr.textContent = has ? ', has unsaved changes' : '';
+    });
+  }
+
+  // CROSS-CITY STAGING, resolved — the one-line cue for "the bar is showing
+  // a count bigger than what you can see on this screen." Only appears when
+  // at least one OTHER city has something staged; says nothing when every
+  // pending change is already visible right here.
+  function buildLocationHint(frame){
+    var f = F[frame];
+    var current = f.currentCity;
+    var currentCount = pendingCountForCity(frame, current);
+    var otherCities = citiesWithPending(frame).filter(function(c){ return c !== current; });
+    if(otherCities.length === 0) return '';
+    var otherCount = otherCities.reduce(function(sum, c){ return sum + pendingCountForCity(frame, c); }, 0);
+    var where = otherCities.length === 1 ? ('in ' + f.cities[otherCities[0]].label) : ('in ' + otherCities.length + ' other cities');
+    return currentCount === 0 ? ('All changes are ' + where) : ('+' + otherCount + ' more ' + where);
+  }
+
+  function refreshBar(frame){
+    var f = F[frame];
+    // saving / confirm-discard are transient sub-states that manage their
+    // own transitions (via timers / explicit user action) — a plain edit
+    // shouldn't be able to knock the bar out of either mid-flight.
+    if(f.barState === 'saving' || f.barState === 'confirm-discard') return;
+    if(pendingCount(frame) === 0){ setBarState(frame, 'hidden'); return; }
+    // a fresh edit after a failed save does NOT quietly clear the failure —
+    // the last save attempt genuinely did fail and that stays true regardless
+    // of what's edited next; only a successful save or an explicit discard
+    // clears it.
+    setBarState(frame, f.barState === 'error' ? 'error' : 'pending');
+  }
+
+  // AUTO-HIDE RACE, resolved (part 2 of 2) — the 'saved' state auto-hides
+  // itself after a beat, but shouldn't do so unconditionally: the user may
+  // have staged a NEW change during that window (e.g. reassigned a different
+  // pin while the flash was still showing). refreshBar() already knows how
+  // to make that call correctly — hide if the pending count is genuinely
+  // zero, or promote back to 'pending' (or 'error') if it isn't — so the
+  // timer defers to it instead of forcing 'hidden' itself.
+  function scheduleAutoHide(frame){
+    var f = F[frame];
+    clearTimeout(f.hideTimer);
+    f.hideTimer = setTimeout(function(){ refreshBar(frame); }, 1500);
+  }
+
+  function setBarState(frame, state){
+    var f = F[frame];
+    f.barState = state;
+    var bar = document.getElementById('saveBar-' + frame);
+    bar.dataset.state = state;
+
+    // total across every city — see the CROSS-CITY STAGING comments above
+    var count = pendingCount(frame);
+    var textEl = document.getElementById('saveBarText-' + frame);
+    if(textEl) textEl.textContent = count + ' unsaved change' + (count === 1 ? '' : 's');
+
+    var subtextEl = document.getElementById('saveBarSubtext-' + frame);
+    if(subtextEl){
+      var hint = buildLocationHint(frame);
+      subtextEl.textContent = hint;
+      subtextEl.classList.toggle('show', !!hint && (state === 'pending' || state === 'error'));
+    }
+
+    var saving = state === 'saving';
+    var saveBtn = document.getElementById('saveBtn-' + frame);
+    var discardBtn = document.getElementById('discardBtn-' + frame);
+    // Save while offline is disabled outright rather than left clickable to
+    // fail — we already know it would (writes require the network; see
+    // CLAUDE.md's write-through sync model). Discard still works offline:
+    // it's a purely local revert, no network involved. Also disabled once
+    // count is 0 (NO-OP CLICK, resolved) — most visible during the transient
+    // 'saved' state, where the bar is still up but there's genuinely nothing
+    // left to save; without this, clicking Save there was a silent no-op.
+    if(saveBtn) saveBtn.disabled = saving || count === 0 || (f.offline && state !== 'saved' && state !== 'hidden');
+    // SAVE VS DISCARD SCOPE, resolved: Save commits every staged change in
+    // every city ("commit all my work"); Discard only undoes what's staged
+    // in the city currently on screen ("undo what I did here"). That means
+    // the bar can be visible (because some OTHER city has pending changes)
+    // while there's nothing local to discard — Discard goes inert rather
+    // than staying clickable and doing nothing, or worse, discarding a city
+    // the user isn't even looking at.
+    //
+    // DISCLOSED SCOPE, resolved: Save and Discard would otherwise look like
+    // a symmetric pair of buttons even though they act on very different
+    // scopes. The button's own label carries the current city ("Discard
+    // (Shanghai)") so that asymmetry is visible before the destructive
+    // confirm gate, not just inside it. When there's nothing local to
+    // discard, the same city name explains the disabled state via a title
+    // tooltip (mouse) AND a programmatically-associated hint span via
+    // aria-describedby (keyboard/AT) — not hover-only.
+    var cityLabel = f.cities[f.currentCity].label;
+    var hasLocalPending = pendingCountForCity(frame, f.currentCity) > 0;
+    var discardHintText = hasLocalPending ? '' : ('Nothing staged in ' + cityLabel + ' to discard');
+    if(discardBtn){
+      discardBtn.disabled = saving || !hasLocalPending;
+      // No aria-label override: the visible label ("Discard (Shanghai)") is
+      // already a sufficient accessible name and keeps name==visible-text for
+      // WCAG 2.5.3 (Label in Name). The disabled reason travels via title +
+      // aria-describedby (#discardHint-*), which is what describedby is for —
+      // and avoids duplicating the same string as both name and description.
+      discardBtn.title = discardHintText;
+    }
+    var discardScope = document.getElementById('discardBtnScope-' + frame);
+    if(discardScope) discardScope.textContent = '(' + cityLabel + ')';
+    var discardHint = document.getElementById('discardHint-' + frame);
+    if(discardHint) discardHint.textContent = discardHintText;
+    var label = document.getElementById('saveBtnLabel-' + frame);
+    if(label) label.textContent = saving ? 'Saving…' : 'Save changes';
+
+    bar.classList.toggle('is-offline', !!f.offline && (state === 'pending' || state === 'error'));
+
+    // NON-VISUAL FEEDBACK, resolved — staging a change is the primary
+    // interaction this whole bar exists for, but previously only
+    // 'saved'/'error' were announced and 'pending' explicitly cleared the
+    // live region. An AT user staging changes heard nothing at all: no
+    // announcement that the bar appeared, none that the count changed.
+    var announce = document.getElementById('saveAnnounce-' + frame);
+    if(announce){
+      if(state === 'saved') announce.textContent = 'Changes saved.';
+      else if(state === 'error') announce.textContent = 'Save failed. Your changes are still staged here.';
+      else if(state === 'pending') announce.textContent = count + ' unsaved change' + (count === 1 ? '' : 's') + '.';
+      else announce.textContent = '';
+    }
+
+    if(state === 'confirm-discard'){
+      var keepBtn = document.getElementById('keepBtn-' + frame);
+      if(keepBtn) setTimeout(function(){ keepBtn.focus(); }, 0);
+    }
+  }
+
+  // ---------- Save — commits every staged change, in every city, at once ----------
+  function saveChanges(frame){
+    var f = F[frame];
+    if(f.offline) return; // defensive — the button is already disabled while offline
+    if(pendingCount(frame) === 0) return;
+    clearTimeout(f.hideTimer);
+    setBarState(frame, 'saving');
+
+    f.saveTimer = setTimeout(function(){
+      if(f.simulateFailure){
+        // failure leaves every staged change exactly as it was, in every
+        // city — nothing re-typed, nothing reverted, Save is simply retryable.
+        setBarState(frame, 'error');
+        return;
+      }
+      Object.keys(f.pending).forEach(function(pKey){
+        var pend = f.pending[pKey];
+        var place = f.cities[pend.cityKey].places[pend.placeKey];
+        place.day = pend.newDay;
+        place.color = pend.newColor;
+      });
+      f.pending = {};
+      persistPending(frame);
+      f.cities[f.currentCity].pinKeys.forEach(function(key){ applyPinVisual(frame, key); });
+      if(f.currentPin) showPin(frame, f.currentPin); // refresh the open panel's pill/select
+      refreshRouteStripPending(frame);
+      setBarState(frame, 'saved');
+      var bar = document.getElementById('saveBar-' + frame);
+      // INVISIBLE PULSE, resolved — flash-confirm-STRONG here specifically
+      // (see its keyframe comment in <style>): the bar's own 'saved'
+      // background is already --jade-soft, so the plain --jade-soft pulse
+      // used everywhere else in the app would be invisible on it.
+      bar.classList.remove('flash-confirm-strong'); void bar.offsetWidth; bar.classList.add('flash-confirm-strong');
+      scheduleAutoHide(frame);
+    }, 700);
+  }
+
+  // ---------- Discard (destructive — two-step confirm, same pattern as
+  // place-detail-modal.html's "Discard draft") — SAVE VS DISCARD SCOPE,
+  // resolved: unlike Save (which commits every staged change in every
+  // city), Discard only reverts what's staged in the CURRENTLY shown city.
+  // Save = "commit all my work"; Discard = a localized "undo what I did
+  // here." The confirm copy names the city so the (deliberately narrower)
+  // scope is never ambiguous, and the button goes inert — see setBarState —
+  // when there's nothing local to undo even though the bar itself is still
+  // up because some other city has pending changes. ----------
+  function requestDiscard(frame){
+    var f = F[frame];
+    var cityKey = f.currentCity;
+    var count = pendingCountForCity(frame, cityKey);
+    if(count === 0) return; // defensive — the button is already disabled in this state
+    f.preConfirmState = f.barState;
+    var strongEl = document.getElementById('discardCountText-' + frame);
+    if(strongEl){
+      strongEl.textContent = 'Discard ' + count + ' unsaved change' + (count === 1 ? '' : 's') + ' in ' + f.cities[cityKey].label + '?';
+    }
+    setBarState(frame, 'confirm-discard');
+  }
+  // FOCUS, resolved: neither of these used to move focus anywhere, so
+  // collapsing the confirm view (which removes whichever button inside it
+  // was just clicked/focused from the render) silently dropped focus to
+  // <body> — a keyboard/AT user loses their place with no indication where
+  // they landed. Both now land focus somewhere deliberate instead.
+  function cancelDiscardConfirm(frame){
+    setBarState(frame, F[frame].preConfirmState || 'pending');
+    // Return focus to the control that opened this confirmation — it's
+    // still visible and still the thing the user was just interacting with.
+    var discardBtn = document.getElementById('discardBtn-' + frame);
+    if(discardBtn) setTimeout(function(){ discardBtn.focus(); }, 0);
+  }
+  function confirmDiscard(frame){
+    var f = F[frame];
+    var cityKey = f.currentCity;
+    Object.keys(f.pending).forEach(function(pKey){
+      if(f.pending[pKey].cityKey === cityKey) delete f.pending[pKey];
+    });
+    persistPending(frame);
+    f.cities[cityKey].pinKeys.forEach(function(key){ applyPinVisual(frame, key); });
+    if(f.currentPin) showPin(frame, f.currentPin);
+    refreshRouteStripPending(frame);
+    // Can't just call refreshBar() here: barState is still 'confirm-discard'
+    // at this point and refreshBar() deliberately no-ops on that transient
+    // sub-state (see its own comment) — so the transition out of it has to
+    // be driven explicitly. If some OTHER city still has pending changes the
+    // bar stays up (lighter, by exactly what we just removed) in the plain
+    // 'pending' state — an explicit Discard is exactly the "clears it" case
+    // refreshBar's own comment carves out for a prior 'error', same as it
+    // always has been; only a leftover FAILURE from a save attempt on what's
+    // still staged elsewhere would need to fail again to re-earn 'error'.
+    // An empty total (nothing staged anywhere) goes to hidden.
+    var stillPending = pendingCount(frame) > 0;
+    setBarState(frame, stillPending ? 'pending' : 'hidden');
+    if(stillPending){
+      // The "Discard changes" button just clicked is about to disappear;
+      // Save is now the obvious next action and lives in a stable spot in
+      // the still-visible bar.
+      var saveBtn = document.getElementById('saveBtn-' + frame);
+      if(saveBtn) setTimeout(function(){ saveBtn.focus(); }, 0);
+    } else {
+      // The whole bar just went display:none — there's no control left
+      // inside it to receive focus at all, so fall back to the panel
+      // heading (given a temporary tabindex) rather than letting focus
+      // drop to <body> unannounced.
+      var heading = document.getElementById('panelTitle-' + frame);
+      if(heading){
+        if(!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+        setTimeout(function(){ heading.focus(); }, 0);
+      }
+    }
+  }
+
+  // ESCAPE, resolved — matches place-detail-modal.html's precedent: Escape
+  // backs a confirm step out by ONE level (same as pressing "Keep editing"),
+  // it doesn't skip past it and slam something shut. Global listener, not
+  // scoped to one frame, because the two demo frames on this page keep
+  // fully independent state — either one (or both) could be sitting in
+  // confirm-discard at once.
+  document.addEventListener('keydown', function(e){
+    if(e.key !== 'Escape') return;
+    FRAMES.forEach(function(frame){
+      if(F[frame].barState === 'confirm-discard') cancelDiscardConfirm(frame);
+    });
+  });
+
+  // ---------- global debug toggles (review helpers, not real app behaviour) ----------
+  var globalOffline = false;
+  function toggleOffline(){
+    globalOffline = !globalOffline;
+    document.getElementById('offlineToggleBtn').classList.toggle('is-on', globalOffline);
+    document.getElementById('offlineToggleLabel').textContent = globalOffline
+      ? 'Preview: offline ON — reconnect to allow saving'
+      : 'Preview: simulate offline';
+    FRAMES.forEach(function(frame){
+      F[frame].offline = globalOffline;
+      document.getElementById('offlineBanner-' + frame).hidden = !globalOffline;
+      setBarState(frame, F[frame].barState); // re-apply current state so the disabled/offline-note reflects the new flag immediately
+    });
+  }
+  var globalFailure = false;
+  function toggleFailure(){
+    globalFailure = !globalFailure;
+    document.getElementById('failureToggleBtn').classList.toggle('is-on', globalFailure);
+    document.getElementById('failureToggleLabel').textContent = globalFailure
+      ? 'Preview: save failure ON — next Save will fail'
+      : 'Preview: simulate save failure';
+    FRAMES.forEach(function(frame){ F[frame].simulateFailure = globalFailure; });
+  }
+  // Reset clears the persisted staged changes too — otherwise "Reset demo"
+  // would reload straight back into whatever was staged, which is correct
+  // persistence behaviour but not what a "give me a clean slate" button
+  // should do.
+  function resetDemo(){
+    FRAMES.forEach(function(frame){ clearPersistedPending(frame); });
+    location.reload();
+  }
+
+  // ---------- quick state-jump preview buttons ----------
+  function previewState(frame, name){
+    var f = F[frame];
+    clearTimeout(f.saveTimer); clearTimeout(f.hideTimer);
+    f.cities = makeCityData();
+    f.pending = {};
+    f.currentCity = 'shanghai';
+    f.simulateFailure = false; // a preview always shows exactly what it promises, independent of the global toggle
+    renderCity(frame);
+
+    if(name === 'resting'){ persistPending(frame); setBarState(frame, 'hidden'); return; }
+
+    if(name === 'cross-city'){
+      // demonstrates the RESOLVED behaviour directly: stage a change in
+      // Suzhou first, then one in Shanghai, then land on Shanghai — which
+      // has its own pending pin (Tianzifang, gold ring) AND the bar's total
+      // includes the one still sitting in Suzhou, surfaced via the hint line.
+      f.currentCity = 'suzhou';
+      stageChange(frame, 'pingjiang', 'Mon 16 Nov');
+      f.currentCity = 'shanghai';
+      stageChange(frame, 'tianzifang', 'Day 2 · Mon 10 Nov');
+      renderCity(frame);
+      setBarState(frame, 'pending');
+      return;
+    }
+
+    // canned scenario mirroring the two changes the original brief called
+    // out (both staged in the currently-shown city, Shanghai)
+    stageChange(frame, 'tianzifang', 'Day 2 · Mon 10 Nov'); // was Unassigned -> assigned
+    stageChange(frame, 'bund', 'Unassigned');                // was assigned -> cleared
+
+    if(name === 'pending'){ setBarState(frame, 'pending'); return; }
+    if(name === 'saving'){ setBarState(frame, 'saving'); return; }
+    if(name === 'error'){ setBarState(frame, 'error'); return; }
+    if(name === 'offline'){
+      f.offline = true;
+      document.getElementById('offlineBanner-' + frame).hidden = false;
+      setBarState(frame, 'pending');
+      return;
+    }
+    if(name === 'saved'){
+      Object.keys(f.pending).forEach(function(pKey){
+        var pend = f.pending[pKey];
+        var place = f.cities[pend.cityKey].places[pend.placeKey];
+        place.day = pend.newDay;
+        place.color = pend.newColor;
+      });
+      f.pending = {};
+      persistPending(frame);
+      renderCity(frame);
+      setBarState(frame, 'saved');
+      var bar = document.getElementById('saveBar-' + frame);
+      bar.classList.remove('flash-confirm-strong'); void bar.offsetWidth; bar.classList.add('flash-confirm-strong');
+      scheduleAutoHide(frame);
+      return;
+    }
+  }
+
+  // ---------- initial paint ----------
+  // Restores whatever was still staged from a previous visit (see the local
+  // persistence comment above) before the reviewer does anything at all —
+  // this is what makes "survives a reload" an honest claim rather than
+  // something only true while previewState()/stageChange() are driving it.
+  FRAMES.forEach(function(frame){ renderCity(frame); });
+
+  // ---------- theme toggle ----------
+  function prefersReducedMotion(){
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  function systemTheme(){
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function effectiveTheme(){
+    return document.documentElement.getAttribute('data-theme') || systemTheme();
+  }
+  function applyThemeIcon(){
+    var eff = effectiveTheme();
+    document.getElementById('themeIcon').innerHTML = '<use href="#i-' + (eff === 'dark' ? 'sun' : 'moon') + '"/>';
+    document.getElementById('themeToggle').setAttribute('aria-pressed', eff === 'dark');
+  }
+  function toggleTheme(){
+    document.documentElement.setAttribute('data-theme', effectiveTheme() === 'dark' ? 'light' : 'dark');
+    applyThemeIcon();
+  }
+  applyThemeIcon();
+</script>
+</body>
+</html>

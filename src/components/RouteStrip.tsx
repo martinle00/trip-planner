@@ -24,9 +24,15 @@ interface RouteStripProps {
   selectedCity: string;
   /** Tapping a node selects that city on the Map and switches to the Map tab. */
   onSelect: (cityName: string) => void;
+  /** City names with an unsaved (staged, not yet committed) Map reassignment
+   *  — draws a small gold dot on that node (see the Map save-changes spec,
+   *  mockup/map-save-changes.html). Shown on ANY city with something staged,
+   *  active or not, so it doesn't disappear/reappear as the selection moves.
+   *  Optional so every other RouteStrip caller/test is unaffected. */
+  pendingCities?: ReadonlySet<string>;
 }
 
-export function RouteStrip({ cities, selectedCity, onSelect }: RouteStripProps) {
+export function RouteStrip({ cities, selectedCity, onSelect, pendingCities }: RouteStripProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
 
@@ -63,17 +69,22 @@ export function RouteStrip({ cities, selectedCity, onSelect }: RouteStripProps) 
     >
       {cities.map((city) => {
         const active = selectedCity === city.name;
+        const hasPending = pendingCities?.has(city.name) ?? false;
         return (
           <button
             key={city.name}
-            className={`route-node${active ? ' active' : ''}`}
+            className={`route-node${active ? ' active' : ''}${hasPending ? ' has-pending' : ''}`}
             data-city={citySlug(city.name)}
             aria-current={active ? 'true' : undefined}
             onClick={() => onSelect(city.name)}
           >
             <span className="line" />
             <span className="route-dot" />
-            <span className="route-city">{city.name}</span>
+            {hasPending && <span className="route-pending-dot" aria-hidden="true" />}
+            <span className="route-city">
+              {city.name}
+              {hasPending && <span className="visually-hidden">, has unsaved changes</span>}
+            </span>
             <span className="route-date">{fmtCompactRange(city.arrive, city.depart)}</span>
           </button>
         );

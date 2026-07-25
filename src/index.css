@@ -229,6 +229,17 @@ svg{ display:block; }
 }
 .route-node.active::before{ width:26px; }
 
+/* "this city has unsaved (staged) changes" — same gold dot-on-border language
+   as .pin-pending-dot below, so the signal reads the same wherever it shows
+   up. Shown on ANY city with a staged reassignment, active or not, so it
+   doesn't mysteriously disappear/reappear as the timeline's own selection
+   moves (see mockup/map-save-changes.html's route-strip). */
+.route-pending-dot{
+  position:absolute; top:1px; left:calc(50% + 8px); width:8px; height:8px; border-radius:50%;
+  background:var(--gold); border:2px solid var(--paper); display:none;
+}
+.route-node.has-pending .route-pending-dot{ display:block; }
+
 /* ============================= TABS ============================= */
 .tabbar{
   position:sticky; top:var(--topbar-h, 0px); z-index:29;
@@ -341,6 +352,17 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
 .pin-marker.dim{ opacity:.32; filter:grayscale(.5); }
 .pin-marker svg{ width:13px; height:13px; stroke:#fff; fill:none; }
 
+/* "unsaved" cue on a pin — a gold RING via box-shadow rather than `outline`,
+   deliberately: outline is already spoken for by .selected (ink) and .emph
+   (day-filter match), and a pin can legitimately be both of those AND
+   pending at once. box-shadow layers as a second ring instead of fighting
+   the single `outline` property for the same pin. Sits fully outside the
+   pin's own 3px --paper-raised border in both themes, so it never touches
+   the pin's own fill colour directly — confirmed legible against every day
+   colour, including the near-hue --d-amber. See mockup/map-save-changes.html. */
+.pin-marker.pending{ box-shadow:0 2px 6px rgba(0,0,0,.28), 0 0 0 3px var(--gold); }
+.pin-marker.pending:hover{ box-shadow:0 3px 10px rgba(0,0,0,.38), 0 0 0 3px var(--gold); }
+
 .pin-badge{
   position:absolute; top:-5px; right:-6px; min-width:15px; height:15px; padding:0 3px;
   border-radius:var(--radius-full); background:var(--paper-raised); color:var(--ink);
@@ -349,6 +371,12 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
   line-height:1; pointer-events:none;
 }
 .pin-marker.unassigned .pin-badge{ display:none; }
+
+/* Opposite corner from .pin-badge (top-right) so the two never collide. */
+.pin-pending-dot{
+  position:absolute; top:-4px; left:-5px; width:10px; height:10px; border-radius:50%;
+  background:var(--gold); border:2px solid var(--paper-raised); pointer-events:none;
+}
 
 .chip-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:1px; }
 .chip.day-all{ display:flex; align-items:center; }
@@ -371,6 +399,13 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
 .legend-item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); }
 .legend-dot{ width:10px; height:10px; border-radius:50%; flex:none; }
 .legend-dot.dashed{ background:transparent !important; border:1.5px dashed var(--d-grey); }
+/* Key for the gold ring/dot on a pending pin (see .pin-marker.pending above)
+   — neutral paper-fill + gold outline (not a solid gold dot) so it reads as
+   "a ring drawn around whatever the pin already is," not as a day colour of
+   its own, matching the distinction .pin-marker.pending itself makes.
+   Always present, same convention as "Unassigned" always showing even when
+   nothing is currently unassigned. */
+.legend-dot.pending-ring{ background:var(--paper-raised); border:1.5px solid var(--line-strong); box-shadow:0 0 0 2px var(--gold); }
 
 .pin-detail{
   background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-md);
@@ -416,6 +451,67 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 @media (min-width:860px){
   .map-layout{ grid-template-columns: 1fr 300px; align-items:start; }
 }
+
+/* ============================= MAP SAVE BAR =============================
+   Staged-changes affordance for the Map tab (approved via
+   mockup/map-save-changes.html): the day-assign `<select>` in .pin-detail
+   stages a reassignment instead of writing it immediately, pins render at
+   their staged day/colour right away (see .pin-marker.pending above), and
+   nothing is actually committed until this bar's Save is pressed.
+
+   Docked to the bottom of the Map panel's own scroll position
+   (position:sticky, not fixed — the app has no competing bottom chrome, tabs
+   live at the top under the topbar), not inside .pin-detail: staged changes
+   can span several pins across several cities, so the bar has to stay
+   honest about "how many changes" no matter what's currently selected or
+   shown, which a control living inside .pin-detail can't do once that panel
+   closes or shows a different pin. */
+.map-save-bar{
+  position:sticky; bottom:0; z-index:6; margin:16px -16px -16px;
+  background:var(--paper-raised); border-top:1px solid var(--line);
+  border-radius:var(--radius-md) var(--radius-md) 0 0;
+  box-shadow:0 -8px 20px -10px rgba(60,40,20,.22);
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.map-save-bar[data-state="saved"]{ background:var(--jade-soft); }
+.map-save-bar-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.map-save-bar-info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.map-save-bar-info-row{ display:flex; align-items:center; gap:8px; min-width:0; }
+.map-save-bar-dot{ width:8px; height:8px; border-radius:50%; background:var(--gold); flex:none; }
+.map-save-bar[data-state="saving"] .map-save-bar-dot{
+  background:transparent; border:2px solid var(--line-strong); border-top-color:var(--accent);
+  animation:spin .7s linear infinite;
+}
+.map-save-bar-check{ width:14px; height:14px; color:var(--jade); flex:none; }
+.map-save-bar-text{ font-size:12.5px; font-weight:600; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.map-save-bar[data-state="saved"] .map-save-bar-text{ color:var(--jade-soft-ink); font-weight:700; }
+/* Cross-city hint line ("+1 more in Suzhou" / "All changes are in Suzhou")
+   — real information a user needs to act on correctly, not decoration, so
+   it's --ink-soft (~6:1), NOT --ink-faint, which fails AA at this
+   weight/size and is reserved for decorative/disabled text (see
+   DESIGN-SYSTEM.md's -soft-ink rule). */
+.map-save-bar-subtext{ font-size:11px; font-weight:600; color:var(--ink-soft); margin-left:16px; }
+.map-save-bar-actions{ display:flex; gap:8px; flex:none; }
+/* MOBILE SIZING: below 720px (the same thumb-critical threshold Modal.tsx
+   uses for its bottom-sheet/dialog switch) Save/Discard stay full-size .btn
+   — this is the highest-consequence control pinned to the bottom of the
+   screen, not a place to shave padding. At >=720px they match the rest of
+   the panel's compact controls. */
+@media (min-width:720px){
+  .map-save-bar-actions .btn{ padding:6px 12px; font-size:12.5px; }
+}
+
+.map-save-bar-msg{
+  display:flex; align-items:flex-start; gap:7px; font-size:12px; font-weight:600; line-height:1.4;
+  color:var(--gold-soft-ink); background:var(--gold-soft); border-radius:var(--radius-sm); padding:9px 10px; margin-top:10px;
+}
+.map-save-bar-msg svg{ width:14px; height:14px; flex:none; margin-top:1px; }
+
+.map-save-bar-confirm{ display:flex; flex-direction:column; gap:10px; }
+.map-save-bar-confirm-text{ display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--ink-soft); margin:0; }
+.map-save-bar-confirm-text svg{ width:16px; height:16px; flex:none; margin-top:1px; color:var(--gold-soft-ink); }
+.map-save-bar-confirm-text strong{ display:block; color:var(--ink); font-size:13.5px; font-weight:700; margin-bottom:2px; }
+.map-save-bar-confirm-actions{ display:flex; justify-content:flex-end; gap:10px; }
 
 /* ============================= PLACES TAB ============================= */
 .add-card{

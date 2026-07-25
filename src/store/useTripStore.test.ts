@@ -6,13 +6,21 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Dexie from 'dexie';
-import { useTripStore, resetTripStoreForSignOut } from './useTripStore';
+import {
+  useTripStore,
+  resetTripStoreForSignOut,
+  getEffectiveDayId,
+  getStagedAssignmentCount,
+  getStagedAssignmentCountForCity,
+  getStagedAssignmentCountsByCity,
+} from './useTripStore';
 import type { DayPlan } from '../lib/autoplan';
 import { setTripRepository } from '../data/tripRepositoryInstance';
 import { DexieTripRepository } from '../data/dexieTripRepository';
 import type { TripRepository } from '../data/tripRepository';
 import type { Place, Trip } from '../data/schema';
 import { db } from '../data/db';
+import { stagedAssignmentRepository } from '../data/stagedAssignmentRepository';
 import { splitMergedProse } from '../lib/proseMerge';
 
 const fetchRatesMock = vi.fn();
@@ -349,6 +357,27 @@ describe('applyAutoPlan', () => {
     expect(dayItems).toHaveLength(2);
     expect(dayItems.filter((i) => i.placeId === p1.id)).toHaveLength(1);
     expect(dayItems.filter((i) => i.placeId === p2.id)).toHaveLength(1);
+  });
+
+  // Map "Save changes" staging model, resolved: autoplan is explicitly NOT
+  // staged (see useTripStore.ts's `applyAutoPlan` doc comment and
+  // CLAUDE.md) -- it keeps writing straight through the normal path, exactly
+  // like assignPlaceToDay. This pins that as a regression guard: applying a
+  // plan must never create a row in the local staging table nor touch
+  // in-memory `stagedAssignments`, even though the two features both end up
+  // setting `Place.dayId`.
+  it('writes straight through immediately -- never stages -- unlike the Map pin-detail select', async () => {
+    const { places, days } = useTripStore.getState();
+    const [p1] = places;
+    const day = days[0];
+
+    await useTripStore.getState().applyAutoPlan(makePlan(day.id, day.date, day.city, [p1.id]));
+
+    expect(useTripStore.getState().stagedAssignments).toEqual({});
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
+    const place = useTripStore.getState().places.find((p) => p.id === p1.id);
+    expect(place?.dayId).toBe(day.id);
+    expect(place?.status).toBe('planned');
   });
 });
 
@@ -857,6 +886,226 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
     expect(useTripStore.getState().loading).toBe(true);
     expect(useTripStore.getState().syncing).toBe(false);
   });
+
+  // Coverage gap closed: the pre-auth (plain DexieTripRepository) branch of
+  // init() already had a dedicated test for the `stagedAssignmentsVersion`
+  // guard (see 'init() background refresh vs. a concurrent staging action'
+  // below), but the signed-in, remote-backed cache-first/stale-while-
+  // revalidate branch exercised here shares the exact same guard logic
+  // (`stagedAssignmentsInitPatch`) against its own, separate
+  // `stagedAssignmentRepository.listAll()` call in the BACKGROUND refresh
+  // step -- and had no test of its own. Staged assignments are always read
+  // from the local table regardless of which branch runs, so the race is
+  // real here too: a local trip is already cached (this file's outer
+  // `beforeEach` seeds one), so this call's background remote refresh is not
+  // awaited by `init()` itself, giving a `saveStagedAssignments()` call a
+  // real window to complete WHILE that refresh's own (now-stale) staged-rows
+  // read is still in flight.
+  it("a Save that completes staging while init()'s BACKGROUND remote refresh is mid-flight re-reading it does not get resurrected once that refresh resolves (signed-in cache-first path)", async () => {
+    const place = useTripStore.getState().places.find((p) => !p.dayId)!;
+    const day = useTripStore.getState().days[0];
+    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+
+    const cachedTrip = useTripStore.getState().trip as Trip;
+    const fakeRemote = makeFakeRemoteRepo({
+      async getTrip() {
+        return cachedTrip;
+      },
+      async listPlaces() {
+        return useTripStore.getState().places;
+      },
+      async listDays() {
+        return useTripStore.getState().days;
+      },
+      async listAllItinerary() {
+        return Object.values(useTripStore.getState().itineraryByDay).flat();
+      },
+      async listExpenses() {
+        return useTripStore.getState().expenses;
+      },
+    });
+    setTripRepository(fakeRemote);
+
+    // init() calls stagedAssignmentRepository.listAll() TWICE when a local
+    // trip is already cached: once (awaited) in the synchronous cache-paint
+    // step, and again (NOT awaited by init() itself) in the background
+    // remote-refresh step. Let the first call resolve normally; hold the
+    // second one open on `gate` until explicitly released, mirroring the
+    // exact staleness hazard `stagedAssignmentsVersion` guards against, now
+    // through the signed-in branch instead of the pre-auth one.
+    let listAllCalls = 0;
+    const gate = deferred<void>();
+    const originalListAll = stagedAssignmentRepository.listAll.bind(stagedAssignmentRepository);
+    const listAllSpy = vi.spyOn(stagedAssignmentRepository, 'listAll').mockImplementation(async () => {
+      listAllCalls += 1;
+      const snapshot = await originalListAll();
+      if (listAllCalls === 2) await gate.promise;
+      return snapshot;
+    });
+
+    try {
+      const initPromise = useTripStore.getState().init();
+      // Resolves once the cache-paint step lands -- the local trip was
+      // already cached, so init() does not wait on the (blocked) background
+      // refresh.
+      await initPromise;
+      expect(useTripStore.getState().syncing).toBe(true);
+      expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({
+        dayId: day.id,
+        city: place.city,
+      });
+
+      // Save runs to completion for real -- clearing staging entirely --
+      // WHILE the background refresh's stale staged-rows read is still
+      // pending.
+      await useTripStore.getState().saveStagedAssignments();
+      expect(useTripStore.getState().stagedAssignments).toEqual({});
+
+      // Now let the background refresh's delayed (now-stale, still showing
+      // the staged entry) snapshot resolve and let the call finish.
+      gate.resolve();
+      await waitUntil(() => useTripStore.getState().syncing === false);
+
+      // init()'s stale snapshot must NOT resurrect the already-cleared
+      // staged assignment -- the guard under test protects exactly this
+      // field. (It does NOT protect `places` against this same class of
+      // race -- see the dedicated `it.fails` case directly below, which
+      // documents that as a separate, pre-existing gap discovered while
+      // writing this test, not something this guard claims to cover.)
+      expect(useTripStore.getState().stagedAssignments).toEqual({});
+      expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
+    } finally {
+      listAllSpy.mockRestore();
+    }
+  });
+
+  // DISCOVERED WHILE CLOSING THE ABOVE COVERAGE GAP -- not a regression in
+  // the staged-assignments feature's own code, but a real, adjacent gap in
+  // init()'s general stale-while-revalidate design that the staged-
+  // assignments work made materially easier to hit: `stagedAssignmentsVersion`
+  // guarded ONLY the `stagedAssignments` field of this same background
+  // refresh's `set()` call. `places` (also refreshed by the very same
+  // Promise.all, from the very same `listPlaces()` invocation captured
+  // before the write) had no equivalent guard, so a `saveStagedAssignments()`
+  // commit that completed while this background refresh's OWN `listPlaces()`
+  // snapshot (dispatched before the commit, resolving after it) was still in
+  // flight got its just-committed `dayId` silently reverted in memory when
+  // that stale snapshot landed -- even though the remote write succeeded and
+  // the staging table itself (correctly) did NOT resurrect. Fixed by
+  // `mutationVersion`/`domainDataInitPatch` -- the exact same guard shape as
+  // `stagedAssignmentsVersion`/`stagedAssignmentsInitPatch`, applied to
+  // `places`/`days`/`itineraryByDay`/`expenses` instead. Was `it.fails` while
+  // this gap was open (documenting the broken behavior without failing
+  // `npm test` for unrelated changes); now a plain `it`.
+  it(
+    "a Save that completes while init()'s BACKGROUND refresh is mid-flight does NOT get its committed place reverted by that refresh's stale `places` snapshot",
+    async () => {
+      const place = useTripStore.getState().places.find((p) => !p.dayId)!;
+      const day = useTripStore.getState().days[0];
+      await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+
+      const cachedTrip = useTripStore.getState().trip as Trip;
+      const fakeRemote = makeFakeRemoteRepo({
+        async getTrip() {
+          return cachedTrip;
+        },
+        async listPlaces() {
+          return useTripStore.getState().places;
+        },
+        async listDays() {
+          return useTripStore.getState().days;
+        },
+        async listAllItinerary() {
+          return Object.values(useTripStore.getState().itineraryByDay).flat();
+        },
+        async listExpenses() {
+          return useTripStore.getState().expenses;
+        },
+      });
+      setTripRepository(fakeRemote);
+
+      let listAllCalls = 0;
+      const gate = deferred<void>();
+      const originalListAll = stagedAssignmentRepository.listAll.bind(stagedAssignmentRepository);
+      const listAllSpy = vi.spyOn(stagedAssignmentRepository, 'listAll').mockImplementation(async () => {
+        listAllCalls += 1;
+        const snapshot = await originalListAll();
+        if (listAllCalls === 2) await gate.promise;
+        return snapshot;
+      });
+
+      try {
+        await useTripStore.getState().init();
+        await useTripStore.getState().saveStagedAssignments();
+        gate.resolve();
+        await waitUntil(() => useTripStore.getState().syncing === false);
+
+        // The real, already-committed assignment survives the stale
+        // background refresh (guarded by `mutationVersion`/
+        // `domainDataInitPatch`).
+        expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(day.id);
+      } finally {
+        listAllSpy.mockRestore();
+      }
+    },
+  );
+
+  // Coverage for the OTHER fields `mutationVersion`/`domainDataInitPatch`
+  // guard -- the test above only proves `places` survives; this proves the
+  // exact same background-refresh-vs-write race is also closed for
+  // `itineraryByDay` and `expenses` (a single shared counter guards all
+  // four fields together, so one write to either is enough to invalidate
+  // the whole stale snapshot -- see `mutationVersion`'s module comment).
+  it("an itinerary write AND an expense write that complete while init()'s BACKGROUND refresh is mid-flight are also not reverted by that refresh's stale snapshot", async () => {
+    const day = useTripStore.getState().days[0];
+
+    const cachedTrip = useTripStore.getState().trip as Trip;
+    const gate = deferred<void>();
+    const fakeRemote = makeFakeRemoteRepo({
+      async getTrip() {
+        return cachedTrip;
+      },
+      async listPlaces() {
+        return useTripStore.getState().places;
+      },
+      async listDays() {
+        return useTripStore.getState().days;
+      },
+      async listAllItinerary() {
+        // Captured immediately (mirroring the real staleness hazard: the
+        // read observes pre-write data but doesn't settle until later) --
+        // this single delayed promise is enough to hold up the whole
+        // refresh's `Promise.all`, so `listPlaces`/`listDays`/`listExpenses`
+        // don't need their own separate delay.
+        const snapshot = Object.values(useTripStore.getState().itineraryByDay).flat();
+        await gate.promise;
+        return snapshot;
+      },
+      async listExpenses() {
+        return useTripStore.getState().expenses;
+      },
+    });
+    setTripRepository(fakeRemote);
+
+    await useTripStore.getState().init();
+
+    // While the background refresh's now-stale itinerary/expense snapshot
+    // is still in flight, commit real writes to both.
+    const item = await useTripStore.getState().addItineraryItem({ dayId: day.id, title: 'Snack stop' });
+    const expense = await useTripStore.getState().addExpense({
+      category: 'Food',
+      label: 'Snack',
+      amount: 12,
+      currency: 'CNY',
+      paid: true,
+    });
+
+    gate.resolve();
+    await waitUntil(() => useTripStore.getState().syncing === false);
+
+    expect(useTripStore.getState().itineraryByDay[day.id]?.some((i) => i.id === item.id)).toBe(true);
+    expect(useTripStore.getState().expenses.some((e) => e.id === expense.id)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1099,5 +1348,374 @@ describe('removePlace — also deletes any local draft for that place (no orphan
 
     expect(await useTripStore.getState().getPlaceDraft(place.id)).toBeUndefined();
     expect(await db.placeDrafts.get(place.id)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Map "Save changes" staging model: stagePlaceAssignment /
+// discardStagedAssignmentsForCity / saveStagedAssignments, plus the
+// getEffectiveDayId/getStagedAssignmentCount* selector helpers. Mirrors the
+// commitPlaceDraft tests above in spirit (a local-only, never-synced editing
+// state that must survive a reload and never lose data on a failed commit).
+// ---------------------------------------------------------------------------
+
+describe('stagePlaceAssignment', () => {
+  it('records a staged entry without touching the saved place or its itinerary', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => !p.dayId)!;
+    const day = days[0];
+
+    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+
+    expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({
+      dayId: day.id,
+      city: place.city,
+    });
+    // Nothing committed to the saved place/itinerary yet.
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBeUndefined();
+    expect(linkedItemsOn(day.id, place.id)).toHaveLength(0);
+    // Persisted to the local staging table too (survives a reload — see the
+    // dedicated test below).
+    expect(await stagedAssignmentRepository.listAll()).toContainEqual(
+      expect.objectContaining({ placeId: place.id, dayId: day.id, city: place.city }),
+    );
+  });
+
+  it('staging back to the currently-saved dayId removes the staged row instead of writing a no-op change', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => !p.dayId)!; // saved dayId is undefined
+    const day = days[0];
+
+    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+    expect(useTripStore.getState().stagedAssignments[place.id]).toBeDefined();
+
+    await useTripStore.getState().stagePlaceAssignment(place.id, undefined); // back to saved (undefined)
+
+    expect(useTripStore.getState().stagedAssignments[place.id]).toBeUndefined();
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
+  });
+
+  it('staging "unassign" on an already-assigned place IS a real staged change (not treated as a no-op)', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places[0];
+    const day = days[0];
+    await useTripStore.getState().assignPlaceToDay(place.id, day.id); // saved dayId = day.id
+
+    await useTripStore.getState().stagePlaceAssignment(place.id, undefined);
+
+    expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({
+      dayId: undefined,
+      city: place.city,
+    });
+    // Saved place is untouched until Save.
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(day.id);
+  });
+
+  it('re-staging a place to a different day updates the existing staged row (not a second entry)', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => !p.dayId)!;
+
+    await useTripStore.getState().stagePlaceAssignment(place.id, days[0].id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, days[1].id);
+
+    expect(useTripStore.getState().stagedAssignments[place.id]?.dayId).toBe(days[1].id);
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(1);
+  });
+
+  it('is a no-op for an unknown placeId', async () => {
+    await expect(
+      useTripStore.getState().stagePlaceAssignment('no-such-place', useTripStore.getState().days[0].id),
+    ).resolves.toBeUndefined();
+    expect(useTripStore.getState().stagedAssignments).toEqual({});
+  });
+
+  it('staged assignments survive a simulated reload (persisted locally, loaded by init())', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => !p.dayId)!;
+    const day = days[0];
+    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+
+    await useTripStore.getState().init(); // re-load from IndexedDB, mirrors a page reload
+
+    expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({
+      dayId: day.id,
+      city: place.city,
+    });
+  });
+});
+
+describe('discardStagedAssignmentsForCity', () => {
+  it("clears only the given city's staged entries, leaving other cities untouched", async () => {
+    const { places, days } = useTripStore.getState();
+    const homeDay = days[0];
+    const placeInHomeCity = places.find((p) => !p.dayId && p.city === homeDay.city)!;
+    const placeElsewhere = places.find((p) => !p.dayId && p.city !== homeDay.city)!;
+    const dayElsewhere = days.find((d) => d.city === placeElsewhere.city)!;
+
+    await useTripStore.getState().stagePlaceAssignment(placeInHomeCity.id, homeDay.id);
+    await useTripStore.getState().stagePlaceAssignment(placeElsewhere.id, dayElsewhere.id);
+    expect(getStagedAssignmentCount(useTripStore.getState().stagedAssignments)).toBe(2);
+
+    await useTripStore.getState().discardStagedAssignmentsForCity(homeDay.city);
+
+    const staged = useTripStore.getState().stagedAssignments;
+    expect(staged[placeInHomeCity.id]).toBeUndefined();
+    expect(staged[placeElsewhere.id]).toEqual({ dayId: dayElsewhere.id, city: placeElsewhere.city });
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(1);
+  });
+
+  it('no-ops for a city with nothing staged', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => !p.dayId)!;
+    await useTripStore.getState().stagePlaceAssignment(place.id, days[0].id);
+
+    await useTripStore.getState().discardStagedAssignmentsForCity('A City With Nothing Staged');
+
+    expect(getStagedAssignmentCount(useTripStore.getState().stagedAssignments)).toBe(1);
+  });
+});
+
+describe('saveStagedAssignments', () => {
+  afterEach(() => {
+    setTripRepository(new DexieTripRepository());
+  });
+
+  it('is a no-op (resolves immediately, nothing thrown) when nothing is staged', async () => {
+    await expect(useTripStore.getState().saveStagedAssignments()).resolves.toBeUndefined();
+  });
+
+  it('batch-commits every staged entry across cities via the normal write-through path, then clears staging', async () => {
+    const { places, days } = useTripStore.getState();
+    const homeDay = days[0];
+    const placeInHomeCity = places.find((p) => !p.dayId && p.city === homeDay.city)!;
+    const placeElsewhere = places.find((p) => !p.dayId && p.city !== homeDay.city)!;
+    const dayElsewhere = days.find((d) => d.city === placeElsewhere.city)!;
+
+    await useTripStore.getState().stagePlaceAssignment(placeInHomeCity.id, homeDay.id);
+    await useTripStore.getState().stagePlaceAssignment(placeElsewhere.id, dayElsewhere.id);
+
+    await useTripStore.getState().saveStagedAssignments();
+
+    expect(getStagedAssignmentCount(useTripStore.getState().stagedAssignments)).toBe(0);
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
+    expect(useTripStore.getState().places.find((p) => p.id === placeInHomeCity.id)?.dayId).toBe(homeDay.id);
+    expect(useTripStore.getState().places.find((p) => p.id === placeElsewhere.id)?.dayId).toBe(dayElsewhere.id);
+    // assignPlaceToDay's usual itinerary-linking behavior applies -- one
+    // linked (untimed) stop per newly-assigned place.
+    expect(linkedItemsOn(homeDay.id, placeInHomeCity.id)).toHaveLength(1);
+    expect(linkedItemsOn(dayElsewhere.id, placeElsewhere.id)).toHaveLength(1);
+  });
+
+  it('persists through a simulated reload once saved (a real commit, not just in-memory)', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => !p.dayId)!;
+    await useTripStore.getState().stagePlaceAssignment(place.id, days[0].id);
+
+    await useTripStore.getState().saveStagedAssignments();
+    await useTripStore.getState().init();
+
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(days[0].id);
+    expect(useTripStore.getState().stagedAssignments).toEqual({});
+  });
+
+  it('offline: refuses to attempt the save, throws, and leaves staging fully intact', async () => {
+    const place = useTripStore.getState().places.find((p) => !p.dayId)!;
+    const day = useTripStore.getState().days[0];
+    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+
+    Object.defineProperty(globalThis.navigator, 'onLine', { configurable: true, value: false });
+    try {
+      await expect(useTripStore.getState().saveStagedAssignments()).rejects.toThrow(/offline/i);
+    } finally {
+      Object.defineProperty(globalThis.navigator, 'onLine', { configurable: true, value: true });
+    }
+
+    expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({ dayId: day.id, city: place.city });
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(1);
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBeUndefined();
+  });
+
+  it('on a failed batch commit, stops at the first failure: the entry that already committed is cleared from staging (it is a real, committed change now), and the failing entry plus anything not yet attempted stay staged untouched', async () => {
+    const { places, days } = useTripStore.getState();
+    const homeDay = days[0];
+    const okPlace = places.find((p) => !p.dayId && p.city === homeDay.city)!;
+    const remainingWishlist = places.filter((p) => !p.dayId && p.id !== okPlace.id);
+    const failingPlace = remainingWishlist[0];
+    const neverAttemptedPlace = remainingWishlist[1];
+    const failingDay = days.find((d) => d.city === failingPlace.city) ?? homeDay;
+    const neverAttemptedDay = days.find((d) => d.city === neverAttemptedPlace.city) ?? homeDay;
+
+    // Staged in this exact order -- saveStagedAssignments commits
+    // sequentially in staged order (Object.entries preserves insertion
+    // order for these non-numeric string keys), so okPlace commits first,
+    // failingPlace fails second, and neverAttemptedPlace's turn never comes.
+    await useTripStore.getState().stagePlaceAssignment(okPlace.id, homeDay.id);
+    await useTripStore.getState().stagePlaceAssignment(failingPlace.id, failingDay.id);
+    await useTripStore.getState().stagePlaceAssignment(neverAttemptedPlace.id, neverAttemptedDay.id);
+
+    const baseRepo = new DexieTripRepository();
+    const failingRepo: TripRepository = {
+      seedIfEmpty: () => baseRepo.seedIfEmpty(),
+      getTrip: () => baseRepo.getTrip(),
+      saveTrip: (t) => baseRepo.saveTrip(t),
+      listPlaces: (id) => baseRepo.listPlaces(id),
+      upsertPlace: (place) =>
+        place.id === failingPlace.id
+          ? Promise.reject(new Error('network down'))
+          : baseRepo.upsertPlace(place),
+      deletePlace: (id) => baseRepo.deletePlace(id),
+      updatePlaceIfUnchanged: (p, b) => baseRepo.updatePlaceIfUnchanged(p, b),
+      listDays: (id) => baseRepo.listDays(id),
+      listItinerary: (id) => baseRepo.listItinerary(id),
+      listAllItinerary: (id) => baseRepo.listAllItinerary(id),
+      upsertItineraryItem: (i) => baseRepo.upsertItineraryItem(i),
+      deleteItineraryItem: (id) => baseRepo.deleteItineraryItem(id),
+      listExpenses: (id) => baseRepo.listExpenses(id),
+      upsertExpense: (e) => baseRepo.upsertExpense(e),
+      deleteExpense: (id) => baseRepo.deleteExpense(id),
+      exportSnapshot: () => baseRepo.exportSnapshot(),
+      importSnapshot: (s) => baseRepo.importSnapshot(s),
+    };
+    setTripRepository(failingRepo);
+
+    await expect(useTripStore.getState().saveStagedAssignments()).rejects.toThrow(/network down/);
+
+    // okPlace: a REAL commit -- place updated (in-memory AND in the
+    // repository itself, not just the store's optimistic copy), itinerary
+    // linked, and no longer staged, since there is genuinely nothing left to
+    // save for it.
+    expect(useTripStore.getState().places.find((p) => p.id === okPlace.id)?.dayId).toBe(homeDay.id);
+    expect(linkedItemsOn(homeDay.id, okPlace.id)).toHaveLength(1);
+    const persistedOkPlace = (await baseRepo.listPlaces(okPlace.tripId)).find((p) => p.id === okPlace.id);
+    expect(persistedOkPlace?.dayId).toBe(homeDay.id);
+    expect(useTripStore.getState().stagedAssignments[okPlace.id]).toBeUndefined();
+    expect(await stagedAssignmentRepository.listAll()).not.toContainEqual(
+      expect.objectContaining({ placeId: okPlace.id }),
+    );
+
+    // failingPlace: genuinely failed to commit -- untouched, and still
+    // staged so a retry (or Discard) has something correct to act on.
+    expect(useTripStore.getState().places.find((p) => p.id === failingPlace.id)?.dayId).toBeUndefined();
+    expect(useTripStore.getState().stagedAssignments[failingPlace.id]).toEqual({
+      dayId: failingDay.id,
+      city: failingPlace.city,
+    });
+
+    // neverAttemptedPlace: the batch stopped before its turn -- untouched,
+    // still staged (NOT silently dropped just because it shared a batch
+    // with a failure).
+    expect(useTripStore.getState().places.find((p) => p.id === neverAttemptedPlace.id)?.dayId).toBeUndefined();
+    expect(useTripStore.getState().stagedAssignments[neverAttemptedPlace.id]).toEqual({
+      dayId: neverAttemptedDay.id,
+      city: neverAttemptedPlace.city,
+    });
+
+    // Staging now reflects reality: exactly the two genuinely-uncommitted
+    // entries remain, not all three.
+    expect(getStagedAssignmentCount(useTripStore.getState().stagedAssignments)).toBe(2);
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(2);
+  });
+});
+
+describe('init() background refresh vs. a concurrent staging action (stagedAssignmentsVersion guard)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('a Save that completes staging while init() is mid-flight re-reading it does not get resurrected by init()\'s now-stale snapshot', async () => {
+    const place = useTripStore.getState().places.find((p) => !p.dayId)!;
+    const day = useTripStore.getState().days[0];
+    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+
+    // Block init()'s staged-assignments read from RESOLVING (not from
+    // reading) until the test explicitly releases it -- the snapshot is
+    // captured immediately (mirroring the real staleness hazard: the read
+    // was issued, and observed pre-Save data, but doesn't settle until
+    // later), so saveStagedAssignments can be driven to full completion
+    // WHILE init()'s Promise.all is still waiting on this one already-stale
+    // result to be delivered.
+    const originalListAll = stagedAssignmentRepository.listAll;
+    let releaseGate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    vi.spyOn(stagedAssignmentRepository, 'listAll').mockImplementation(async () => {
+      const snapshot = await originalListAll();
+      await gate;
+      return snapshot;
+    });
+
+    const initPromise = useTripStore.getState().init(); // starts reading staged rows; blocked on `gate`
+
+    // While init()'s read of the (soon to be stale) staged rows is still in
+    // flight, Save runs to completion for real and clears staging entirely.
+    await useTripStore.getState().saveStagedAssignments();
+    expect(useTripStore.getState().stagedAssignments).toEqual({});
+
+    // Now let init()'s delayed read resolve (with the now-current, empty
+    // table) and let the call finish.
+    releaseGate();
+    await initPromise;
+
+    // init() must NOT resurrect the already-cleared staged assignment from
+    // its stale in-flight snapshot.
+    expect(useTripStore.getState().stagedAssignments).toEqual({});
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(day.id);
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
+  });
+});
+
+describe('getEffectiveDayId / getStagedAssignmentCount* selectors (pure helpers)', () => {
+  it("getEffectiveDayId returns the staged value when present, else the place's saved dayId", () => {
+    const place: Place = {
+      id: 'p1',
+      tripId: 't',
+      name: 'X',
+      lat: 0,
+      lng: 0,
+      city: 'Shanghai',
+      status: 'wishlist',
+      dayId: 'day-saved',
+      updatedAt: new Date().toISOString(),
+    };
+    expect(getEffectiveDayId(place, {})).toBe('day-saved');
+    expect(getEffectiveDayId(place, { p1: { dayId: 'day-staged', city: 'Shanghai' } })).toBe('day-staged');
+    expect(getEffectiveDayId(place, { p1: { dayId: undefined, city: 'Shanghai' } })).toBeUndefined();
+  });
+
+  it('count helpers total and break down correctly by city', () => {
+    const staged = {
+      p1: { dayId: 'd1', city: 'Shanghai' },
+      p2: { dayId: 'd2', city: 'Shanghai' },
+      p3: { dayId: undefined, city: 'Suzhou' },
+    };
+    expect(getStagedAssignmentCount(staged)).toBe(3);
+    expect(getStagedAssignmentCountForCity(staged, 'Shanghai')).toBe(2);
+    expect(getStagedAssignmentCountForCity(staged, 'Suzhou')).toBe(1);
+    expect(getStagedAssignmentCountForCity(staged, 'Nowhere')).toBe(0);
+    expect(getStagedAssignmentCountsByCity(staged)).toEqual({ Shanghai: 2, Suzhou: 1 });
+  });
+});
+
+describe('staged assignments are cleared alongside sign-out / whole-trip import', () => {
+  it('resetTripStoreForSignOut clears in-memory staged assignments', async () => {
+    const place = useTripStore.getState().places.find((p) => !p.dayId)!;
+    await useTripStore.getState().stagePlaceAssignment(place.id, useTripStore.getState().days[0].id);
+    expect(getStagedAssignmentCount(useTripStore.getState().stagedAssignments)).toBe(1);
+
+    resetTripStoreForSignOut();
+
+    expect(useTripStore.getState().stagedAssignments).toEqual({});
+  });
+
+  it('importJson clears any staged assignments -- old placeIds are no longer meaningful against the new snapshot', async () => {
+    const place = useTripStore.getState().places.find((p) => !p.dayId)!;
+    await useTripStore.getState().stagePlaceAssignment(place.id, useTripStore.getState().days[0].id);
+
+    const json = await useTripStore.getState().exportJson();
+    await useTripStore.getState().importJson(json);
+
+    expect(useTripStore.getState().stagedAssignments).toEqual({});
+    expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
   });
 });
