@@ -7,6 +7,7 @@ import type { FormEvent } from 'react';
 import { useTripStore } from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
 import { Modal } from '../../components/Modal';
+import { BackToTop } from '../../components/BackToTop';
 import { citySlug } from '../../components/RouteStrip';
 import type { ItineraryItem } from '../../data/schema';
 import { buildDayColorMap, buildItinerarySections, dayColor, dayLabel } from '../../lib/tripView';
@@ -22,14 +23,6 @@ interface StopFormValues {
 // Mirrors the identical helper in RouteStrip.tsx/MapPanel.tsx — same
 // implementation, deliberately not extracted to a shared module (matching
 // the existing pattern in this codebase of a small local copy per file).
-function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-}
-
-// PHASE 6 item 5 — how far down the page before the back-to-top button
-// appears. Matches the approved mockup's own hand-tuned threshold.
-const BACK_TO_TOP_THRESHOLD = 220;
-
 export function ItineraryPanel() {
   const trip = useTripStore((s) => s.trip);
   const days = useTripStore((s) => s.days);
@@ -43,24 +36,6 @@ export function ItineraryPanel() {
   const [flashDayId, setFlashDayId] = useState<string | null>(null);
   const [addingToDay, setAddingToDay] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
-  // PHASE 6 item 5 — back-to-top. Whole-page scroll (this panel has no
-  // nested scroll container of its own), so this listens on `window`, not a
-  // ref'd element.
-  const [showBackToTop, setShowBackToTop] = useState(false);
-
-  useEffect(() => {
-    function onScroll() {
-      setShowBackToTop(window.scrollY > BACK_TO_TOP_THRESHOLD);
-    }
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  const scrollToTop = useCallback(() => {
-    window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-  }, []);
-
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
   const sections = useMemo(() => (trip ? buildItinerarySections(trip, days) : []), [trip, days]);
 
@@ -183,14 +158,7 @@ export function ItineraryPanel() {
         </div>
       ))}
 
-      {/* PHASE 6 item 5 — conditionally mounted, not always-present with a
-          CSS opacity toggle (see the `.back-to-top` CSS comment for why:
-          an always-focusable-but-invisible button is a keyboard/AT trap). */}
-      {showBackToTop && (
-        <button type="button" className="back-to-top" onClick={scrollToTop} aria-label="Back to top" title="Back to top">
-          <Icon name="arrow-up" />
-        </button>
-      )}
+      <BackToTop />
 
       <StopFormModal
         open={addingToDay !== null || editingItem !== null}

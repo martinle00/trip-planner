@@ -3,8 +3,20 @@
 Working plan for Phase 6. Read this before touching anything. Same structure as
 `PHASE4.md`/`PHASE5.md`: scope, decisions + rationale, traps, agent workstream.
 
-> **STATUS (2026-07-26): design track COMPLETE and APPROVED; implementation
-> not started.** Scope below is fixed; the four contested calls have been
+> **STATUS (2026-07-26): design track APPROVED; all 11 items IMPLEMENTED.**
+> Build clean, lint clean (only the known `RouteStrip.tsx:13` warning),
+> **434 tests green**. Schema is v5. **code-reviewer: APPROVED** (three
+> rounds, 8 findings — see "Code review outcome" at the bottom). **Still
+> outstanding: qa-tester has not run, and nothing has been verified in a real
+> browser.** See "Implementation notes" at the bottom — in particular,
+> items 6–11 were written directly by the orchestrator after both
+> implementation agents were terminated mid-run by a spend limit, so they did
+> NOT go through the engineer → reviewer → QA pipeline the rest of the phase
+> used.
+>
+> <details><summary>Original status</summary>
+>
+> **design track COMPLETE and APPROVED; implementation not started.** Scope below is fixed; the four contested calls have been
 > decided by the user (see Decisions). Supabase migrations 0002 and 0003 are
 > applied — Phases 4 and 5 both shipped carrying those forward; that debt is
 > now clear.
@@ -15,6 +27,8 @@ Working plan for Phase 6. Read this before touching anything. Same structure as
 > APPROVED. `mockup/DESIGN-SYSTEM.md` gained the `--m-*` member colour
 > palette. See "Design-track findings worth carrying forward" at the bottom
 > before implementing.
+>
+> </details>
 
 Phase 6 comes out of real-browser testing of Phase 5 — the verification step
 Phase 5 shipped without. Eleven observations across four themes: **navigation
@@ -420,3 +434,180 @@ design looks — read these before porting anything.
    rounding); `--m-sand`'s hue-40° exception is sound and stays distinguishable
    from `--line-strong`, the "no colour assigned" ring; the day chips' clipped
    accessible names are correct at both breakpoints.
+
+---
+
+## Implementation notes (2026-07-26)
+
+**How this landed is unusual and matters for what to trust.** backend-impl and
+frontend-engineer were launched in parallel as planned, but both were
+terminated mid-run by an account spend limit. The partial work was committed as
+`81a568c`. At that point:
+
+- **backend-impl had finished essentially everything** — schema v5, both
+  repository mappings, the Dexie `version(5)` index change, `exportImport.ts`,
+  the seed, SQL 0004, and its own tests.
+- **frontend-engineer had completed items 1–5** and died before reaching the
+  Budget tab, leaving three `Expense.dayId` type errors — exactly the three
+  sites trap #5 had enumerated in advance, which is why recovery took minutes.
+
+Items 6–11 were then written directly by the orchestrator, inline. **They did
+not go through the ux → engineer → code-review → QA pipeline** the rest of this
+phase used. Build, lint and 426 tests pass, but that is a weaker guarantee than
+the rest of the phase carries — this codebase has now shipped three defects of
+the "green tests, broken browser" family.
+
+### Worth knowing
+
+1. **Four companions tests MOVED, they were not rewritten or dropped**, from
+   `BudgetPanel.test.tsx` to `features/settings/SettingsModal.test.tsx`, when
+   the companions card moved into Settings. That set includes the Escape-cancel
+   regression test guarding a defect that already shipped once — jsdom cannot
+   reproduce blur-on-unmount, so that test drives the sequence by hand and must
+   survive any future refactor of that component.
+2. **One test suite had its inputs changed** (`BudgetPanel.test.tsx`'s
+   currency-default block): it drove "Attach to" with day ids that no longer
+   exist as options. The assertions — currency defaulting, manual-override
+   stickiness — are unchanged. Values, not expectations.
+3. **The Budget integration test now opens Settings** to reach the home-currency
+   control. Its actual assertion (changing home currency re-bases every total
+   immediately, no refresh) is deliberately unchanged: crossing a modal
+   boundary must not alter that behaviour.
+4. **Two accessible-name defects were caught by the new tests**, both in code
+   written this session: a `Status` label and a wrapping label both pointing at
+   the "Already paid" checkbox (compound name "Status Already paid"), and the
+   payer prompt's close button labelled "Cancel", colliding with the expense
+   form's own Cancel. Both fixed at the source rather than worked around in the
+   test.
+5. **`MEMBER_COLOURS` lives in `lib/tripView.ts`**, not beside `MemberAvatar`,
+   so the avatar file exports only a component — same reason `DAY_PALETTE` and
+   `EXPENSE_CATEGORIES` live there.
+
+### Next steps, in order
+
+1. **code-reviewer over the whole phase**, weighted toward items 6–11 and the
+   `SettingsModal` extraction — that moved a lot of stateful logic (the two
+   rename guard refs especially) between components.
+2. **qa-tester**, covering what PHASE6's workstream section already lists.
+3. **Real-browser verification.** Standing debt from Phase 5, now larger: the
+   Settings modal, swatch picker, sticky Places bar, corrected route strip,
+   short-date chips, back-to-top, and the payer prompt — light and dark, phone
+   and desktop.
+
+---
+
+## Code review outcome (2026-07-26) — APPROVED
+
+Three rounds: **CHANGES REQUESTED** (7 findings) → **CHANGES REQUESTED** (1,
+which was a defect *in* the round-1 fix) → **APPROVED**. All eight verified
+closed by reading the code, not by re-running the suite.
+
+**Every finding was in code that already had a green suite behind it.** That is
+the fourth time in this project. Tests are not the gate that catches this class.
+
+### The two that were real bugs, not style
+
+1. **`pickColour` awaited the network write before restoring focus**
+   (`SettingsModal.tsx`). Two failures fell out: a slow write let focus get
+   yanked back to the previous member long after the user had moved on, and a
+   **rejected** write — routine in this app, where writes require the network
+   and fail loudly — skipped the restore entirely, leaving focus on nothing
+   with the picker already closed. Fixed by decoupling: close picker →
+   schedule focus → fire the write un-awaited. Both scenarios are named in the
+   comment so a future "tidy this back to await" has to consciously override
+   them. **This is the third instance of the async-work-drives-imperative-focus
+   bug class here** (Phase 5's rename/Escape-blur, AuthGate's re-gating).
+
+2. **`confirmPayer` would resurrect a deleted expense.** The round-1 fix
+   re-fetched the expense by id but fell back to the stale captured snapshot
+   when the row was gone — and `updateExpense` upserts unconditionally, so that
+   fallback didn't degrade to a no-op, it re-created an expense deleted on
+   another device mid-prompt, carrying a `paid: true` and a payer never
+   confirmed against anything. Worse, its comment claimed to match
+   `handleSubmit`'s edit branch while doing the opposite. Now genuinely
+   mirrors it: no row, no write.
+
+### Also fixed
+
+- Two missing tests the phase's own Definition of Done had already demanded:
+  the By-person bar percentage (verified it fails under the old `byPersonMax`
+  math, so it's a real guard) and the "already has a payer doesn't re-ask"
+  branch of the paid toggle.
+- `openEdit`'s `city` prefill is orphan-filtered like `paidBy`. Without it the
+  select *visually* showed "Whole trip" while state held a stale city, and
+  re-picking the shown option fires no `onChange` — so the form could not clear
+  it at all.
+- Comment/CSS nits: `MEMBER_COLOURS`'s self-contradictory "kept beside the
+  avatar", and a permanently shadowed duplicate `.members-list` rule.
+
+### Deliberately NOT changed (ruled on, not overlooked)
+
+- **`setTimeout(…, 0)` stays** rather than `requestAnimationFrame` — matches
+  `openEdit`'s existing `scrollIntoView` deferral in the same file. Local
+  convention beats a marginal semantic difference.
+- **`void`-ed store writes stay un-caught.** Every sibling call in both files
+  does the same, and offline-write UX is already named in `CLAUDE.md`'s "Not
+  yet done". It is a phase-level gap to design deliberately, not something to
+  smuggle into a review round.
+
+### Verified solid, by reading
+
+Both rename guard refs are an exact line-for-line port; all four moved
+companions tests are intact and not weakened; the currency-default suite had
+only its input values changed; `handleSignOut`'s order-sensitive teardown is
+untouched with only the button relocated; the `dayId`/`itemId` removal is
+complete across the enumerated blast radius; and no mockup positioning hazards
+were ported into the new CSS.
+
+---
+
+## Post-review changes (2026-07-26)
+
+Two follow-ups after the code review approved, both from real-browser use.
+
+### By-person card layout — the actual defect behind item 7's complaint
+
+The original report ("doesn't follow the design pattern shown throughout the
+app") turned out to have a third cause neither the design review nor the code
+review found, because it is invisible to both a mockup and a test suite:
+
+- **`.cat-breakdown` declared no padding.** Every other card on the Budget tab
+  declares its own (`.rates-card` 14/16, `.summary-card` 14, `.members-card`
+  14/16, `.expense` 12/14). "By category" masked this with an inline
+  `style={{ padding: '14px 16px' }}` on the element; "By person" reuses the
+  same class and had **nothing**, so its rows rendered flush against the card
+  border while the identical card directly above it was properly inset.
+  Padding now lives on `.cat-breakdown`; the inline style is gone.
+- **The two cards' labels were structurally different.** The truncation rule is
+  `.cat-row .cat-label span`, but By-category used a bare text node while
+  By-person wraps its name in a `<span>`. So one truncated with an ellipsis and
+  the other didn't — a long category name pushed its grid column out of
+  alignment with the card below. Both wrap now, matching the approved mockup.
+
+**Lesson worth keeping: a missing `padding` declaration is invisible to the
+entire gate stack.** Tests don't assert it, code review reads for logic, and
+the mockup had its own padding so the divergence never appeared there. Only
+running the app finds this class.
+
+Two tests needed their selector widened from `.cat-label` to `.cat-label span`
+— query only; the assertions still use `.closest('.cat-row')` unchanged.
+
+### Back-to-top extended to Places and Budget
+
+Item 5's button now appears on all three scrollable tabs. **Extracted to
+`src/components/BackToTop.tsx`** rather than copied twice more: the threshold,
+the reduced-motion check, the passive listener and the conditional-mount
+decision all have to agree across every consumer, and three copies is three
+chances to drift. `ItineraryPanel` now renders `<BackToTop />` like the other
+two, and its local `prefersReducedMotion` helper (used only by the old inline
+version) is gone.
+
+Covered by `BackToTop.test.tsx`, including the two non-obvious behaviours:
+it is **absent from the DOM** rather than hidden below the threshold (an
+always-rendered invisible button is a Tab stop going nowhere), and it reads
+scroll position **on mount**, so switching to an already-scrolled tab shows it
+immediately instead of waiting for the next scroll event.
+
+Not touched: `jumpToToday` and `scrollToCity` in `ItineraryPanel` both hardcode
+`behavior: 'smooth'` with no reduced-motion check. Pre-existing, out of this
+scope, worth a sweep later.

@@ -72,18 +72,18 @@ beforeEach(() => {
 });
 
 describe('BudgetPanel — add-expense currency default', () => {
-  it('defaults currency to the attached day’s city (Singapore -> SGD, Shanghai -> CNY), and "Whole trip" -> home currency', () => {
+  it('defaults currency to the attached city (Singapore -> SGD, Shanghai -> CNY), and "Whole trip" -> home currency', () => {
     resetStore({ days: DAYS });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[0]);
 
     const attachTo = screen.getByLabelText('Attach to') as HTMLSelectElement;
     const currencySelect = screen.getByLabelText('Currency paid in') as HTMLSelectElement;
 
-    fireEvent.change(attachTo, { target: { value: 'day-sg' } });
+    fireEvent.change(attachTo, { target: { value: 'Singapore' } });
     expect(currencySelect.value).toBe('SGD');
 
-    fireEvent.change(attachTo, { target: { value: 'day-sh' } });
+    fireEvent.change(attachTo, { target: { value: 'Shanghai' } });
     expect(currencySelect.value).toBe('CNY');
 
     fireEvent.change(attachTo, { target: { value: '' } });
@@ -92,25 +92,25 @@ describe('BudgetPanel — add-expense currency default', () => {
 
   it('keeps a manually-picked currency when "Attach to" changes afterwards', () => {
     resetStore({ days: DAYS });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[0]);
 
     const attachTo = screen.getByLabelText('Attach to') as HTMLSelectElement;
     const currencySelect = screen.getByLabelText('Currency paid in') as HTMLSelectElement;
 
-    fireEvent.change(attachTo, { target: { value: 'day-sh' } });
+    fireEvent.change(attachTo, { target: { value: 'Shanghai' } });
     expect(currencySelect.value).toBe('CNY');
 
     fireEvent.change(currencySelect, { target: { value: 'USD' } }); // manual override
     expect(currencySelect.value).toBe('USD');
 
-    fireEvent.change(attachTo, { target: { value: 'day-sg' } }); // would default to SGD
+    fireEvent.change(attachTo, { target: { value: 'Singapore' } }); // would default to SGD
     expect(currencySelect.value).toBe('USD'); // ...but the manual choice sticks
   });
 
   it('resets the manual-override flag once the form is reopened', () => {
     resetStore({ days: DAYS });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     const toggle = screen.getAllByRole('button', { name: 'Add expense' })[0];
     fireEvent.click(toggle);
 
@@ -122,7 +122,7 @@ describe('BudgetPanel — add-expense currency default', () => {
     expect((screen.getByLabelText('Currency paid in') as HTMLSelectElement).value).toBe('AUD');
 
     const attachTo = screen.getByLabelText('Attach to') as HTMLSelectElement;
-    fireEvent.change(attachTo, { target: { value: 'day-sg' } });
+    fireEvent.change(attachTo, { target: { value: 'Singapore' } });
     expect((screen.getByLabelText('Currency paid in') as HTMLSelectElement).value).toBe('SGD');
   });
 });
@@ -140,7 +140,7 @@ describe('BudgetPanel — no-rate exclusion and converted-amount sort', () => {
   });
 
   it('sorts expenses by CONVERTED home-currency amount, not raw amount, with no-rate rows at the end', () => {
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
     // Converted: USD 100*1.5=150, AUD 50*1=50, CNY 120*0.21=25.2, THB = no rate.
     // Raw amount order would wrongly put THB (10000) and CNY (120) ahead of USD (100).
     // Scoped to the expense list itself — a bare `/one/` regex over the whole
@@ -159,7 +159,7 @@ describe('BudgetPanel — no-rate exclusion and converted-amount sort', () => {
   });
 
   it('excludes the no-rate expense from the summary totals and flags it', () => {
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     // total = 150 + 50 + 25.2 = 225.2 -> rounds to A$225
     expect(screen.getByText('A$225')).toBeInTheDocument();
     // "1 expense excluded (no rate)" appears twice — once on the Trip total
@@ -171,12 +171,12 @@ describe('BudgetPanel — no-rate exclusion and converted-amount sort', () => {
   });
 
   it('flags the no-rate currency in the per-currency subtotal chips', () => {
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(screen.getByText(/THB · no rate/)).toBeInTheDocument();
   });
 
   it('hides the conversion line for an expense already in the home currency', () => {
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     const row = screen.getByText('AUD one (home)').closest('.expense') as HTMLElement;
     const conv = row.querySelector('.conv');
     expect(conv).not.toBeNull();
@@ -194,13 +194,13 @@ describe('BudgetPanel — category breakdown mixed-currency note', () => {
       { id: 'e-shop-aud', tripId: 'trip-test', category: 'Shopping', label: 'Shop AUD', amount: 40, currency: 'AUD', paid: true },
     ];
     resetStore({ expenses });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
 
-    const foodRow = screen.getByText('Food', { selector: '.cat-label' }).closest('.cat-row') as HTMLElement;
+    const foodRow = screen.getByText('Food', { selector: '.cat-label span' }).closest('.cat-row') as HTMLElement;
     expect(foodRow.querySelector('.cat-amt-note')?.textContent).toBe('2 currencies');
 
     const shoppingRow = screen
-      .getByText('Shopping', { selector: '.cat-label' })
+      .getByText('Shopping', { selector: '.cat-label span' })
       .closest('.cat-row') as HTMLElement;
     expect(shoppingRow.querySelector('.cat-amt-note')).toBeNull();
   });
@@ -211,9 +211,9 @@ describe('BudgetPanel — category breakdown mixed-currency note', () => {
       { id: 'e-food-thb', tripId: 'trip-test', category: 'Food', label: 'Food THB (no rate)', amount: 500, currency: 'THB', paid: true },
     ];
     resetStore({ expenses });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
 
-    const foodRow = screen.getByText('Food', { selector: '.cat-label' }).closest('.cat-row') as HTMLElement;
+    const foodRow = screen.getByText('Food', { selector: '.cat-label span' }).closest('.cat-row') as HTMLElement;
     expect(foodRow.querySelector('.cat-amt-note')).toBeNull();
   });
 });
@@ -231,7 +231,7 @@ describe('BudgetPanel — rates freshness states', () => {
 
   it('shows "loading" (busy, disabled button) while a refresh is in flight', () => {
     resetStore({ trip: { ...BASE_TRIP, ratesUpdatedAt: twoHoursAgo }, ratesLoading: true });
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(visibleStatusText(container)).toMatch(/Fetching latest rates/);
     const btn = screen.getByRole('button', { name: /Refreshing/ });
     expect(btn).toBeDisabled();
@@ -240,40 +240,40 @@ describe('BudgetPanel — rates freshness states', () => {
 
   it('shows the error state citing the last known-good fetch time', () => {
     resetStore({ trip: { ...BASE_TRIP, ratesUpdatedAt: twoHoursAgo }, ratesError: 'Network error' });
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(visibleStatusText(container)).toMatch(/Couldn.t refresh — still showing rates from 2 hours ago/);
   });
 
   it('shows the offline state citing the last known-good fetch time', () => {
     onlineMock = false;
     resetStore({ trip: { ...BASE_TRIP, ratesUpdatedAt: twoHoursAgo } });
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(visibleStatusText(container)).toMatch(/You.re offline — showing last-known rates from 2 hours ago/);
   });
 
   it('shows the "never refreshed" state when ratesUpdatedAt is undefined', () => {
     resetStore(); // BASE_TRIP has no ratesUpdatedAt
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(visibleStatusText(container)).toBe('No rates fetched yet — using built-in reference rates');
   });
 
   it('shows "Rates updated <relative time>" once refreshed and settled', () => {
     resetStore({ trip: { ...BASE_TRIP, ratesUpdatedAt: twoHoursAgo } });
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(visibleStatusText(container)).toBe('Rates updated 2 hours ago');
   });
 
   it('shows the "stale" state once the last fetch is older than 24 hours', () => {
     const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     resetStore({ trip: { ...BASE_TRIP, ratesUpdatedAt: twentyFiveHoursAgo } });
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(visibleStatusText(container)).toBe('Rates updated 1 day ago — may be out of date');
   });
 
   it('calls refreshRates() when the refresh button is clicked', () => {
     const refreshRates = vi.fn<TripState['refreshRates']>().mockResolvedValue(undefined);
     resetStore({ refreshRates });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Refresh rates' }));
     expect(refreshRates).toHaveBeenCalledTimes(1);
   });
@@ -294,27 +294,27 @@ describe('BudgetPanel — post-refresh "totals flash" pulse', () => {
 
   it('adds flash-confirm to the summary cards on a loading->settled (success) transition, then removes it after ~800ms', () => {
     resetStore({ expenses: EXPENSES, ratesLoading: true });
-    const { container, rerender } = render(<BudgetPanel />);
+    const { container, rerender } = render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(container.querySelector('.summary-card.flash-confirm')).toBeNull();
 
     // Simulate refreshRates() completing successfully: ratesLoading flips
     // false, ratesError stays undefined.
     useTripStore.setState({ ratesLoading: false, ratesError: undefined });
-    rerender(<BudgetPanel />);
+    rerender(<BudgetPanel onOpenSettings={() => {}} />);
 
     expect(container.querySelector('.summary-card.flash-confirm')).not.toBeNull();
 
     vi.advanceTimersByTime(850);
-    rerender(<BudgetPanel />);
+    rerender(<BudgetPanel onOpenSettings={() => {}} />);
     expect(container.querySelector('.summary-card.flash-confirm')).toBeNull();
   });
 
   it('does NOT flash on a loading->settled transition that ended in failure', () => {
     resetStore({ expenses: EXPENSES, ratesLoading: true });
-    const { container, rerender } = render(<BudgetPanel />);
+    const { container, rerender } = render(<BudgetPanel onOpenSettings={() => {}} />);
 
     useTripStore.setState({ ratesLoading: false, ratesError: 'Network error' });
-    rerender(<BudgetPanel />);
+    rerender(<BudgetPanel onOpenSettings={() => {}} />);
 
     expect(container.querySelector('.summary-card.flash-confirm')).toBeNull();
   });
@@ -337,7 +337,7 @@ describe('BudgetPanel — expense edit + notes (Phase 5 item 4)', () => {
 
   it('opens pre-filled in edit mode from the row\'s pencil icon, swapping the heading/submit label', () => {
     resetStore({ expenses: [EXPENSE] });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Noodles' }));
 
@@ -351,7 +351,7 @@ describe('BudgetPanel — expense edit + notes (Phase 5 item 4)', () => {
   it('saves an edit via updateExpense, preserving fields the form does not touch (id, tripId, paid)', async () => {
     const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
     resetStore({ expenses: [EXPENSE], updateExpense });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Noodles' }));
     fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Noodles (updated)' } });
@@ -372,14 +372,14 @@ describe('BudgetPanel — expense edit + notes (Phase 5 item 4)', () => {
 
   it('surfaces the note on the expense row', () => {
     resetStore({ expenses: [EXPENSE] });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(screen.getByText('Original note')).toBeInTheDocument();
   });
 
   it('clearing the note field on save persists it as unset, not an empty string', async () => {
     const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
     resetStore({ expenses: [EXPENSE], updateExpense });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Noodles' }));
     fireEvent.change(screen.getByLabelText(/^Note/), { target: { value: '   ' } });
@@ -394,85 +394,21 @@ describe('BudgetPanel — expense edit + notes (Phase 5 item 4)', () => {
 // Phase 5 item 5 — trip companions (members) + Paid by, including the
 // orphan-tolerance trap (#3).
 // ============================================================================
-describe('BudgetPanel — trip companions + Paid by (Phase 5 item 5)', () => {
+describe('BudgetPanel — Paid by on expenses (Phase 5 item 5)', () => {
   const MEMBERS: TripMember[] = [
     { id: 'm-alex', name: 'Alex' },
     { id: 'm-priya', name: 'Priya' },
   ];
 
-  it('shows the empty-companions state when the trip has no members yet', () => {
-    resetStore();
-    render(<BudgetPanel />);
-    expect(screen.getByText('No companions yet')).toBeInTheDocument();
-  });
-
-  it('adds a member via the companions form and clears the input', async () => {
-    const addMember = vi.fn<TripState['addMember']>().mockResolvedValue({ id: 'm-new', name: 'Sam' });
-    resetStore({ addMember });
-    render(<BudgetPanel />);
-
-    const input = screen.getByLabelText('New companion name');
-    fireEvent.change(input, { target: { value: '  Sam  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-
-    // Wait on the actual side effect (input clears) rather than racing the
-    // mocked promise's own microtask against the assertion below.
-    await vi.waitFor(() => expect((input as HTMLInputElement).value).toBe(''));
-    expect(addMember).toHaveBeenCalledWith('Sam');
-  });
-
-  it('renames a member on Enter and removes a member via its icon buttons', async () => {
-    const renameMember = vi.fn<TripState['renameMember']>().mockResolvedValue(undefined);
-    const removeMember = vi.fn<TripState['removeMember']>().mockResolvedValue(undefined);
-    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, renameMember, removeMember });
-    render(<BudgetPanel />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Rename Alex' }));
-    const renameInput = screen.getByLabelText('Rename companion');
-    fireEvent.change(renameInput, { target: { value: 'Alexandra' } });
-    fireEvent.keyDown(renameInput, { key: 'Enter' });
-    await vi.waitFor(() => expect(renameMember).toHaveBeenCalledWith('m-alex', 'Alexandra'));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Priya' }));
-    await vi.waitFor(() => expect(removeMember).toHaveBeenCalledWith('m-priya'));
-  });
-
-  it('Escape cancels a rename without calling renameMember, even when the resulting unmount fires a blur (code-review regression)', () => {
-    // jsdom does not reproduce a real browser's "removing a focused element
-    // fires blur/focusout synchronously" behaviour, so this test drives that
-    // exact sequence by hand: Escape first (which unmounts the input via
-    // `renamingId` flipping to null), THEN an explicit blur on the
-    // now-detached input — standing in for what a real browser would fire
-    // on its own. Without the `renameCancelingRef` guard, that blur would
-    // still call commitRename and silently persist the half-typed value.
-    const renameMember = vi.fn<TripState['renameMember']>().mockResolvedValue(undefined);
-    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, renameMember });
-    const { container } = render(<BudgetPanel />);
-    // Scoped query, not screen.getByText('Alex') — "Alex" also appears as a
-    // <option> inside the (CSS-hidden but still DOM-present) expense form's
-    // "Paid by" select, which getByText doesn't filter out.
-    const memberName = () => container.querySelector('.member-chip .member-name')?.textContent;
-
-    fireEvent.click(screen.getByRole('button', { name: 'Rename Alex' }));
-    const renameInput = screen.getByLabelText('Rename companion');
-    fireEvent.change(renameInput, { target: { value: 'Unwanted edit' } });
-    fireEvent.keyDown(renameInput, { key: 'Escape' });
-
-    // The chip reverted to display mode (Escape's own, non-blur effect).
-    expect(screen.queryByLabelText('Rename companion')).not.toBeInTheDocument();
-    expect(memberName()).toBe('Alex');
-
-    // Simulate the real-browser blur a DOM removal would trigger.
-    fireEvent.blur(renameInput);
-
-    expect(renameMember).not.toHaveBeenCalled();
-    expect(memberName()).toBe('Alex');
-  });
+  // NOTE: the companions CRUD tests that used to live here (empty state,
+  // add, rename/remove, and the Escape-cancel regression) moved to
+  // features/settings/SettingsModal.test.tsx in Phase 6 along with the
+  // companions card itself. They were ported, not dropped.
 
   it('lets the expense form pick a "Paid by" member, and surfaces the payer on the saved row', async () => {
     const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
     resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, addExpense });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
 
     // Two "Add expense"-named buttons exist once the form is open (the
     // header button, and the form's own submit button) — [0]/[1] picks each
@@ -500,7 +436,7 @@ describe('BudgetPanel — trip companions + Paid by (Phase 5 item 5)', () => {
       paidBy: 'm-deleted',
     };
     resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, expenses: [orphanExpense] });
-    expect(() => render(<BudgetPanel />)).not.toThrow();
+    expect(() => render(<BudgetPanel onOpenSettings={() => {}} />)).not.toThrow();
     // A tight regex (not a bare /Paid by/) — the companions card's own
     // panel-hint copy also contains the literal words "Paid by" (in
     // quotes), so a looser match would be ambiguous.
@@ -512,7 +448,7 @@ describe('BudgetPanel — trip companions + Paid by (Phase 5 item 5)', () => {
       trip: { ...BASE_TRIP, members: MEMBERS },
       expenses: [{ id: 'e-plain', tripId: 'trip-test', category: 'Food', label: 'Snack', amount: 10, currency: 'AUD', paid: true }],
     });
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(container.querySelector('.expense-payer')).toBeNull();
   });
 
@@ -529,7 +465,7 @@ describe('BudgetPanel — trip companions + Paid by (Phase 5 item 5)', () => {
     };
     const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
     resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, expenses: [orphanExpense], updateExpense });
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Hotpot' }));
 
@@ -559,7 +495,7 @@ describe('BudgetPanel — By-person totals (Phase 5 item 6)', () => {
 
   it('shows a pointer back to the companions card when there are no members yet', () => {
     resetStore();
-    render(<BudgetPanel />);
+    render(<BudgetPanel onOpenSettings={() => {}} />);
     expect(screen.getByText(/No companions yet — add one above/)).toBeInTheDocument();
   });
 
@@ -576,7 +512,7 @@ describe('BudgetPanel — By-person totals (Phase 5 item 6)', () => {
       { id: 'e4', tripId: 'trip-test', category: 'Food', label: 'D', amount: 999, currency: 'CNY', paid: true, paidBy: 'm-ghost' },
     ];
     resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, expenses });
-    const { container } = render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
 
     const byPersonCard = container.querySelector('.by-person-card') as HTMLElement;
     const alexRow = within(byPersonCard).getByText('Alex').closest('.cat-row') as HTMLElement;
@@ -589,5 +525,211 @@ describe('BudgetPanel — By-person totals (Phase 5 item 6)', () => {
     expect(
       within(byPersonCard).getByText(/1 expense excluded — payer no longer in your companions list/),
     ).toBeInTheDocument();
+  });
+});
+
+describe('BudgetPanel — already-paid, payer prompt and Covers (Phase 6 items 10-11)', () => {
+  const MEMBERS_2: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+  const UNPAID: Expense = {
+    id: 'e-1', tripId: 'trip-test', category: 'Food', label: 'Hotpot',
+    amount: 80, currency: 'CNY', paid: false,
+  };
+
+  it('marking an expense paid asks who paid, and records the chosen payer', async () => {
+    const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, expenses: [UNPAID], updateExpense });
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getByLabelText('Mark Hotpot as paid'));
+    expect(screen.getByText('Who paid?')).toBeInTheDocument();
+    // The toggle alone must NOT have committed anything yet — the prompt owns
+    // the write, so dismissing it leaves the expense untouched.
+    expect(updateExpense).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Priya/ }));
+    await vi.waitFor(() =>
+      expect(updateExpense).toHaveBeenCalledWith(expect.objectContaining({ paid: true, paidBy: 'm-priya' })),
+    );
+  });
+
+  it('cancelling the payer prompt leaves the expense unpaid and unchanged', () => {
+    const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, expenses: [UNPAID], updateExpense });
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getByLabelText('Mark Hotpot as paid'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close without marking paid' }));
+
+    expect(screen.queryByText('Who paid?')).not.toBeInTheDocument();
+    expect(updateExpense).not.toHaveBeenCalled();
+  });
+
+  it('un-marking a paid expense never prompts', async () => {
+    const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS_2 },
+      expenses: [{ ...UNPAID, paid: true, paidBy: 'm-alex' }],
+      updateExpense,
+    });
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getByLabelText('Mark Hotpot as unpaid'));
+    expect(screen.queryByText('Who paid?')).not.toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(updateExpense).toHaveBeenCalledWith(expect.objectContaining({ paid: false })),
+    );
+  });
+
+  it('with NO companions defined, marking paid commits immediately instead of trapping an empty prompt', async () => {
+    const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
+    resetStore({ expenses: [UNPAID], updateExpense }); // BASE_TRIP has no members
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getByLabelText('Mark Hotpot as paid'));
+    expect(screen.queryByText('Who paid?')).not.toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(updateExpense).toHaveBeenCalledWith(expect.objectContaining({ paid: true })),
+    );
+  });
+
+  it('does not re-ask when the expense already records a payer', async () => {
+    // The one branch that must NOT fall through to the prompt despite
+    // members existing — every other branch of the toggle contract has a
+    // test, and this is the easiest to break by reordering the guards.
+    const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS_2 },
+      expenses: [{ ...UNPAID, paidBy: 'm-alex' }],
+      updateExpense,
+    });
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getByLabelText('Mark Hotpot as paid'));
+    expect(screen.queryByText('Who paid?')).not.toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(updateExpense).toHaveBeenCalledWith(expect.objectContaining({ paid: true, paidBy: 'm-alex' })),
+    );
+  });
+
+  it('the add form can log an expense that is already paid', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({ addExpense });
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[0]);
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Flights' } });
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '900' } });
+    fireEvent.click(screen.getByLabelText('Already paid'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[1]);
+
+    await vi.waitFor(() =>
+      expect(addExpense).toHaveBeenCalledWith(expect.objectContaining({ paid: true })),
+    );
+  });
+
+  it('Covers defaults to everyone, which is stored as undefined (never an empty array)', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, addExpense });
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[0]);
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Taxi' } });
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '30' } });
+    expect(screen.getByRole('radio', { name: 'Everyone' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[1]);
+
+    await vi.waitFor(() =>
+      expect(addExpense).toHaveBeenCalledWith(expect.objectContaining({ coversMemberIds: undefined })),
+    );
+  });
+
+  it('a subset of people is stored as their ids', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, addExpense });
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[0]);
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Museum' } });
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '40' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Choose people' }));
+    fireEvent.click(screen.getByLabelText('Alex'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[1]);
+
+    await vi.waitFor(() =>
+      expect(addExpense).toHaveBeenCalledWith(expect.objectContaining({ coversMemberIds: ['m-alex'] })),
+    );
+  });
+
+  it('deselecting the LAST chosen person snaps back to Everyone, so "covers nobody" is unreachable', async () => {
+    // The degenerate empty-array state is prevented at three layers; this is
+    // the interaction-level one. `parseSnapshot` handles data arriving by
+    // import, which never passes through this control at all.
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, addExpense });
+    render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[0]);
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Snacks' } });
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Choose people' }));
+    fireEvent.click(screen.getByLabelText('Alex'));
+    fireEvent.click(screen.getByLabelText('Alex')); // deselect the only one
+
+    expect(screen.getByRole('radio', { name: 'Everyone' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[1]);
+
+    await vi.waitFor(() =>
+      expect(addExpense).toHaveBeenCalledWith(expect.objectContaining({ coversMemberIds: undefined })),
+    );
+  });
+});
+
+describe('BudgetPanel — breakdown bar semantics (Phase 6 item 7)', () => {
+  // PHASE6.md's definition of done names this explicitly: assert against
+  // budget.total, NOT byPersonMax. The old `sum / byPersonMax` math made the
+  // top payer always render a full-width bar, so a person covering 90% of the
+  // trip looked identical to the largest of several small payers — the same
+  // widget meaning two different things one card apart from "By category".
+  const MEMBERS_2: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+  const EXPENSES: Expense[] = [
+    { id: 'e-1', tripId: 'trip-test', category: 'Food', label: 'Big', amount: 75, currency: 'AUD', paid: true, paidBy: 'm-alex' },
+    { id: 'e-2', tripId: 'trip-test', category: 'Food', label: 'Small', amount: 25, currency: 'AUD', paid: true, paidBy: 'm-priya' },
+  ];
+
+  it('sizes By-person bars as a share of the trip total, not of the top payer', () => {
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, expenses: EXPENSES });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    const card = container.querySelector('.by-person-card') as HTMLElement;
+    const widths = Array.from(card.querySelectorAll('.cat-bar-fill')).map(
+      (el) => (el as HTMLElement).style.width,
+    );
+    // Total is 100 AUD: Alex 75 -> 75%, Priya 25 -> 25%.
+    // Under the old byPersonMax math these would have been 100% and 33.33%.
+    expect(widths).toEqual(['75%', '25%']);
+  });
+
+  it('keeps the 4% legibility floor for a tiny-but-nonzero share', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS_2 },
+      expenses: [
+        { ...EXPENSES[0], amount: 1000 },
+        { ...EXPENSES[1], amount: 1 },
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    const card = container.querySelector('.by-person-card') as HTMLElement;
+    const widths = Array.from(card.querySelectorAll('.cat-bar-fill')).map(
+      (el) => (el as HTMLElement).style.width,
+    );
+    // 1/1001 is ~0.1%, floored to 4% so the bar stays visible at all.
+    expect(widths[1]).toBe('4%');
   });
 });

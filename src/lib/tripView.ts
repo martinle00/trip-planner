@@ -235,3 +235,18 @@ export function inferCityFromAddress(address: string, cityNames: string[]): stri
   const lower = address.toLowerCase();
   return cityNames.find((name) => lower.includes(name.toLowerCase()));
 }
+
+/** The fixed swatch set, in the order the picker presents them. Must stay in
+ *  sync with `components/MemberAvatar.tsx` — NOT colocated with it (that file
+ *  exports only a component, same reason `DAY_PALETTE`/`EXPENSE_CATEGORIES`
+ *  live here) but the two must agree on the token names: a picker offering a
+ *  swatch the avatar can't render would silently produce an invalid
+ *  `var(--…)` and fall back to unstyled. */
+export const MEMBER_COLOURS: { id: string; label: string }[] = [
+  { id: 'm-chartreuse', label: 'Chartreuse' },
+  { id: 'm-denim', label: 'Denim' },
+  { id: 'm-periwinkle', label: 'Periwinkle' },
+  { id: 'm-orchid', label: 'Orchid' },
+  { id: 'm-berry', label: 'Berry' },
+  { id: 'm-sand', label: 'Sand' },
+];

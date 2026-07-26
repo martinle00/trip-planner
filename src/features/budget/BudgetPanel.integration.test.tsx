@@ -92,7 +92,14 @@ describe('Budget — App-level integration (real store/Dexie, mocked fetch)', ()
     });
     await waitFor(() => expect(tripTotalText(panel)).toBe('A$21'));
 
-    const homeSelect = within(panel).getByLabelText(/Home currency/) as HTMLSelectElement;
+    // Phase 6 item 6 moved the home-currency control out of the Budget tab
+    // and into the Settings modal, so this now goes through the topbar gear.
+    // The assertion below is unchanged and is the actual point of the test:
+    // changing home currency re-bases and re-renders every Budget total
+    // immediately, with no rate refresh — crossing a modal boundary must not
+    // change that.
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const homeSelect = screen.getByLabelText(/Home currency/) as HTMLSelectElement;
     fireEvent.change(homeSelect, { target: { value: 'SGD' } });
 
     // Trip total should now render in S$ terms, and NOT crash/show NaN.

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useTripStore } from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
+import { BackToTop } from '../../components/BackToTop';
 import type { AddPlaceMode } from './AddPlaceModal';
 import { PlaceDetailModal } from './PlaceDetailModal';
 import type { Day, ID, Place } from '../../data/schema';
@@ -218,6 +219,7 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
         onClose={() => setSelectedPlaceId(null)}
         onDraftChange={markDraft}
       />
+      <BackToTop />
     </section>
   );
 }

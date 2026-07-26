@@ -989,7 +989,14 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .currency-chip.warn{ background:var(--gold-soft); border-color:transparent; color:var(--gold-soft-ink); }
 .currency-chip.warn i{ color:var(--gold-soft-ink); }
 
-.cat-breakdown{ margin-bottom:22px; }
+/* Padding belongs HERE, on the shared class, not on one card's inline style.
+   Every other card on the Budget tab declares its own (.rates-card,
+   .summary-card, .expense) — .cat-breakdown was the only one that didn't, so
+   "By category" carried an inline `padding:14px 16px` while "By person",
+   which reuses this same class, had NO padding at all and rendered flush
+   against its own border. Two adjacent cards, same component, visibly
+   different boxes. One rule now covers both. */
+.cat-breakdown{ padding:14px 16px; margin-bottom:22px; }
 .cat-row{ display:grid; grid-template-columns:110px 1fr 110px; align-items:center; gap:10px; padding:6px 0; font-size:12.5px; }
 .cat-row .cat-label{ font-weight:600; color:var(--ink-soft); display:flex; align-items:center; gap:6px; min-width:0; }
 .cat-row .cat-label span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1025,10 +1032,32 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
   width:18px; height:18px; border-radius:50%; flex:none; display:inline-flex; align-items:center; justify-content:center;
   background:var(--paper-sunk); border:1px solid var(--line-strong); color:var(--ink-soft);
   font-size:9px; font-weight:800; line-height:1;
+  /* letter-spacing:0 is load-bearing, not tidiness. This avatar renders a
+     SINGLE character, and it sits inside contexts that set a tracked,
+     uppercase label style (.field-label .06em, .add-form label .05em,
+     .summary-card .label, …). Letter-spacing adds its space AFTER the
+     character, so the inherited value pushed the one glyph visibly left of
+     centre inside an otherwise perfectly centred flex box. text-indent
+     guards the same way against any indent set upstream. */
+  letter-spacing:0; text-indent:0; text-transform:none;
 }
 .member-avatar-xs{ width:14px; height:14px; font-size:7.5px; }
+/* Phase 6 item 8 — an ASSIGNED member colour. The comment above explains why
+   members never drew from the --d-* pools; the --m-* set is a separate,
+   purpose-built palette (see mockup/DESIGN-SYSTEM.md "Member colour
+   palette"), chosen to avoid both the --d-* hues and the --jade/--gold
+   semantic zones. The swatch hue itself is used only for the RING; the
+   letter sits on -soft and takes -soft-ink, per the §2 contrast rule — the
+   inline styles in MemberAvatar.tsx set all three. Without a colour the
+   neutral rule above still applies, so "unset" stays visibly unset. */
+.member-avatar.has-colour{ border-width:2px; font-weight:800; }
 .members-card{ padding:14px 16px; margin-bottom:18px; }
-.members-list{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+/* Column, not the wrapped chip row this was before Phase 6: each row can
+   expand to reveal its colour picker underneath, and a wrapped layout would
+   make that expansion shove unrelated chips sideways. Sole consumer is the
+   Settings modal — the Budget tab horizontal-chip layout left with the
+   companions card. */
+.members-list{ display:flex; flex-direction:column; align-items:stretch; gap:8px; margin:10px 0; }
 .member-chip{
   display:inline-flex; align-items:center; gap:7px; padding:5px 6px 5px 10px; border-radius:var(--radius-full);
   background:var(--paper-sunk); border:1px solid var(--line); font-size:12.5px; font-weight:600;
@@ -1631,13 +1660,27 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
   .topbar.is-condensed .trip-sub{ display:none; }
   .topbar.is-condensed .trip-title{ font-size:1.02rem; }
   .topbar.is-condensed .route-strip{ margin-top:8px; padding-bottom:8px; }
-  .topbar.is-condensed .route-node{ width:60px; }
+  /* 92px, not the original 60px: at 60px a name like "Zhangjiajie" clipped to
+     an ellipsis the moment the header condensed — i.e. as soon as you scrolled
+     at all — which is worse than the mobile layout item 4 had just widened to
+     92px for exactly this reason. Matching that 92px keeps one validated
+     "fits a long Chinese city name" width across both places instead of two
+     different guesses.
+
+     Widening costs nothing the condensing header was built to buy: it reclaims
+     VERTICAL space (the eyebrow, subtitle and route dates all go), and node
+     width is horizontal. The strip scrolls sideways, so wider nodes mean a
+     little more scrolling, never clipped words. The ellipsis rule below stays
+     as a backstop for genuinely long names, it just no longer fires for the
+     ordinary ones. */
+  .topbar.is-condensed .route-node{ width:92px; }
   /* the connecting .line between dots is a fixed-width absolutely-positioned
      asset calibrated to the node's own width (base .route-node .line rule:
-     width:104px, left:-52px — exactly half on each side); shrinking the node
-     without also shrinking its line would leave the line overshooting into
-     neighbouring nodes. */
-  .topbar.is-condensed .route-node .line{ width:60px; left:-30px; }
+     width:104px, left:-52px — exactly half on each side); changing the node
+     width without also changing its line would leave the line overshooting
+     into, or falling short of, neighbouring nodes. Same pairing the mobile
+     92px rule uses. */
+  .topbar.is-condensed .route-node .line{ width:92px; left:-46px; }
   /* RouteStrip.tsx's `title` attribute (added alongside this feature) lets a
      sighted mouse user recover a name this ellipsis clips. */
   .topbar.is-condensed .route-city{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
@@ -1657,3 +1700,106 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    nothing observes it there, since useCondenseHeader never attaches its
    IntersectionObserver off the desktop breakpoint). */
 .condense-sentinel{ height:56px; margin-bottom:-56px; pointer-events:none; }
+
+/* ===========================================================================
+   SETTINGS MODAL — Phase 6 item 6
+   The surface that absorbed trip companions, home currency, theme, Export/
+   Import and Sign out. Opened from the topbar gear; rendered through the
+   shared <Modal>, so overlay/positioning/focus-trap styling is inherited and
+   NOT redeclared here — everything below is content layout only.
+   =========================================================================== */
+.settings-section{ padding:14px 0; border-top:1px solid var(--line); }
+.settings-section:first-of-type{ border-top:0; padding-top:6px; }
+.settings-section-title{
+  margin:0 0 4px; font-size:.72rem; font-weight:800; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--ink-faint);
+}
+.settings-section .panel-hint{ display:block; margin-bottom:10px; }
+.settings-section > select{ width:100%; max-width:280px; }
+.settings-actions{ display:flex; flex-wrap:wrap; gap:8px; }
+.theme-toggle{ display:flex; gap:8px; }
+
+.member-row{ display:flex; flex-direction:column; gap:6px; }
+.member-row .member-chip{ align-self:flex-start; }
+
+/* Colour picker (item 8). `aria-checked` on each swatch carries the state to
+   assistive tech; `.is-selected` below is the SAME state expressed visually.
+   Both are computed from one value in SettingsModal.tsx so they cannot
+   disagree — a design-review finding. */
+.colour-picker{
+  display:flex; flex-wrap:wrap; gap:6px; padding:8px; margin-left:10px;
+  background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-sm);
+}
+.colour-swatch{
+  width:22px; height:22px; border-radius:50%; cursor:pointer;
+  border:2px solid transparent; box-shadow:0 0 0 1px var(--line-strong) inset;
+  padding:0; background-clip:padding-box;
+}
+.colour-swatch:hover{ transform:scale(1.08); }
+.colour-swatch:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+/* The selected ring is drawn OUTSIDE the swatch (not as a border colour
+   change) so it reads identically on every hue, including --m-sand, whose
+   deliberately low saturation would otherwise make a border-only cue
+   near-invisible. */
+.colour-swatch.is-selected{ border-color:var(--paper); box-shadow:0 0 0 2px var(--ink) inset, 0 0 0 2px var(--accent); }
+/* "No colour" — must not read as a valid swatch, so it shows the same
+   neutral surface an unset avatar uses rather than a hue. */
+.colour-swatch.is-none{ background:var(--paper-raised); position:relative; }
+.colour-swatch.is-none::after{
+  content:''; position:absolute; inset:4px; border-radius:50%;
+  border:1.5px dashed var(--line-strong);
+}
+
+/* Budget rates card, after the home-currency SELECT moved into Settings
+   (item 6). The value is still shown — every total on the tab depends on it
+   — it just isn't editable from here. The link sits on --paper-raised, not a
+   -soft fill, so the -soft-ink rule doesn't apply to it. */
+.rates-home-readonly{ font-size:1rem; font-weight:800; color:var(--ink); }
+.rates-home-link{
+  background:none; border:0; padding:0; font:inherit; cursor:pointer;
+  color:var(--accent); font-weight:700; text-decoration:underline;
+}
+.rates-home-link:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+/* Expense form: "Already paid" + "Covers" (Phase 6 items 10-11) */
+.checkbox-field{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; cursor:pointer; }
+.checkbox-field input{ width:auto; margin:0; flex:none; }
+/* Scoped to `.add-form label` deliberately — that rule (specificity 0,1,1)
+   otherwise beats a bare `.checkbox-field` (0,1,0) and imposes the form's
+   FIELD-LABEL treatment on these: display:block, uppercase, 11.5px, faint
+   colour, letter-spacing and a bottom margin. Two visible consequences it
+   caused: "Already paid" read as another field heading rather than a
+   checkbox you tick, and display:block collapsed the inline-flex row so the
+   tick box, avatar and name in the Covers list no longer lined up with each
+   other. These are checkbox rows, not labels for a field below them, so the
+   whole label treatment is explicitly undone rather than partially patched. */
+/* "Status" and "Covers" are <span class="field-label">, not <label>, because
+   neither heads a single control — Status sits above a wrapping checkbox
+   label, Covers above a role="group". They still have to LOOK like every
+   sibling field heading in the form, so this matches `.add-form label`'s
+   block/spacing/colour rather than leaving them inline and differently
+   tinted next to the real labels. */
+.add-form .field-label{
+  display:block; margin-bottom:4px; color:var(--ink-faint); letter-spacing:.05em;
+}
+.add-form label.checkbox-field{
+  display:inline-flex; align-items:center; gap:6px; margin-bottom:0;
+  font-size:12.5px; font-weight:600; color:var(--ink);
+  text-transform:none; letter-spacing:0;
+}
+.covers-control{ display:flex; flex-direction:column; gap:8px; }
+.covers-mode{ display:flex; gap:6px; }
+/* align-items:center keeps each wrapped ROW's items on a shared centre line.
+   Without it the default `stretch` makes every checkbox row as tall as the
+   tallest in its line, and the tick box — which can't stretch — ends up
+   top-aligned against a taller neighbour, reading as misaligned with its own
+   name and avatar. column-gap/row-gap split so wrapped rows breathe without
+   pushing the names apart horizontally. */
+.covers-people{
+  display:flex; flex-wrap:wrap; align-items:center; column-gap:14px; row-gap:8px; padding:8px 10px;
+  background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-sm);
+}
+/* "Who paid?" prompt — layout only; overlay/focus styling is the shared
+   <Modal>'s, deliberately not redeclared. */
+.payer-choices{ display:flex; flex-direction:column; gap:6px; margin:10px 0; }
+.payer-choices .btn{ justify-content:flex-start; }

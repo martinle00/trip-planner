@@ -9,23 +9,12 @@ import type { FormEvent } from 'react';
 import { useTripStore } from '../../store/useTripStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { Icon } from '../../components/Icons';
-import type { Expense, TripMember } from '../../data/schema';
-import { DAY_PALETTE, EXPENSE_CATEGORIES, dayLabel, daysForCity, defaultCurrencyForCity } from '../../lib/tripView';
+import { MemberAvatar } from '../../components/MemberAvatar';
+import { Modal } from '../../components/Modal';
+import { BackToTop } from '../../components/BackToTop';
+import type { Expense } from '../../data/schema';
+import { DAY_PALETTE, EXPENSE_CATEGORIES, defaultCurrencyForCity, orderedCities } from '../../lib/tripView';
 import { CURRENCIES, convert, currencySymbol } from '../../lib/exchangeRates';
-
-/** Neutral initial-letter avatar for a trip member — deliberately NOT drawn
- *  from the Day/City categorical palette (`--d-*`); see the `.member-avatar`
- *  comment in index.css for why a third categorical colour pool would
- *  collide with the other two. Used everywhere a member shows up: the
- *  companions card, an expense row's "Paid by", and the By-person card. */
-function MemberAvatar({ name, size }: { name: string; size?: 'xs' }) {
-  const initial = (name.trim().charAt(0) || '?').toUpperCase();
-  return (
-    <span className={`member-avatar${size ? ` member-avatar-${size}` : ''}`} aria-hidden="true">
-      {initial}
-    </span>
-  );
-}
 
 function categoryColor(category: string): string {
   let hash = 0;
@@ -102,20 +91,21 @@ function ratesStatusMessage(state: RatesState, relativeUpdated: string | undefin
   }
 }
 
-export function BudgetPanel() {
+interface BudgetPanelProps {
+  /** Opens the Settings modal — the home-currency control lives there now
+   *  (Phase 6 item 6), so this tab needs a way to point at it. */
+  onOpenSettings: () => void;
+}
+
+export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   const trip = useTripStore((s) => s.trip);
   const expenses = useTripStore((s) => s.expenses);
-  const days = useTripStore((s) => s.days);
-  const setHomeCurrency = useTripStore((s) => s.setHomeCurrency);
   const refreshRates = useTripStore((s) => s.refreshRates);
   const ratesLoading = useTripStore((s) => s.ratesLoading);
   const ratesError = useTripStore((s) => s.ratesError);
   const addExpense = useTripStore((s) => s.addExpense);
   const updateExpense = useTripStore((s) => s.updateExpense);
   const removeExpense = useTripStore((s) => s.removeExpense);
-  const addMember = useTripStore((s) => s.addMember);
-  const renameMember = useTripStore((s) => s.renameMember);
-  const removeMember = useTripStore((s) => s.removeMember);
   const online = useOnlineStatus();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -128,29 +118,23 @@ export function BudgetPanel() {
   const [currency, setCurrency] = useState<string>(trip?.homeCurrency ?? 'AUD');
   const [currencyManual, setCurrencyManual] = useState(false);
   const [label, setLabel] = useState('');
-  const [dayId, setDayId] = useState('');
+  /** The expense's "Attach to" city, or '' for "Whole trip" (Phase 6 item 9 —
+   *  replaces the removed per-day `dayId`). */
+  const [cityField, setCityField] = useState('');
   const [note, setNote] = useState('');
   const [paidByField, setPaidByField] = useState('');
+  /** Phase 6 item 11 — "this is already paid" on the ADD form. The form used
+   *  to always write `paid: false`, forcing a second click on the row's
+   *  toggle for anything logged after the fact (which is most of them). */
+  const [paidField, setPaidField] = useState(false);
+  /** The expense whose payer is being asked for, after toggling it TO paid
+   *  (item 11). `null` = no prompt open. */
+  const [payerPromptFor, setPayerPromptFor] = useState<Expense | null>(null);
+  /** Phase 6 item 10 — who an expense is shared across. `coversEveryone`
+   *  true is the default and maps to `coversMemberIds: undefined`. */
+  const [coversEveryone, setCoversEveryone] = useState(true);
+  const [coversIds, setCoversIds] = useState<string[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
-
-  // ---- trip companions (members) — Phase 5 item 5 ----
-  const [newMemberName, setNewMemberName] = useState('');
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  // Guards against a double-commit when Enter and the resulting blur (from
-  // the input unmounting once renamingId flips back to null) both fire for
-  // the same rename — see commitRename below.
-  const renameCommittingRef = useRef(false);
-  // Guards a DIFFERENT race, caught in code review: Escape's handler also
-  // unmounts the rename `<input>` (by flipping `renamingId` to null), and
-  // removing a FOCUSED element makes real browsers synchronously fire
-  // blur/focusout on it — which React delivers as this same input's
-  // `onBlur`. Without this flag, Escape (meant to discard the edit) would
-  // still end up calling commitRename via that blur and silently persist
-  // whatever half-typed value was in `renameValue`, the exact opposite of
-  // "cancel". jsdom does not reproduce blur-on-unmount, so no test using it
-  // can catch a regression here by accident — see the dedicated Escape test.
-  const renameCancelingRef = useRef(false);
 
   // Post-refresh "totals just moved" pulse on the summary cards — only on a
   // successful refresh (never on a failed one), and only reacting to a real
@@ -256,8 +240,6 @@ export function BudgetPanel() {
     return { rows, orphanCount };
   }, [expenses, trip]);
 
-  const sortedDays = useMemo(() => [...days].sort((a, b) => a.date.localeCompare(b.date)), [days]);
-
   // Sorted by CONVERTED home-currency amount (not raw amount — mixing raw
   // amounts across currencies isn't a meaningful order). No-rate expenses
   // sort to the end since they have no comparable converted value.
@@ -294,9 +276,12 @@ export function BudgetPanel() {
     setCategory(EXPENSE_CATEGORIES[0]);
     setAmount('');
     setLabel('');
-    setDayId('');
+    setCityField('');
     setNote('');
     setPaidByField('');
+    setPaidField(false);
+    setCoversEveryone(true);
+    setCoversIds([]);
     setCurrency(trip!.homeCurrency);
     setCurrencyManual(false);
   }
@@ -321,8 +306,23 @@ export function BudgetPanel() {
     setCurrency(expense.currency);
     setCurrencyManual(true);
     setLabel(expense.label);
-    setDayId(expense.dayId ?? '');
+    // Orphan-filtered, matching the `paidBy` prefill below: a city that no
+    // longer matches any current `Trip.cities` entry opens as "Whole trip"
+    // rather than as a value with no corresponding <option>. Without this the
+    // select VISUALLY falls back to "Whole trip" while `cityField` still held
+    // the stale name, and re-picking the already-shown option fires no
+    // onChange — so there was no way to clear it from this form at all.
+    // Re-saving now clears the dangling reference; never opening the form
+    // leaves it untouched, still rendered as-is on the row by `cityMeta`.
+    setCityField(orderedCities(trip).some((c) => c.name === expense.city) ? (expense.city ?? '') : '');
     setNote(expense.note ?? '');
+    setPaidField(expense.paid);
+    // Absent means everyone (the field's contract), so only a non-empty
+    // list puts the form into subset mode. Orphaned ids (member removed)
+    // are filtered out here rather than resurrected into the picker.
+    const covers = (expense.coversMemberIds ?? []).filter((id) => (trip?.members ?? []).some((m) => m.id === id));
+    setCoversEveryone(covers.length === 0);
+    setCoversIds(covers);
     const members = trip?.members ?? [];
     setPaidByField(expense.paidBy && members.some((m) => m.id === expense.paidBy) ? expense.paidBy : '');
     setFormOpen(true);
@@ -349,11 +349,14 @@ export function BudgetPanel() {
     }
   }
 
-  function handleDayChange(id: string) {
-    setDayId(id);
+  /** Phase 6 item 9: keyed off the city directly. This used to take a day id
+   *  and look that day up purely to find its city — dropping `Expense.dayId`
+   *  removes the indirection entirely. '' means "Whole trip", for which
+   *  `defaultCurrencyForCity(undefined, …)` yields the trip's own default. */
+  function handleCityChange(name: string) {
+    setCityField(name);
     if (!currencyManual) {
-      const day = days.find((d) => d.id === id);
-      setCurrency(defaultCurrencyForCity(day?.city, trip!));
+      setCurrency(defaultCurrencyForCity(name || undefined, trip!));
     }
   }
 
@@ -371,9 +374,17 @@ export function BudgetPanel() {
       label: label.trim(),
       amount: amt,
       currency,
-      dayId: dayId || undefined,
+      city: cityField || undefined,
       note: note.trim() || undefined,
       paidBy: paidByField || undefined,
+      paid: paidField,
+      // Phase 6 item 10. `undefined` means "everyone" — never an empty
+      // array, which is the degenerate "covers nobody" the field's contract
+      // treats as unreachable from this UI. The `.length` guard is the second
+      // line of defence behind the interaction rule below (deselecting the
+      // last person snaps back to Everyone); `parseSnapshot` is the third,
+      // for data arriving by import that never passes through here at all.
+      coversMemberIds: coversEveryone || coversIds.length === 0 ? undefined : coversIds,
     };
     if (editingId) {
       const existing = expenses.find((x) => x.id === editingId);
@@ -381,60 +392,59 @@ export function BudgetPanel() {
         await updateExpense({ ...existing, ...shared });
       }
     } else {
-      await addExpense({ ...shared, paid: false });
+      await addExpense(shared);
     }
     closeForm();
   }
 
-  async function handleAddMember(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = newMemberName.trim();
-    if (!trimmed) return;
-    await addMember(trimmed);
-    setNewMemberName('');
-  }
-
-  function startRename(member: TripMember) {
-    renameCancelingRef.current = false;
-    setRenamingId(member.id);
-    setRenameValue(member.name);
-  }
-
-  /** Escape: discard the in-progress rename WITHOUT committing it. Sets
-   *  `renameCancelingRef` before unmounting the input — real browsers fire
-   *  blur/focusout synchronously when a focused element is removed from the
-   *  DOM, which React delivers as this input's own `onBlur`, so without the
-   *  guard that blur would still call `commitRename` and persist whatever
-   *  half-typed text was there. Mirrors `renameCommittingRef`'s existing
-   *  Enter+blur double-fire guard, for a different pair of events. */
-  function cancelRename() {
-    renameCancelingRef.current = true;
-    setRenamingId(null);
-  }
-
-  /** Commits a rename on Enter or on blur — guarded against firing twice for
-   *  the same edit (Enter commits, which flips `renamingId` back to null and
-   *  unmounts the input, which itself then fires a blur that would otherwise
-   *  re-commit the same value), AND against firing at all when Escape is
-   *  what unmounted the input (see `cancelRename`/`renameCancelingRef`
-   *  above). */
-  async function commitRename(id: string) {
-    if (renameCommittingRef.current || renameCancelingRef.current) return;
-    renameCommittingRef.current = true;
-    const trimmed = renameValue.trim();
-    setRenamingId(null);
-    try {
-      if (trimmed) await renameMember(id, trimmed);
-    } finally {
-      renameCommittingRef.current = false;
+  /** Phase 6 item 11. Toggling an expense TO paid asks who paid it; toggling
+   *  it back to unpaid never prompts (there is nothing to capture, and a
+   *  prompt on the way down would be pure friction). Two degenerate cases
+   *  the design review called out explicitly:
+   *    - with NO members defined there is nothing to pick, so it marks paid
+   *      immediately rather than trapping the user in an empty prompt;
+   *    - an expense that already records a payer doesn't re-ask.
+   *  The prompt itself commits the paid flag, so cancelling leaves the
+   *  expense exactly as it was — unpaid, unchanged. */
+  function handlePaidToggle(expense: Expense) {
+    if (expense.paid) {
+      void updateExpense({ ...expense, paid: false });
+      return;
     }
+    if (members.length === 0 || expense.paidBy) {
+      void updateExpense({ ...expense, paid: true });
+      return;
+    }
+    setPayerPromptFor(expense);
   }
 
-  function dayMeta(e: Expense): string {
-    if (!e.dayId) return 'Whole trip';
-    const day = days.find((d) => d.id === e.dayId);
-    if (!day) return 'Whole trip';
-    return `${dayLabel(day, daysForCity(days, day.city))} · ${day.city}`;
+  /** Commits the pending paid-toggle with the chosen payer. `undefined`
+   *  means "mark paid without recording who" — a deliberate escape hatch, so
+   *  the prompt can never become a hard gate on marking something paid. */
+  function confirmPayer(payerId: string | undefined) {
+    const pending = payerPromptFor;
+    setPayerPromptFor(null);
+    if (!pending) return;
+    // Re-looked up by id rather than spreading the snapshot captured when the
+    // prompt opened — same as `handleSubmit`'s edit branch, and for the same
+    // reason: this app reconciles with the remote in the background, so an
+    // expense can change underneath an open prompt, and spreading the stale
+    // object would silently clobber that update.
+    //
+    // If the row is GONE, skip the write entirely — do NOT fall back to the
+    // snapshot. `updateExpense` upserts unconditionally, so writing the stale
+    // object wouldn't degrade to a no-op, it would RESURRECT an expense
+    // deleted on another device mid-prompt, carrying a `paid: true` and a
+    // payer that were never confirmed against anything real. The modal blocks
+    // in-page deletes, but background sync can still drop the row underneath
+    // it.
+    const current = expenses.find((x) => x.id === pending.id);
+    if (!current) return;
+    void updateExpense({ ...current, paid: true, paidBy: payerId ?? current.paidBy });
+  }
+
+  function cityMeta(e: Expense): string {
+    return e.city?.trim() ? e.city : 'Whole trip';
   }
 
   const currencyCount = budget.byCurrency.size;
@@ -444,7 +454,6 @@ export function BudgetPanel() {
   const summaryCardClass = `card summary-card${flash ? ' flash-confirm' : ''}`;
   const hasExpenses = expenses.length > 0;
   const members = trip.members ?? [];
-  const byPersonMax = Math.max(1, ...byPerson.rows.map((r) => r.sum));
 
   return (
     <section className="panel" id="panel-budget" role="tabpanel" aria-labelledby="tab-budget">
@@ -460,21 +469,22 @@ export function BudgetPanel() {
           on it. */}
       <div className="card rates-card">
         <div className="rates-row rates-row-home">
+          {/* Phase 6 item 6: the home-currency SELECT moved into Settings —
+              it's one-time setup, whereas the refresh/status/rate-chip row
+              below is live per-view housekeeping tied to what's on screen,
+              so only the setting moved and the housekeeping stayed. The
+              value is still shown here because every total on this tab
+              depends on it; it just isn't editable from here any more. */}
           <div className="rates-home-field">
             <span className="field-label">Home currency</span>
-            <select
-              aria-label="Home currency — all totals convert to this"
-              value={trip.homeCurrency}
-              onChange={(e) => void setHomeCurrency(e.target.value)}
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} &middot; {c.name}
-                </option>
-              ))}
-            </select>
+            <span className="rates-home-readonly tabular">{trip.homeCurrency}</span>
           </div>
-          <span className="rates-home-hint">Summary, categories &amp; totals below all convert to this.</span>
+          <span className="rates-home-hint">
+            Summary, categories &amp; totals below all convert to this &middot;{' '}
+            <button type="button" className="rates-home-link" onClick={onOpenSettings}>
+              Change in Settings
+            </button>
+          </span>
         </div>
 
         {/* announces loading/success/error/offline transitions to screen
@@ -558,13 +568,21 @@ export function BudgetPanel() {
           </div>
 
           {budget.categories.length > 0 && (
-            <div className="card cat-breakdown" style={{ padding: '14px 16px' }}>
+            <div className="card cat-breakdown">
               <div className="field-label" style={{ marginBottom: 10 }}>
                 By category
               </div>
               {budget.categories.map((c) => (
                 <div className="cat-row" key={c.category}>
-                  <span className="cat-label">{c.category}</span>
+                  {/* Inner <span> is load-bearing, not decoration: the
+                      truncation rule is `.cat-row .cat-label span`, so a bare
+                      text node here never truncates and a long category name
+                      pushes the grid out of alignment with the By-person card
+                      below, which does wrap its label. Matches the approved
+                      mockup, where both cards wrap. */}
+                  <span className="cat-label">
+                    <span>{c.category}</span>
+                  </span>
                   <div className="cat-bar-track">
                     <div
                       className="cat-bar-fill"
@@ -581,97 +599,6 @@ export function BudgetPanel() {
           )}
         </>
       )}
-
-      {/* Trip companions — deliberately its own card ABOVE "All expenses",
-          NOT folded into the expense form: defining companions is a
-          one-time-ish setup action, while picking a payer happens on every
-          expense, so splitting them keeps the form short and makes "who's on
-          this trip" independently discoverable/editable without opening an
-          expense first (Phase 5 item 5). */}
-      <div className="card members-card">
-        <div className="panel-head" style={{ marginBottom: 0 }}>
-          <h3 className="panel-title" style={{ fontSize: '1rem' }}>
-            Trip companions
-          </h3>
-        </div>
-        <span className="panel-hint">
-          Who&rsquo;s splitting costs on this trip &mdash; pick one as &ldquo;Paid by&rdquo; on any expense below.
-        </span>
-
-        {members.length === 0 ? (
-          <div className="members-empty">
-            <Icon name="user" />
-            <div>
-              <strong>No companions yet</strong>
-              <span> Add yourself and anyone else you&rsquo;re splitting costs with.</span>
-            </div>
-          </div>
-        ) : (
-          <div className="members-list">
-            {members.map((m) => (
-              <span className="member-chip" key={m.id}>
-                {renamingId === m.id ? (
-                  <input
-                    type="text"
-                    className="rename-input"
-                    value={renameValue}
-                    autoFocus
-                    aria-label="Rename companion"
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={() => void commitRename(m.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void commitRename(m.id);
-                      } else if (e.key === 'Escape') {
-                        cancelRename();
-                      }
-                    }}
-                  />
-                ) : (
-                  <>
-                    <MemberAvatar name={m.name} />
-                    <span className="member-name">{m.name}</span>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      aria-label={`Rename ${m.name}`}
-                      onClick={() => startRename(m)}
-                    >
-                      <Icon name="edit" />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-btn is-danger"
-                      aria-label={`Remove ${m.name}`}
-                      onClick={() => void removeMember(m.id)}
-                    >
-                      <Icon name="trash" />
-                    </button>
-                  </>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <form className="add-member-form" onSubmit={(e) => void handleAddMember(e)}>
-          <label className="visually-hidden" htmlFor="new-member-name">
-            New companion name
-          </label>
-          <input
-            type="text"
-            id="new-member-name"
-            className="text-input"
-            placeholder="Companion name, e.g. Priya"
-            value={newMemberName}
-            onChange={(e) => setNewMemberName(e.target.value)}
-          />
-          <button type="submit" className="btn btn-primary btn-sm">
-            <Icon name="plus" /> Add
-          </button>
-        </form>
-      </div>
 
       {/* Phase 5 item 6 — reuses the identical bar/track/amount layout as
           "By category" above (same jade bar colour on purpose — see the CSS
@@ -690,12 +617,19 @@ export function BudgetPanel() {
         ) : (
           <>
             {byPerson.rows.map((r) => {
-              const pct = Math.max(4, (r.sum / byPersonMax) * 100);
+              // PHASE6 item 7: share of the TRIP TOTAL, matching "By
+              // category" above (`c.amount / budget.total`). This used to be
+              // `r.sum / byPersonMax` — share of the top payer — which made
+              // the identical bar widget mean two different things one card
+              // apart: someone covering 90% of the trip rendered exactly like
+              // the largest of several small payers. The `Math.max(4, …)`
+              // legibility floor is unchanged.
+              const pct = Math.max(4, budget.total ? (r.sum / budget.total) * 100 : 0);
               const rowNote = exclusionNoteShort(r.excluded);
               return (
                 <div className="cat-row" key={r.member.id}>
                   <span className="cat-label">
-                    <MemberAvatar name={r.member.name} size="xs" />
+                    <MemberAvatar name={r.member.name} color={r.member.color} size="xs" />
                     <span>{r.member.name}</span>
                   </span>
                   <div className="cat-bar-track">
@@ -785,12 +719,12 @@ export function BudgetPanel() {
             />
           </div>
           <div className="full">
-            <label htmlFor="e-day">Attach to</label>
-            <select id="e-day" value={dayId} onChange={(e) => handleDayChange(e.target.value)}>
+            <label htmlFor="e-city">Attach to</label>
+            <select id="e-city" value={cityField} onChange={(e) => handleCityChange(e.target.value)}>
               <option value="">Whole trip</option>
-              {sortedDays.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {dayLabel(d, daysForCity(days, d.city))} &middot; {d.city}
+              {orderedCities(trip).map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name}
                 </option>
               ))}
             </select>
@@ -806,6 +740,103 @@ export function BudgetPanel() {
               ))}
             </select>
           </div>
+
+          {/* Phase 6 item 11 — log something that's already been paid without
+              having to save it and then flip the row's toggle. */}
+          <div>
+            {/* A plain span, NOT a second <label htmlFor="e-paid">: the
+                wrapping label below is already this checkbox's label, and
+                two labels pointing at one input give it the compound
+                accessible name "Status Already paid". */}
+            <span className="field-label">Status</span>
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                id="e-paid"
+                checked={paidField}
+                onChange={(ev) => setPaidField(ev.target.checked)}
+              />
+              <span>Already paid</span>
+            </label>
+          </div>
+
+          {/* Phase 6 item 10 — who this expense covers. Only shown when there
+              are companions to split across; with none defined the whole
+              control is meaningless (everyone == you), so it stays hidden
+              rather than rendering an empty picker. */}
+          {members.length > 0 && (
+            <div className="full">
+              <span className="field-label" id="covers-label">
+                Covers
+              </span>
+              <div className="covers-control" role="group" aria-labelledby="covers-label">
+                <div className="covers-mode">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={coversEveryone}
+                    className={`btn btn-sm${coversEveryone ? ' btn-primary' : ' btn-ghost'}`}
+                    onClick={() => {
+                      setCoversEveryone(true);
+                      setCoversIds([]);
+                    }}
+                  >
+                    Everyone
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!coversEveryone}
+                    className={`btn btn-sm${!coversEveryone ? ' btn-primary' : ' btn-ghost'}`}
+                    onClick={() => setCoversEveryone(false)}
+                  >
+                    Choose people
+                  </button>
+                </div>
+
+                {!coversEveryone && (
+                  <div className="covers-people">
+                    {members.map((m) => {
+                      const checked = coversIds.includes(m.id);
+                      return (
+                        <label className="checkbox-field" key={m.id}>
+                          <input
+                            type="checkbox"
+                            // Explicit, because the avatar beside the name
+                            // contributes its initial letter to the label's
+                            // text — without this the checkbox's accessible
+                            // name comes out as "A Alex".
+                            aria-label={m.name}
+                            checked={checked}
+                            onChange={() => {
+                              const next = checked
+                                ? coversIds.filter((id) => id !== m.id)
+                                : [...coversIds, m.id];
+                              // Deselecting the LAST person snaps back to
+                              // "Everyone" rather than leaving an empty
+                              // selection. That makes the degenerate
+                              // "covers nobody" state unreachable from this
+                              // UI — see `Expense.coversMemberIds`, which
+                              // treats an explicit [] as something only bad
+                              // imported data can produce.
+                              if (next.length === 0) {
+                                setCoversEveryone(true);
+                                setCoversIds([]);
+                              } else {
+                                setCoversIds(next);
+                              }
+                            }}
+                          />
+                          <MemberAvatar name={m.name} color={m.color} size="xs" />
+                          <span>{m.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="full">
             <label htmlFor="e-note">
               Note <span style={{ textTransform: 'none', fontWeight: 500, color: 'var(--ink-faint)' }}>&middot; optional</span>
@@ -855,7 +886,11 @@ export function BudgetPanel() {
             // any current member (the member was removed) — that's not an
             // error, it renders as unset ("—"), never throws. No `paidBy` at
             // all is the ordinary case and shows nothing here.
-            const payerName = e.paidBy ? members.find((m) => m.id === e.paidBy)?.name : undefined;
+            // Resolved to the member OBJECT, not just the name, so the row's
+            // avatar can carry that member's `--m-*` colour (Phase 6 item 8)
+            // — a colour picked in Settings has to actually show up where
+            // members appear, or the setting is decorative.
+            const payer = e.paidBy ? members.find((m) => m.id === e.paidBy) : undefined;
             return (
               <div className="card expense" key={e.id}>
                 <span className="expense-swatch" style={{ background: categoryColor(e.category) }} />
@@ -863,12 +898,12 @@ export function BudgetPanel() {
                   <div className="expense-label">{e.label}</div>
                   <div className="expense-meta">
                     <span className="tag">{e.category}</span>
-                    <span>{dayMeta(e)}</span>
+                    <span>{cityMeta(e)}</span>
                     {!isFree && converted === undefined && <span className="tag rate-missing-tag">No rate</span>}
                     {e.paidBy &&
-                      (payerName ? (
+                      (payer ? (
                         <span className="expense-payer">
-                          <MemberAvatar name={payerName} size="xs" /> Paid by {payerName}
+                          <MemberAvatar name={payer.name} color={payer.color} size="xs" /> Paid by {payer.name}
                         </span>
                       ) : (
                         <span className="expense-payer is-unset">
@@ -897,7 +932,7 @@ export function BudgetPanel() {
                     <input
                       type="checkbox"
                       checked={e.paid}
-                      onChange={() => void updateExpense({ ...e, paid: !e.paid })}
+                      onChange={() => handlePaidToggle(e)}
                       aria-label={`Mark ${e.label} as ${e.paid ? 'unpaid' : 'paid'}`}
                     />
                     <span className="track" />
@@ -922,6 +957,48 @@ export function BudgetPanel() {
           })}
         </div>
       )}
+
+      {/* Phase 6 item 11 — "who paid?" on marking an expense paid. Rendered
+          through the shared <Modal>, which already supplies Escape, the
+          focus-trap and focus-restore; the design review was explicit that
+          this must NOT be a second hand-rolled overlay. Closing without
+          choosing leaves the expense unpaid and untouched — the toggle's
+          state change is committed by confirmPayer, not before it, so a
+          dismissed prompt is a true no-op rather than a half-applied edit. */}
+      <Modal
+        open={payerPromptFor !== null}
+        onClose={() => setPayerPromptFor(null)}
+        labelledBy="payerPromptTitle"
+      >
+        <div className="modal-head">
+          <h3 id="payerPromptTitle">Who paid?</h3>
+          {/* Not just "Cancel" — the expense form below has its own Cancel
+              button, and two identically-named controls in one view is
+              ambiguous for anyone navigating by accessible name. */}
+          <button className="icon-btn" onClick={() => setPayerPromptFor(null)} aria-label="Close without marking paid">
+            <Icon name="close" />
+          </button>
+        </div>
+        <p className="panel-hint">
+          Marking <strong>{payerPromptFor?.label}</strong> as paid.
+        </p>
+        <div className="payer-choices">
+          {members.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => confirmPayer(m.id)}
+            >
+              <MemberAvatar name={m.name} color={m.color} size="xs" /> {m.name}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => confirmPayer(undefined)}>
+          Mark paid without recording who
+        </button>
+      </Modal>
+      <BackToTop />
     </section>
   );
 }

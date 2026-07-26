@@ -76,11 +76,13 @@ export function RouteStrip({ cities, selectedCity, onSelect, pendingCities }: Ro
             className={`route-node${active ? ' active' : ''}${hasPending ? ' has-pending' : ''}`}
             data-city={citySlug(city.name)}
             aria-current={active ? 'true' : undefined}
-            // A no-op at full width; recovers the name for a sighted mouse
-            // user once the desktop condensing header (App.tsx's
-            // useCondenseHeader) shrinks nodes to 60px and the city name
-            // truncates with an ellipsis (see index.css's
-            // `.topbar.is-condensed .route-city`).
+            // A no-op at full width. The desktop condensing header (App.tsx's
+            // useCondenseHeader) narrows nodes from 104px to 92px, which fits
+            // every city on this trip — but the ellipsis backstop in
+            // `.topbar.is-condensed .route-city` still exists for a name long
+            // enough to overrun it, and this title is what recovers the full
+            // text for a sighted mouse user when it does. Also carries the
+            // date, which the condensed state hides outright.
             title={`${city.name} · ${fmtCompactRange(city.arrive, city.depart)}`}
             onClick={() => onSelect(city.name)}
           >

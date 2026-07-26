@@ -18,6 +18,7 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { MapPanel } from './features/map/MapPanel';
 import { PlacesPanel } from './features/places/PlacesPanel';
 import { ItineraryPanel } from './features/itinerary/ItineraryPanel';
+import { SettingsModal } from './features/settings/SettingsModal';
 import { BudgetPanel } from './features/budget/BudgetPanel';
 import { AutoPlanModal } from './features/autoplan/AutoPlanModal';
 import { AddPlaceModal } from './features/places/AddPlaceModal';
@@ -96,6 +97,7 @@ function App() {
   const [tab, setTab] = useState<TabId>(readStoredTab);
   const [theme, setTheme] = useState<Theme>('light');
   const [autoplanOpen, setAutoplanOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const autoplanTriggerRef = useRef<HTMLElement | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -143,8 +145,13 @@ function App() {
     }
   }, [tab]);
 
-  const handleToggleTheme = useCallback(() => {
-    setTheme((cur) => flipTheme(cur));
+  /** Settings offers an explicit light/dark choice rather than a blind
+   *  toggle, but `lib/theme.ts` only exposes a flip (it persists and applies
+   *  the attribute as a side effect). Flipping only when the requested theme
+   *  differs keeps that single code path — picking the already-active theme
+   *  is a no-op, not a flip to the other one. */
+  const handleSetTheme = useCallback((next: Theme) => {
+    setTheme((cur) => (cur === next ? cur : flipTheme(cur)));
   }, []);
 
   const openAutoPlan = useCallback((trigger?: HTMLElement | null) => {
@@ -269,16 +276,11 @@ function App() {
               </span>
             </div>
             <div className={`topbar-actions${condensed ? ' is-collapsed' : ''}`}>
-              <button
-                className="btn btn-ghost btn-sm btn-collapsible"
-                onClick={() => void handleExport()}
-                title="Export trip.json"
-              >
-                <Icon name="download" /> <span className="btn-label">Export</span>
-              </button>
-              <button className="btn btn-ghost btn-sm btn-collapsible" onClick={handleImportClick} title="Import trip.json">
-                <Icon name="upload" /> <span className="btn-label">Import</span>
-              </button>
+              {/* Export/Import/theme/Sign-out all moved into the Settings
+                  modal in Phase 6 item 6 — the file input itself stays here
+                  because it's a hidden, always-mounted element the modal
+                  triggers via `handleImportClick`; moving it inside a
+                  conditionally-rendered modal would unmount it mid-flight. */}
               <input
                 ref={importInputRef}
                 type="file"
@@ -308,19 +310,16 @@ function App() {
                   {syncDisplay === 'done' ? 'Synced' : 'Syncing…'}
                 </span>
               </span>
-              <button
-                className="btn btn-ghost btn-icon"
-                onClick={handleToggleTheme}
-                aria-label="Toggle light and dark theme"
-                title="Toggle light / dark"
-              >
-                <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-              </button>
               <button className="btn autoplan-cta btn-collapsible" onClick={(e) => openAutoPlan(e.currentTarget)}>
                 <Icon name="sparkle" /> <span className="btn-label">Auto-plan</span>
               </button>
-              <button className="btn btn-ghost btn-sm btn-collapsible" onClick={() => void handleSignOut()} title="Sign out">
-                <Icon name="logout" /> <span className="btn-label">Sign out</span>
+              <button
+                className="btn btn-ghost btn-icon"
+                onClick={() => setSettingsOpen(true)}
+                aria-label="Settings"
+                title="Settings"
+              >
+                <Icon name="settings" />
               </button>
             </div>
           </div>
@@ -367,11 +366,24 @@ function App() {
           )}
           {tab === 'places' && <PlacesPanel onOpenAddPlace={openAddPlace} />}
           {tab === 'itinerary' && <ItineraryPanel />}
-          {tab === 'budget' && <BudgetPanel />}
+          {tab === 'budget' && <BudgetPanel onOpenSettings={() => setSettingsOpen(true)} />}
         </main>
       </div>
 
       <AutoPlanModal open={autoplanOpen} onClose={closeAutoPlan} />
+      {/* Sign-out's teardown is order-sensitive (reset store -> repoint the
+          repository -> clear Dexie -> sign out; see handleSignOut). Phase 6
+          relocated the BUTTON into Settings, not the logic — the handler is
+          still owned here and simply passed down. */}
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        theme={theme}
+        onSetTheme={handleSetTheme}
+        onExport={() => void handleExport()}
+        onImportClick={handleImportClick}
+        onSignOut={() => void handleSignOut()}
+      />
       <AddPlaceModal open={addPlaceOpen} mode={addPlaceMode} point={addPlacePoint} defaultCity={selectedCity} onClose={closeAddPlace} />
     </>
   );
