@@ -13,6 +13,7 @@ import { orderedCities } from './lib/tripView';
 import { citiesWithPendingChanges } from './features/map/mapStaging';
 import { fmtCompactRange } from './lib/dates';
 import { useStickyOffsets } from './hooks/useStickyOffsets';
+import { useCondenseHeader } from './hooks/useCondenseHeader';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { MapPanel } from './features/map/MapPanel';
 import { PlacesPanel } from './features/places/PlacesPanel';
@@ -109,6 +110,13 @@ function App() {
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [addPlaceMode, setAddPlaceMode] = useState<AddPlaceMode>('search');
   const [addPlacePoint, setAddPlacePoint] = useState<AddPlacePoint | null>(null);
+
+  // Desktop-only condensing header (mockup/header-nav-hierarchy.html
+  // #v3-condense) — see useCondenseHeader for the hysteresis/breakpoint
+  // reasoning. `condenseSentinelRef` is a thin marker rendered as <main>'s
+  // first child, below.
+  const condenseSentinelRef = useRef<HTMLDivElement>(null);
+  const condensed = useCondenseHeader(condenseSentinelRef);
 
   useEffect(() => {
     void init();
@@ -244,7 +252,13 @@ function App() {
           </div>
         )}
 
-        <header className="topbar">
+        {/* `can-condense` marks this eligible for the desktop shrink-on-scroll
+            refinement; `is-condensed` (driven by useCondenseHeader, gated to
+            >=720px) is the only thing that actually turns it on — see
+            index.css's `@media (min-width:720px)` condensing-header block.
+            Harmless below that width: no CSS there reads `is-condensed`, and
+            the hook never sets it in the first place. */}
+        <header className={`topbar can-condense${condensed ? ' is-condensed' : ''}`}>
           <div className="topbar-row">
             <div className="trip-id">
               <span className="trip-eyebrow">Personal trip &middot; from Sydney</span>
@@ -254,12 +268,16 @@ function App() {
                 {trip.tripCurrency} trip / {trip.homeCurrency} home
               </span>
             </div>
-            <div className="topbar-actions">
-              <button className="btn btn-ghost btn-sm" onClick={() => void handleExport()} title="Export trip.json">
-                Export
+            <div className={`topbar-actions${condensed ? ' is-collapsed' : ''}`}>
+              <button
+                className="btn btn-ghost btn-sm btn-collapsible"
+                onClick={() => void handleExport()}
+                title="Export trip.json"
+              >
+                <Icon name="download" /> <span className="btn-label">Export</span>
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={handleImportClick} title="Import trip.json">
-                Import
+              <button className="btn btn-ghost btn-sm btn-collapsible" onClick={handleImportClick} title="Import trip.json">
+                <Icon name="upload" /> <span className="btn-label">Import</span>
               </button>
               <input
                 ref={importInputRef}
@@ -298,11 +316,11 @@ function App() {
               >
                 <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
               </button>
-              <button className="btn autoplan-cta" onClick={(e) => openAutoPlan(e.currentTarget)}>
-                <Icon name="sparkle" /> Auto-plan
+              <button className="btn autoplan-cta btn-collapsible" onClick={(e) => openAutoPlan(e.currentTarget)}>
+                <Icon name="sparkle" /> <span className="btn-label">Auto-plan</span>
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => void handleSignOut()} title="Sign out">
-                Sign out
+              <button className="btn btn-ghost btn-sm btn-collapsible" onClick={() => void handleSignOut()} title="Sign out">
+                <Icon name="logout" /> <span className="btn-label">Sign out</span>
               </button>
             </div>
           </div>
@@ -310,6 +328,14 @@ function App() {
           <RouteStrip cities={baseCities} selectedCity={selectedCity} onSelect={selectCity} pendingCities={pendingCities} />
         </header>
 
+        {/* Below 720px this is repositioned into the fixed bottom tab dock
+            approved in mockup/header-nav-hierarchy.html Variant 3 — CSS-only
+            (`@media (max-width:719px)` in index.css), same markup either
+            way, so aria semantics/state never fork into two implementations.
+            Its DOM position (right after the topbar, before <main>) is
+            unchanged by that, which is what keeps primary nav early in
+            keyboard focus order even when it's visually docked at the
+            bottom — the fix for that variant's flagged focus-order gap. */}
         <nav className="tabbar" role="tablist" aria-label="Trip planner sections">
           {TAB_DEFS.map((t) => (
             <button
@@ -321,12 +347,16 @@ function App() {
               aria-controls={`panel-${t.id}`}
               onClick={() => setTab(t.id)}
             >
-              <Icon name={t.icon} /> {t.label}
+              <Icon name={t.icon} />
+              <span className="tab-label">{t.label}</span>
             </button>
           ))}
         </nav>
 
         <main>
+          {/* Zero-footprint sentinel for useCondenseHeader — see that hook
+              and .condense-sentinel in index.css. */}
+          <div className="condense-sentinel" ref={condenseSentinelRef} aria-hidden="true" />
           {tab === 'map' && (
             <MapPanel
               selectedCity={selectedCity}

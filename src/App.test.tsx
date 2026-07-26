@@ -46,6 +46,16 @@ function routeNode(cityName: string) {
   return within(strip).getByRole('button', { name: new RegExp(cityName) });
 }
 
+/** The Map tab's single canonical "Add place" affordance — a sticky FAB
+ *  reachable at every scroll position (Phase 5 item 2 replaced the old
+ *  panel-head button + day-subbar icon button + decorative hint with this
+ *  one control). Scoped to the Map panel so it can't collide with the
+ *  Places tab's own separate "Add place" button. */
+function mapAddPlaceButton() {
+  const panel = document.getElementById('panel-map') as HTMLElement;
+  return within(panel).getByRole('button', { name: /Add place/ });
+}
+
 describe('App — timeline drives the Map', () => {
   it('tapping a route-strip city switches to/stays on the Map tab, updates the active city, and shows "Showing <City>" — never navigates to Itinerary', async () => {
     render(<App />);
@@ -109,7 +119,7 @@ describe('App — shared Add-place modal (Phase 2 requirement 2)', () => {
     await screen.findByRole('tablist');
     expect(mapTab()).toHaveAttribute('aria-selected', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: /Add place/ }));
+    fireEvent.click(mapAddPlaceButton());
 
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Add a place')).toBeInTheDocument();
@@ -134,7 +144,7 @@ describe('App — shared Add-place modal (Phase 2 requirement 2)', () => {
   it('Escape closes the modal and returns focus without navigating tabs', async () => {
     render(<App />);
     await screen.findByRole('tablist');
-    fireEvent.click(screen.getByRole('button', { name: /Add place/ }));
+    fireEvent.click(mapAddPlaceButton());
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });

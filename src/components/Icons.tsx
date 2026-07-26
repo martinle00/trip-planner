@@ -112,6 +112,25 @@ export function IconSprite() {
         <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 3.3l9.7 17.4H2.3L12 3.3z" /><path d="M12 10v4.2" /><circle cx="12" cy="17.4" r="0.6" fill="currentColor" stroke="none" />
         </symbol>
+        {/* Header/nav condensing refinement (mockup/header-nav-hierarchy.html
+            #v3-condense) — Export/Import/Sign out collapse to icon-only in
+            the desktop condensed state, which needs an icon for each where
+            production previously only had text. */}
+        <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3v12M7 10l5 5 5-5" /><path d="M4 19h16" />
+        </symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 15V3M7 8l5-5 5 5" /><path d="M4 19h16" />
+        </symbol>
+        <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" />
+        </symbol>
+        {/* Phase 5 — Budget tab: "Paid by" when an expense's payer no longer
+            resolves to a trip member (orphaned id, see Expense.paidBy's doc
+            comment in data/schema.ts). */}
+        <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="3.4" /><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5" />
+        </symbol>
       </defs>
     </svg>
   );

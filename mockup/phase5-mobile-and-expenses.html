@@ -1,0 +1,1627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 5 — mobile polish + richer expenses</title>
+<style>
+  /* ============================= TOKENS (ported from src/index.css — do not hand-edit values here, port again if the source changes) ============================= */
+  :root{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350;
+    --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-full: 999px;
+    --shadow-sm: 0 1px 2px rgba(60,40,20,.08), 0 1px 1px rgba(60,40,20,.05);
+    --shadow-md: 0 8px 24px -8px rgba(60,40,20,.22), 0 2px 6px rgba(60,40,20,.08);
+    --shadow-lg: 0 24px 60px -16px rgba(30,20,10,.35);
+    --font-display: 'Songti SC','STSong','Noto Serif SC', Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Consolas', 'Roboto Mono', monospace;
+    --tab-active-bg: var(--ink); --tab-active-ink: var(--paper);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+      --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+      --line: #362E24; --line-strong: #453A2C;
+      --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+      --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B;
+      --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+      --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+      --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+      --tab-active-bg: var(--accent); --tab-active-ink: var(--accent-ink);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+    --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+    --line: #362E24; --line-strong: #453A2C;
+    --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+    --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+    --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+    --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+    --tab-active-bg: var(--accent); --tab-active-ink: var(--accent-ink);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --tab-active-bg: var(--ink); --tab-active-ink: var(--paper);
+    color-scheme: light;
+  }
+
+  /* ============================= RESET ============================= */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,p{ margin:0; }
+  button{ font:inherit; color:inherit; }
+  button, .tab, .bottom-tab, .route-node, .chip{ cursor:pointer; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  svg{ display:block; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
+  .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .tabular{ font-variant-numeric: tabular-nums; }
+
+  /* ============================= SCAFFOLDING (review tooling — not shipped UI) ============================= */
+  .spec-bar{
+    position:sticky; top:0; z-index:200; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    flex-wrap:wrap; background:var(--ink); color:var(--paper); padding:12px 18px; font-size:13px;
+  }
+  .spec-bar strong{ font-size:14px; }
+  .spec-bar span.sub{ color:#cabfae; }
+  .spec-bar-tools{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .spec-bar-tools a{
+    font-size:11px; font-weight:700; color:#cabfae; text-decoration:none; padding:5px 10px;
+    border:1px dashed rgba(255,255,255,.3); border-radius:var(--radius-full);
+  }
+  .spec-bar-tools a:hover{ color:var(--paper); border-color:rgba(255,255,255,.6); }
+  .spec-bar .btn-icon{ background:transparent; border:1px solid rgba(255,255,255,.3); color:var(--paper); width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .spec-bar .btn-icon:hover{ background:rgba(255,255,255,.12); }
+  .spec-bar .btn-icon svg{ width:15px; height:15px; }
+  .debug-toggle{
+    font-size:10.5px; font-weight:600; color:var(--ink-soft); background:var(--paper-sunk);
+    border:1px dashed var(--line-strong); border-radius:var(--radius-full); padding:5px 12px;
+  }
+  .debug-toggle:hover{ color:var(--ink); border-color:var(--accent); }
+
+  .intro{ max-width:920px; margin:26px auto 6px; padding:0 18px; font-size:13.5px; color:var(--ink-soft); line-height:1.6; }
+  .intro h2{ font-family:var(--font-display); font-size:1.3rem; font-weight:600; color:var(--ink); margin-bottom:8px; }
+  .intro p{ margin:0 0 10px; }
+  .intro ul{ margin:0 0 10px; padding-left:20px; }
+  .intro li{ margin-bottom:4px; }
+  .intro code{ font-family:var(--font-mono); font-size:12.5px; background:var(--paper-sunk); padding:1px 5px; border-radius:4px; }
+
+  .frame-label{ max-width:1180px; margin:34px auto 4px; padding:0 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); }
+  .frame-label .frame-badge{
+    display:inline-flex; align-items:center; font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:none;
+    background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line); border-radius:var(--radius-full); padding:2px 9px; margin-left:8px;
+  }
+  .frame-hint{ display:block; max-width:920px; margin:0 auto 12px; padding:0 18px; font-size:12.5px; color:var(--ink-soft); font-weight:400; text-transform:none; letter-spacing:0; line-height:1.6; }
+  .frame-wrap{ max-width:1180px; margin:0 auto 8px; padding:0 18px; display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .frame-col{ flex:1 1 320px; min-width:0; }
+  .frame-col-title{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); margin-bottom:8px; }
+
+  .demo-viewport{
+    position:relative; max-height:640px; overflow-y:auto; overflow-x:hidden;
+    border:1px solid var(--line-strong); border-radius:var(--radius-lg); background:var(--paper);
+    box-shadow:var(--shadow-sm);
+  }
+  .phone-frame{
+    position:relative; width:390px; max-width:100%; margin:0; padding:12px;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:34px; box-shadow:var(--shadow-md);
+  }
+  .phone-screen{ position:relative; background:var(--paper); border-radius:22px; overflow-y:auto; overflow-x:hidden; max-height:620px; }
+
+  .decision-note{
+    display:flex; gap:9px; align-items:flex-start; background:var(--accent-soft); color:var(--accent-soft-ink);
+    border-radius:var(--radius-md); padding:11px 14px; margin:0 0 14px; font-size:12.5px; line-height:1.55;
+    max-width:920px; margin-left:auto; margin-right:auto;
+  }
+  .decision-note svg{ width:15px; height:15px; flex:none; margin-top:2px; }
+  .decision-note strong{ display:block; color:var(--accent-soft-ink); font-size:12.5px; margin-bottom:2px; }
+  .decision-note.is-warn{ background:var(--gold-soft); color:var(--gold-soft-ink); }
+  .decision-note.is-warn strong{ color:var(--gold-soft-ink); }
+  .decision-note.is-good{ background:var(--jade-soft); color:var(--jade-soft-ink); }
+  .decision-note.is-good strong{ color:var(--jade-soft-ink); }
+
+  /* ============================= BUTTONS ============================= */
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; border-radius:var(--radius-full);
+    padding:9px 16px; font-size:13.5px; font-weight:600; background:var(--paper-raised); border-color:var(--line-strong); color:var(--ink);
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease, width .15s ease, padding .15s ease; white-space:nowrap;
+  }
+  .btn:hover{ box-shadow:var(--shadow-sm); }
+  .btn:active{ transform:scale(.97); }
+  .btn svg{ width:15px; height:15px; flex:none; }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-primary:hover{ box-shadow:var(--shadow-md); }
+  .btn-ghost{ background:transparent; border-color:var(--line-strong); }
+  .btn-ghost:hover{ background:var(--paper-sunk); }
+  .btn-sm{ padding:6px 12px; font-size:12.5px; }
+  .btn[disabled]{ opacity:.5; pointer-events:none; }
+  .btn-icon{ width:38px; height:38px; padding:0; justify-content:center; border-radius:50%; flex:none; }
+  .btn-icon svg{ width:17px; height:17px; }
+  .icon-btn{ width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--ink-faint); flex:none; }
+  .icon-btn:hover{ background:var(--paper-sunk); color:var(--ink); }
+  .icon-btn.is-danger:hover{ background:var(--gold-soft); color:var(--gold-soft-ink); }
+  .icon-btn svg{ width:14px; height:14px; }
+  .autoplan-cta{ background:linear-gradient(135deg, var(--accent), var(--d-terra)); color:var(--accent-ink); border:none; box-shadow:var(--shadow-sm); }
+  .autoplan-cta:hover{ box-shadow:var(--shadow-md); }
+
+  /* ============================= TOPBAR / IDENTITY (ported from src/index.css) ============================= */
+  .topbar{ position:sticky; top:0; z-index:30; background:var(--paper); border-bottom:1px solid var(--line); padding:18px 16px 0; }
+  .topbar-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .trip-id{ display:flex; flex-direction:column; gap:3px; }
+  .trip-eyebrow{ font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
+  .trip-title{ font-family:var(--font-display); font-weight:600; font-size:1.6rem; letter-spacing:.01em; }
+  .trip-sub{ font-size:12.5px; color:var(--ink-soft); }
+  /* No flex-wrap/justify-content — ported byte-for-byte from src/index.css so
+     this file shows the SAME overflow-past-the-edge behaviour production has
+     at narrow widths, not a tidied-up version of it. */
+  .topbar-actions{ display:flex; align-items:center; gap:8px; }
+
+  /* Icon-only collapse machinery — EXISTING production pattern (src/index.css
+     ~L186-198, `useCondenseHeader.ts`), reused verbatim by both triggers
+     below. The label stays in the DOM, just visually clipped, so it's still
+     each button's accessible name (never display:none — see DESIGN-SYSTEM.md
+     §6 and the mobile-succinct rule added by this same phase). */
+  .btn-collapsible .btn-label{ display:inline; }
+  .topbar-actions.is-collapsed .btn-collapsible,
+  .topbar-actions.force-collapsed .btn-collapsible{
+    width:38px; height:38px; padding:0; justify-content:center; border-radius:50%;
+  }
+  .topbar-actions.is-collapsed .btn-collapsible .btn-label,
+  .topbar-actions.force-collapsed .btn-collapsible .btn-label{
+    position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+  }
+  .topbar-actions.is-collapsed .sync-indicator,
+  .topbar-actions.force-collapsed .sync-indicator{ padding:6px; gap:0; }
+  .topbar-actions.is-collapsed .sync-indicator-label,
+  .topbar-actions.force-collapsed .sync-indicator-label{
+    position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+  }
+  /* ============================= ITEM 1 — mobile topbar icon-collapse =============================
+     NEW rule this phase. Existing production CSS above only collapses
+     `.topbar-actions` when JS adds `.is-collapsed` (desktop scroll-condense,
+     gated >=720px in useCondenseHeader.ts — never fires on mobile at all).
+     Below 720px there is currently NO collapse, which is exactly today's
+     overflow bug. This block adds the SAME visual outcome triggered purely
+     by width — `.force-collapsed` mirrors `.is-collapsed`'s ruleset above
+     rather than duplicating it, and applies unconditionally below the exact
+     breakpoint (719px) already used elsewhere in index.css for the
+     mobile/desktop nav split (bottom tab dock, condensing-header gate) — one
+     "mobile mode" threshold, not a new one. CSS-only: frontend-engineer can
+     ship this as `@media (max-width:719px){ .topbar-actions{ ...same rules
+     as .is-collapsed... } }` directly against `.topbar-actions`, no new JS,
+     no new class needed in the real implementation — `.force-collapsed` only
+     exists in this mockup so the "before" frame below can render unaffected
+     for comparison on the same page. */
+  @media (max-width:719px){
+    .topbar-actions.mobile-scope .btn-collapsible{ width:38px; height:38px; padding:0; justify-content:center; border-radius:50%; }
+    .topbar-actions.mobile-scope .btn-collapsible .btn-label{
+      position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+    }
+    .topbar-actions.mobile-scope .sync-indicator{ padding:6px; gap:0; }
+    .topbar-actions.mobile-scope .sync-indicator-label{
+      position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+    }
+  }
+
+  .sync-indicator{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-soft);
+    padding:6px 11px; border-radius:var(--radius-full); background:var(--paper-sunk); border:1px solid var(--line); white-space:nowrap;
+  }
+  .sync-dot{ width:9px; height:9px; border-radius:50%; flex:none; background:var(--jade); }
+
+  /* ============================= ROUTE STRIP (ported) ============================= */
+  .route-strip{ display:flex; gap:0; margin:16px 0 0; padding:2px 2px 18px; overflow-x:auto; scrollbar-width:thin; }
+  .route-node{
+    flex:none; display:flex; flex-direction:column; align-items:center; gap:6px; width:104px; text-align:center;
+    background:none; border:none; padding:4px 2px 0; position:relative;
+  }
+  .route-node .line{ position:absolute; top:11px; left:-52px; width:104px; height:2px; background:var(--line-strong); z-index:0; }
+  .route-node:first-child .line{ display:none; }
+  .route-dot{
+    width:10px; height:10px; border-radius:50%; background:var(--ink-soft); border:2px solid var(--paper);
+    box-shadow:0 0 0 1.5px var(--line-strong); position:relative; z-index:1;
+  }
+  .route-city{ font-size:12px; font-weight:700; }
+  .route-date{ font-size:10.5px; color:var(--ink-soft); }
+  .route-node.active .route-dot{ width:13px; height:13px; background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+  .route-node.active .route-city{ color:var(--accent); font-weight:800; }
+  .route-node.active .route-date{ color:var(--accent-soft-ink); }
+
+  /* ============================= ITEM 3 — mobile-succinct route strip =============================
+     NEW this phase. Below 719px (same threshold as item 1 — see the
+     DESIGN-SYSTEM.md rule this section adds), route-nodes drop to a single
+     line, city name only, visually. The `.route-date` span is NOT removed
+     from the DOM and NOT display:none'd — it's clipped with the exact
+     .visually-hidden technique used everywhere else in this codebase, so it
+     stays part of the route-node button's accessible name (its only name
+     source is its own text content — see src/index.css's is-condensed
+     comment on this exact element). This is a DELIBERATE departure from the
+     desktop is-condensed treatment just above (which display:none's
+     route-date for everyone) — see the decision-note in the Item 3 section
+     below for why mobile gets the more conservative treatment. */
+  @media (max-width:719px){
+    .route-strip.mobile-scope .route-node{ width:74px; flex-direction:row; align-items:center; gap:5px; padding:6px 2px; }
+    /* recalibrated to the new 74px node width — the connecting .line is a
+       fixed-width absolutely-positioned asset sized to exactly half on each
+       side of its own node (same relationship the desktop is-condensed
+       state already keeps for its own 60px node); leaving it at the base
+       104px/-52px pairing here would overshoot into neighbouring nodes. */
+    .route-strip.mobile-scope .route-node .line{ top:50%; width:74px; left:-37px; }
+    .route-strip.mobile-scope .route-city{
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; font-size:11.5px;
+    }
+    .route-strip.mobile-scope .route-date{
+      position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+    }
+  }
+
+  /* ============================= TABS + MOBILE BOTTOM DOCK (ported) ============================= */
+  .tabbar{ position:sticky; top:var(--topbar-h,0px); z-index:29; display:flex; gap:4px; padding:8px 16px; background:var(--paper); border-bottom:1px solid var(--line); overflow-x:auto; }
+  .tab{ flex:none; display:flex; align-items:center; gap:7px; padding:9px 14px; border-radius:var(--radius-full); background:transparent; border:1px solid transparent; font-size:13.5px; font-weight:600; color:var(--ink-soft); }
+  .tab svg{ width:16px; height:16px; }
+  .tab:hover{ background:var(--paper-sunk); color:var(--ink); }
+  .tab.active{ background:var(--tab-active-bg); color:var(--tab-active-ink); }
+  @media (max-width:719px){
+    .tabbar.mobile-dock{
+      position:sticky; top:auto; bottom:0; border-bottom:none; border-top:1px solid var(--line);
+      box-shadow:0 -6px 18px -10px rgba(60,40,20,.22); padding:0 4px calc(4px + max(10px, env(safe-area-inset-bottom,10px)));
+      background:var(--paper-raised);
+    }
+    .tabbar.mobile-dock .tab{ flex:1 1 0; min-width:0; flex-direction:column; gap:3px; padding:9px 2px 7px; border-radius:0; font-size:10.5px; font-weight:700; }
+    .tabbar.mobile-dock .tab svg{ width:20px; height:20px; }
+    .tabbar.mobile-dock .tab.active{ background:transparent; color:var(--accent); }
+  }
+  /* Demo-only duplicate of the block above, gated by a CLASS instead of the
+     real `@media` — the phone-frame's 390px width is visual framing only, it
+     doesn't change what a real `@media (max-width:719px)` query matches
+     against (that's still the reviewer's actual browser window). Without
+     this, item 2's mobile mounts would render the bottom dock as a plain
+     sticky-TOP tabbar whenever this file happens to be reviewed on a normal
+     desktop-width window, silently breaking the whole "does the FAB clear
+     the dock" demonstration. Same fix item 1 already applies via
+     `.force-collapsed` for the same underlying reason — this is that
+     precedent, extended to a rule item 1/3 didn't need to touch. Real
+     production CSS is the `@media` block above; this is demo-only. */
+  .tabbar.mobile-dock.force-mobile{
+    position:sticky; top:auto; bottom:0; border-bottom:none; border-top:1px solid var(--line);
+    box-shadow:0 -6px 18px -10px rgba(60,40,20,.22); padding:0 4px calc(4px + max(10px, env(safe-area-inset-bottom,10px)));
+    background:var(--paper-raised);
+  }
+  .tabbar.mobile-dock.force-mobile .tab{ flex:1 1 0; min-width:0; flex-direction:column; gap:3px; padding:9px 2px 7px; border-radius:0; font-size:10.5px; font-weight:700; }
+  .tabbar.mobile-dock.force-mobile .tab svg{ width:20px; height:20px; }
+  .tabbar.mobile-dock.force-mobile .tab.active{ background:transparent; color:var(--accent); }
+
+  /* ============================= PANEL / CHIP / TAG / CARD (ported) ============================= */
+  main{ padding:16px; padding-bottom:56px; }
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .panel-title{ font-family:var(--font-display); font-size:1.2rem; font-weight:600; }
+  .panel-hint{ font-size:12.5px; color:var(--ink-soft); }
+  .card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-md); box-shadow:var(--shadow-sm); }
+  .chiprow{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .chip{ padding:7px 13px; border-radius:var(--radius-full); border:1px solid var(--line-strong); background:var(--paper-raised); font-size:12.5px; font-weight:600; color:var(--ink-soft); display:inline-flex; align-items:center; gap:6px; }
+  .chip.active{ background:var(--ink); border-color:var(--ink); color:var(--paper); }
+  .chip-dot{ width:7px; height:7px; border-radius:50%; flex:none; }
+  .tag{ display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 9px; border-radius:var(--radius-full); letter-spacing:.02em; background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line); }
+  .tag.rate-missing-tag{ background:var(--gold-soft); color:var(--gold-soft-ink); border-color:transparent; }
+
+  /* ============================= MAP TAB (simplified for this file — only what items 1-2 need) ============================= */
+  .map-showing{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink-soft); margin:0 0 14px; }
+  .map-showing-dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none; }
+  .map-showing strong{ color:var(--ink); font-weight:700; }
+  .map-showing .range{ color:var(--ink-faint); }
+
+  /* Promotes the day-filter chips into their own sticky sub-bar — unchanged
+     production pattern (src/index.css .map-day-quicknav). Chips only (Phase
+     5's first pass removed the trailing icon-only Add-place "+" that used to
+     live here) — the REVISED item 2 design below deliberately does NOT put
+     Add-place back in this bar; see that section's decision-note for why
+     (this bar is conditionally rendered — `cityDays.length > 0` — and the
+     one canonical Add-place control can't depend on that). */
+  .map-day-quicknav{
+    position:sticky; top:calc(var(--topbar-h,0px) + var(--tabbar-h,0px)); z-index:27;
+    display:flex; align-items:center; gap:8px; background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-md);
+    padding:8px 10px; margin:0 0 16px; overflow-x:auto;
+  }
+  .map-stage-wrap{ position:relative; }
+  /* Height ported byte-for-byte from src/index.css, deliberately NOT
+     shrunk for this mockup: `min(70vh,560px)` computes against the REAL
+     browser window this file is opened in, same as production — the
+     Phase-5-shipped version of this exact section modelled the box at a
+     flat 280px, which is why its "reachable at the top" claim didn't survive
+     the port to the real ~560px-tall box (see PHASE5.md's Outcome section,
+     defect #1). This revision is not repeating that mistake. */
+  .map-container-outer{
+    position:relative; width:100%; height:min(70vh, 560px); min-height:340px; border-radius:var(--radius-lg); overflow:hidden;
+    border:1px solid var(--line); box-shadow:var(--shadow-sm);
+    background:
+      radial-gradient(circle at 30% 35%, color-mix(in srgb, var(--d-blue) 22%, var(--paper-sunk)) 0, transparent 45%),
+      radial-gradient(circle at 70% 65%, color-mix(in srgb, var(--d-moss) 18%, var(--paper-sunk)) 0, transparent 50%),
+      var(--paper-sunk);
+  }
+  .map-badge{
+    position:absolute; top:12px; left:12px; z-index:5; display:flex; align-items:center; gap:6px;
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-full);
+    padding:5px 11px 5px 8px; font-size:11px; font-weight:700; color:var(--ink-soft); box-shadow:var(--shadow-sm); pointer-events:none;
+  }
+  .map-badge svg{ width:13px; height:13px; flex:none; }
+  .map-pin-demo{
+    position:absolute; width:24px; height:24px; border-radius:50%; border:3px solid var(--paper-raised);
+    box-shadow:0 2px 6px rgba(0,0,0,.28); background:var(--pin-color, var(--d-grey));
+  }
+  /* Auto-plan — pre-existing, staying exactly where it is (bottom-right,
+     inside the map surface). The one fixed point every option below had to
+     route around. */
+  .map-fab{ position:absolute; right:12px; bottom:12px; z-index:5; }
+  .legend{ display:flex; flex-wrap:wrap; gap:8px 16px; padding:12px 4px 0; }
+  .legend-item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); }
+  .legend-dot{ width:10px; height:10px; border-radius:50%; flex:none; }
+  .legend-dot.dashed{ background:transparent !important; border:1.5px dashed var(--d-grey); }
+
+  /* ============================= ITEM 2, REVISED — responsive Add-place: one control, two renderings =============================
+     SUPERSEDES the first Phase-5 pass (the small `btn-sm` pill, identical at
+     every width) after real-browser use of the shipped version was rejected:
+     too slim, and its bottom-left-under-the-map spot read as an afterthought
+     rather than the Map tab's primary action. This section keeps the SAME
+     underlying mechanism the first pass proved out (a real, always-mounted,
+     keyboard-focusable button in a `position:sticky` wrapper placed right
+     after `.map-stage-wrap` and before the legend — NOT `position:fixed`,
+     for the exact reasons argued in the superseded version and still true:
+     `fixed` doesn't know about this app's own max-width:1180px shell). What
+     changes is everything about how that ONE button is *sized and placed* —
+     genuinely different per breakpoint, per the rejection, not just a
+     smaller font at narrow widths. Full reasoning for both renderings is in
+     the decision-notes in the HTML below; short version:
+       - >=720px: bigger, fully labelled pill, left-aligned under the map
+         (same slot the superseded version used) — sized up well past the
+         app's own base `.btn` scale, because this control IS the Map tab's
+         primary action and should read that way.
+       - <720px: icon-only 48px circle (`aria-label="Add place"`, visible
+         label clipped via the SAME `.btn-collapsible`/`.btn-label` pattern
+         item 1 already uses — not a second pattern), right-aligned, stacked
+         DIRECTLY ABOVE `.map-fab`/Auto-plan so the two floating map actions
+         read as one deliberate cluster instead of two unrelated stray
+         buttons in opposite corners. */
+  .map-add-fab-wrap{
+    position:sticky; bottom:24px; height:0; overflow:visible; z-index:50; pointer-events:none;
+    display:flex; align-items:flex-end; justify-content:flex-start;
+  }
+  @media (min-width:720px){
+    /* Clears the Save bar when one is docked underneath (see the
+       `--map-save-bar-clearance` note further down) — no bottom tab dock to
+       clear at this width, so that's the only thing this button ever needs
+       room for on desktop. */
+    .map-add-fab-wrap{ bottom: calc(24px + var(--map-save-bar-clearance, 0px)); }
+  }
+  /* `.map-add-fab` composes `.btn.btn-primary` in the markup (same as the
+     CURRENTLY SHIPPED v1 — `className="map-add-fab btn btn-primary btn-sm"`
+     in `src/features/map/MapPanel.tsx`) instead of re-declaring border,
+     fill, hover/press mechanics here. Ported per ux-review round 1: a
+     hand-rolled duplicate of `.btn-primary`'s chrome would silently stop
+     matching if that class's fill/hover/press mechanics ever changed. Same
+     relationship `.btn-sm` already has to `.btn` — this is a pure
+     size/shape modifier, listing only what's DIFFERENT from base `.btn`
+     (gap, padding, font-size/weight, icon size, extra shadow escalation on
+     hover) plus the one thing `.btn` doesn't set at all (`pointer-events`,
+     needed because the zero-height sticky wrapper around it is
+     `pointer-events:none`). */
+  .map-add-fab{
+    pointer-events:auto; gap:8px; padding:15px 28px; font-size:15px; font-weight:700; box-shadow:var(--shadow-md);
+  }
+  .map-add-fab:hover{ box-shadow:var(--shadow-lg); }
+  .map-add-fab svg{ width:19px; height:19px; }
+  @media (max-width:719px){
+    /* Right-aligned, and inset to line up with Auto-plan's own `right:12px`
+       so the two read as a single vertical stack, not two independently
+       floating buttons. `56px` = Auto-plan's own 12px inset + its ~34px
+       rendered height (`.btn.btn-sm`) + a 10px gap — approximate on purpose;
+       the frontend-engineer should true this up against the real Leaflet
+       render (Auto-plan's exact height, plus whatever Leaflet's own
+       bottom-right attribution control adds to that corner) rather than
+       trust these pixels literally. */
+    .map-add-fab-wrap{
+      justify-content:flex-end; padding-right:12px;
+      bottom: calc(64px + max(10px, env(safe-area-inset-bottom,10px)) + 56px + var(--map-save-bar-clearance, 0px));
+    }
+    .map-add-fab{
+      width:48px; height:48px; padding:0; border-radius:50%; justify-content:center; gap:0;
+    }
+    .map-add-fab .btn-label{
+      position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+    }
+    .map-add-fab svg{ width:20px; height:20px; }
+  }
+  /* Demo-only duplicates of the two `@media` blocks above, gated by a CLASS
+     instead of actual browser width — same reasoning as `.force-mobile` on
+     `.tabbar.mobile-dock` above: this file's phone-frame is a fixed 390px
+     box for visual framing, it does NOT make a real `@media` query start
+     matching against the reviewer's actual (probably desktop-width) window.
+     Without these, the mobile/desktop comparison below would silently
+     collapse to whichever one the reviewer's own browser happens to match,
+     defeating the point of a side-by-side. `!important` because these need
+     to win over the real, non-force rules regardless of source order. Real
+     production CSS is the two `@media` blocks above; these are demo-only. */
+  .map-add-fab-wrap.force-mobile{
+    justify-content:flex-end !important; padding-right:12px !important;
+    bottom: calc(64px + 10px + 56px + var(--map-save-bar-clearance, 0px)) !important;
+  }
+  .map-add-fab-wrap.force-mobile .map-add-fab{
+    width:48px !important; height:48px !important; padding:0 !important; border-radius:50% !important;
+    justify-content:center !important; gap:0 !important;
+  }
+  .map-add-fab-wrap.force-mobile .map-add-fab .btn-label{
+    position:absolute !important; width:1px !important; height:1px !important; overflow:hidden !important;
+    clip:rect(0 0 0 0) !important; white-space:nowrap !important;
+  }
+  .map-add-fab-wrap.force-mobile .map-add-fab svg{ width:20px !important; height:20px !important; }
+  .map-add-fab-wrap.force-desktop{
+    justify-content:flex-start !important; padding-right:0 !important;
+    bottom: calc(24px + var(--map-save-bar-clearance, 0px)) !important;
+  }
+  .map-add-fab-wrap.force-desktop .map-add-fab{
+    width:auto !important; height:auto !important; padding:15px 28px !important;
+    border-radius:var(--radius-full) !important; justify-content:flex-start !important; gap:8px !important;
+  }
+  .map-add-fab-wrap.force-desktop .map-add-fab .btn-label{
+    position:static !important; width:auto !important; height:auto !important; overflow:visible !important; clip:auto !important;
+  }
+  .map-add-fab-wrap.force-desktop .map-add-fab svg{ width:19px !important; height:19px !important; }
+
+  /* Recap-only: the SUPERSEDED shipped button, frozen at its old fixed size
+     so the "before" frame below can render it unchanged for comparison. Not
+     part of the proposal — real markup/CSS for this is being replaced. */
+  .map-add-fab-old{
+    pointer-events:auto; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--accent);
+    background:var(--accent); color:var(--accent-ink); border-radius:var(--radius-full); box-shadow:none;
+    padding:6px 12px; font-size:12.5px; font-weight:600;
+  }
+  .map-add-fab-old svg{ width:15px; height:15px; flex:none; }
+
+  /* ============================= MAP SAVE BAR (ported, simplified to the "pending" state — the only one item 2 needs) =============================
+     Panel-level sticky-bottom bar for staged day-assignment changes
+     (unrelated feature, pre-existing) — included here ONLY so the Add-place
+     FAB's mobile clearance math above can be checked against something real
+     instead of asserted. `--map-save-bar-clearance` is NOT a production
+     custom property yet — it's this mockup's stand-in for what should be a
+     JS-measured var exactly like `--topbar-h`/`--tabbar-h`/`--itnav-h`
+     already are (`useStickyOffsets.ts`): read `#map-save-bar`'s
+     `offsetHeight` (0 when the element isn't mounted — `MapSaveBar` renders
+     nothing but a visually-hidden status span while `pendingTotal===0`) and
+     write it to the root each time it changes. Each demo frame below sets it
+     via an inline style, standing in for that measurement. */
+  .map-save-bar{
+    position:sticky; bottom:0; z-index:6; margin:16px -16px -16px;
+    background:var(--paper-raised); border-top:1px solid var(--line);
+    border-radius:var(--radius-md) var(--radius-md) 0 0; box-shadow:0 -8px 20px -10px rgba(60,40,20,.22);
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .map-save-bar-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .map-save-bar-info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .map-save-bar-info-row{ display:flex; align-items:center; gap:8px; min-width:0; }
+  .map-save-bar-dot{ width:8px; height:8px; border-radius:50%; background:var(--gold); flex:none; }
+  .map-save-bar-text{ font-size:12.5px; font-weight:600; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .map-save-bar-actions{ display:flex; gap:8px; flex:none; }
+  @media (max-width:719px){ .map-save-bar{ bottom:calc(64px + max(10px, env(safe-area-inset-bottom, 10px))); } }
+  /* Demo-only duplicate, same reasoning as `.force-mobile` above. */
+  .map-save-bar.force-mobile{ bottom:calc(64px + 10px) !important; }
+
+  .filler-list{ display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+  .filler-row{ display:flex; align-items:center; gap:10px; padding:11px 13px; border:1px solid var(--line); border-radius:var(--radius-md); background:var(--paper-raised); box-shadow:var(--shadow-sm); }
+  .filler-dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .filler-row strong{ display:block; font-size:13.5px; }
+  .filler-row span{ font-size:11.5px; color:var(--ink-soft); }
+  .scroll-cue{
+    text-align:center; font-size:11px; font-weight:700; color:var(--ink-faint); letter-spacing:.04em; text-transform:uppercase;
+    padding:10px 0 2px;
+  }
+  .pin-detail-demo{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-md); box-shadow:var(--shadow-md);
+    padding:14px 16px; margin-top:16px;
+  }
+  .pin-detail-demo strong{ display:block; font-size:14.5px; margin-bottom:6px; }
+  .pin-detail-demo p{ font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin:0; }
+
+  /* ============================= BUDGET TAB — forms, inputs (ported) ============================= */
+  .field-label{ font-size:11.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; }
+  select, .text-input, .num-input, textarea.text-input{
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:8px 10px; font-size:13px; color:var(--ink); font-family:inherit;
+  }
+  textarea.text-input{ resize:vertical; min-height:56px; line-height:1.45; }
+  select{
+    appearance:none; -webkit-appearance:none; padding-right:28px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239C9184' stroke-width='2'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 8px center; background-size:14px;
+  }
+  .add-form{ display:none; margin-bottom:18px; padding:16px; }
+  .add-form.open{ display:block; }
+  .add-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+  .add-form-grid .full{ grid-column:1/-1; }
+  .add-form label{ display:block; font-size:11.5px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+  .add-form input, .add-form select, .add-form textarea{ width:100%; }
+  .add-form-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .add-form-head h4{ font-family:var(--font-display); font-size:1rem; font-weight:600; }
+  .add-form-head .tag{ background:var(--accent-soft); color:var(--accent-soft-ink); border-color:transparent; }
+  .amount-currency-field{ display:flex; gap:6px; }
+  .amount-currency-field select{ flex:0 0 112px; min-width:0; padding-left:8px; padding-right:24px; }
+  .amount-currency-field input{ flex:1; min-width:0; }
+  @media (max-width:479px){
+    .amount-currency-field{ flex-direction:column; }
+    .amount-currency-field select{ flex:none; width:100%; }
+  }
+
+  /* ============================= BUDGET TAB — summary / breakdown bars (ported, shared by By-category and NEW By-person) ============================= */
+  .summary-grid{ display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:14px; }
+  @media (min-width:480px) and (max-width:639px){ .summary-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media (min-width:640px){ .summary-grid{ grid-template-columns:repeat(3,1fr); } }
+  .summary-card{ padding:14px; }
+  .summary-card .label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+  .summary-card .home{ font-family:var(--font-mono); font-size:1.35rem; font-weight:700; margin-top:4px; }
+  .summary-card .summary-sub{ font-size:11.5px; color:var(--ink-soft); margin-top:3px; }
+  .rate-missing-note{ color:var(--gold-soft-ink); font-weight:600; }
+  .cat-breakdown{ margin-bottom:18px; padding:14px 16px; }
+  .cat-row{ display:grid; grid-template-columns:96px 1fr 96px; align-items:center; gap:10px; padding:6px 0; font-size:12.5px; }
+  .cat-row .cat-label{ font-weight:600; color:var(--ink-soft); display:flex; align-items:center; gap:6px; min-width:0; }
+  .cat-row .cat-label span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cat-bar-track{ height:8px; border-radius:var(--radius-full); background:var(--paper-sunk); overflow:hidden; }
+  /* By-category AND By-person both use jade (paid/positive-total bars) —
+     deliberately the SAME colour, not a per-card accent, per ux-review:
+     these are two structurally identical slices of the same "money already
+     accounted for" idea, so giving them different colours with no stated
+     reason would read as an unexplained inconsistency between two adjacent,
+     near-identical cards. */
+  .cat-bar-fill{ height:100%; background:var(--jade); border-radius:var(--radius-full); transition:width .25s ease; }
+  .cat-row .cat-amt{ display:flex; flex-direction:column; align-items:flex-end; text-align:right; font-family:var(--font-mono); font-weight:600; }
+  .cat-amt-note{ font-family:var(--font-body); font-weight:600; font-size:10.5px; color:var(--ink-faint); }
+
+  /* ============================= ITEM 5 — trip companions (members) card =============================
+     Members are deliberately NOT colour-coded from the Day/City categorical
+     palette (`--d-*`). Per ux-review: a user can hold "Day 2 = blue" in mind
+     from the Map tab and "Alex = blue" from the Budget tab in the very same
+     session — colour is memorised across tabs, so reusing the same hue pool
+     for a third, unrelated categorical meaning (who paid) is a real
+     vocabulary collision, not just a documentation nicety, and DESIGN-SYSTEM
+     doesn't currently offer a fourth pool to draw from. Simplest fix that
+     needs no new tokens: a neutral initial-letter avatar (`.member-avatar`)
+     instead of a colour dot — same treatment everywhere a member shows up
+     (chip, By-person row, expense row), and colour was never the ONLY
+     signifier anyway (the name is always printed alongside it). */
+  .member-avatar{
+    width:18px; height:18px; border-radius:50%; flex:none; display:inline-flex; align-items:center; justify-content:center;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); color:var(--ink-soft);
+    font-size:9px; font-weight:800; line-height:1;
+  }
+  .member-avatar-xs{ width:14px; height:14px; font-size:7.5px; }
+  .members-card{ padding:14px 16px; margin-bottom:18px; }
+  .members-list{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+  .member-chip{
+    display:inline-flex; align-items:center; gap:7px; padding:5px 6px 5px 10px; border-radius:var(--radius-full);
+    background:var(--paper-sunk); border:1px solid var(--line); font-size:12.5px; font-weight:600;
+  }
+  .member-chip .icon-btn{ width:22px; height:22px; }
+  .member-chip .icon-btn svg{ width:12px; height:12px; }
+  .member-chip input.rename-input{
+    border:1px solid var(--accent); border-radius:6px; padding:2px 6px; font-size:12.5px; font-weight:600;
+    width:100px; background:var(--paper-raised); color:var(--ink);
+  }
+  /* Compact, horizontal variant of the canonical empty-state pattern (dashed
+     border + --paper-sunk fill + icon at opacity .5 + bold line ✓ all kept;
+     NOT stacked/centred like `.budget-empty`) — deliberate: this empty state
+     lives inside a card that already has its own "Trip companions" heading
+     immediately above it, so a full-height centred block would be heavier
+     chrome than the context needs. Text still splits into a bold lead
+     (`strong`) + explanation (`span`), matching the canonical pattern's
+     structure, just laid out inline instead of stacked. */
+  .members-empty{
+    display:flex; align-items:center; gap:10px; padding:12px 14px; border:1.5px dashed var(--line-strong);
+    border-radius:var(--radius-md); background:var(--paper-sunk); color:var(--ink-soft); font-size:12.5px; margin:10px 0;
+  }
+  .members-empty svg{ width:18px; height:18px; opacity:.55; flex:none; }
+  .members-empty strong{ display:block; color:var(--ink); font-size:12.5px; font-weight:700; margin-bottom:1px; }
+  .members-empty span{ color:var(--ink-soft); }
+  .add-member-form{ display:flex; gap:8px; margin-top:4px; }
+  .add-member-form input{ flex:1; min-width:0; }
+
+  /* ============================= EXPENSE LIST (ported) + ITEM 4/5 additions (note, actions, payer) ============================= */
+  .expense-list{ display:flex; flex-direction:column; gap:8px; }
+  .expense{ display:flex; align-items:flex-start; gap:12px; padding:12px 14px; }
+  .expense-swatch{ width:8px; align-self:stretch; border-radius:4px; flex:none; }
+  .expense-main{ flex:1; min-width:0; }
+  .expense-label{ font-size:13.5px; font-weight:700; }
+  .expense-meta{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .expense-payer{ display:inline-flex; align-items:center; gap:4px; }
+  .expense-payer svg{ width:11px; height:11px; flex:none; }
+  .expense-payer.is-unset{ color:var(--ink-faint); }
+  /* NEW: free-text note, surfaced under the meta row — reuses the same
+     line-clamp/excerpt treatment already established for Places' description
+     excerpt (not italic: italic reads as "a little aside"; a note the user
+     deliberately typed is the actual content, not a stylistic footnote). */
+  .expense-note{
+    font-size:12px; color:var(--ink-soft); margin-top:5px; line-height:1.45;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; max-width:52ch;
+  }
+  .expense-amt{ flex:none; text-align:right; }
+  .expense-amt .orig{ font-family:var(--font-mono); font-weight:700; font-size:14px; }
+  .expense-amt .conv{ font-size:11px; color:var(--ink-soft); font-family:var(--font-mono); }
+  .expense-amt .conv:empty{ display:none; }
+  .expense-amt .conv.rate-missing{ display:flex; align-items:center; gap:4px; justify-content:flex-end; color:var(--gold-soft-ink); font-weight:600; }
+  .rate-missing-icon{ width:11px; height:11px; flex:none; }
+  .paid-toggle{ flex:none; display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .switch{ position:relative; width:36px; height:21px; }
+  .switch input{ opacity:0; width:100%; height:100%; position:absolute; margin:0; }
+  .switch .track{ position:absolute; inset:0; background:var(--line-strong); border-radius:var(--radius-full); transition:.15s; pointer-events:none; }
+  .switch .thumb{ position:absolute; top:2.5px; left:2.5px; width:16px; height:16px; border-radius:50%; background:var(--paper-raised); box-shadow:var(--shadow-sm); transition:.15s; pointer-events:none; }
+  .switch input:checked + .track{ background:var(--jade); }
+  .switch input:checked + .track + .thumb{ transform:translateX(15px); }
+  .paid-label{ font-size:10px; font-weight:700; color:var(--ink-faint); }
+  /* NEW: edit + delete, grouped — same 26px .icon-btn already used for
+     dense-list secondary actions elsewhere (itinerary stop reorder/edit).
+     Edit is NOT accent-coloured (it's not the primary action on this row —
+     the paid toggle and the amount are); delete gets the gold hover treatment
+     used for other destructive-but-not-modal actions in this app. */
+  .expense-actions-group{ flex:none; display:flex; flex-direction:column; gap:4px; align-self:center; }
+  .budget-empty{
+    display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; padding:32px 20px;
+    border:1.5px dashed var(--line-strong); border-radius:var(--radius-lg); background:var(--paper-sunk); margin-bottom:16px;
+  }
+  .budget-empty svg{ width:26px; height:26px; opacity:.5; }
+  .budget-empty strong{ color:var(--ink-soft); font-size:14px; }
+  .budget-empty span{ font-size:12.5px; max-width:34ch; }
+
+  .flash-confirm{ animation:flashConfirm 1.1s ease; }
+  @keyframes flashConfirm{
+    0%{ box-shadow:0 0 0 3px var(--jade-soft); } 100%{ box-shadow:0 0 0 0 transparent; }
+  }
+</style>
+</head>
+<body>
+
+<div class="spec-bar">
+  <div><strong>Phase 5 &mdash; mobile polish + richer expenses</strong> <span class="sub">&middot; mockup for ux-reviewer</span></div>
+  <div class="spec-bar-tools">
+    <a href="#item1">1&middot; Topbar collapse</a>
+    <a href="#item2">2&middot; Add-place, revised</a>
+    <a href="#item3">3&middot; Succinct route strip</a>
+    <a href="#item45">4/5&middot; Expenses + members</a>
+    <a href="#item6">6&middot; Per-person</a>
+    <button type="button" class="btn-icon" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Toggle light / dark">
+      <svg id="themeIcon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+  </div>
+</div>
+
+<svg class="visually-hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0112 2a7 7 0 017 7.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.5 8.5 0 1110 3.3 6.7 6.7 0 0020 14.2z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9M7 14l5-5 5 5"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4H6a1 1 0 00-1 1v14a1 1 0 001 1h9"/><path d="M10 12h11M17 8l4 4-4 4"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.3l9.7 17.4H2.3L12 3.3z"/><path d="M12 10v4.2"/><circle cx="12" cy="17.4" r="0.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/></symbol>
+  </defs>
+</svg>
+
+<div class="intro">
+  <h2>What's in this file</h2>
+  <p>
+    Mockups for Phase 5's six-item scope (<code>PHASE5.md</code>): two locked decisions carried through unchanged
+    &mdash; the day-sub-bar <code>+</code> is removed (not repurposed to "add day"), and trip members are
+    <code>{id,name}</code> objects, not free-text. Six sections below, one per item, each with a decision-note
+    explaining the reasoning so it's easy to scrutinise, not just accept.
+  </p>
+  <ul>
+    <li><strong>Item 1</strong> &mdash; mobile topbar icon-collapse (before/after at 390px).</li>
+    <li><strong>Item 2</strong> &mdash; the single canonical Add-place. Shipped, then rejected in real use ("too slim," poor location); this file's item 2 section now shows the REVISED, responsive design that supersedes it &mdash; bigger + labelled on desktop, icon-only on mobile, same one control either way.</li>
+    <li><strong>Item 3</strong> &mdash; the mobile-succinct route-node form, plus the reusable rule now written into <code>DESIGN-SYSTEM.md</code>.</li>
+    <li><strong>Items 4&ndash;5</strong> &mdash; expense edit + notes, trip companions (members) management, Paid-by.</li>
+    <li><strong>Item 6</strong> (stretch) &mdash; per-person totals. Included, not deferred &mdash; see that section for why it was a clean fit.</li>
+  </ul>
+  <p>Toggle light/dark with the moon/sun icon in the bar above. Every phone frame below is a real ~390px rendering, scrollable with your mouse/trackpad like the real device would be.</p>
+</div>
+
+<!-- ============================================================= ITEM 1 ============================================================= -->
+<h2 class="frame-label" id="item1">Item 1 &mdash; mobile topbar icon-collapse</h2>
+<span class="frame-hint">
+  The utility row (Export / Import / sync pill / theme / Auto-plan / Sign out) already collapses to icon-only on
+  desktop &mdash; but only once you scroll (<code>useCondenseHeader</code>, gated &ge;720px). Below 720px there's no
+  scroll-condense at all, so at 390px the row runs past the right edge instead of wrapping (ported byte-for-byte:
+  <code>.topbar-row</code>/<code>.topbar-actions</code> have no <code>flex-wrap</code>, matching production). <strong>Fix:</strong>
+  apply the exact same collapsed look unconditionally below 719px &mdash; same breakpoint the mobile bottom-dock and
+  desktop condense-gate already split on, so "mobile mode" stays one threshold, not two. Every button already carries
+  <code>.btn-collapsible</code> in <code>App.tsx</code> (Export, Import, Auto-plan, Sign out) &mdash; this is a
+  <strong>CSS-only</strong> change, no new class or JS needed in the real implementation (see the code comment in this
+  file's <code>&lt;style&gt;</code> next to <code>.mobile-scope</code>).
+</span>
+<div class="frame-wrap">
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Before &mdash; 390px, today's shipped behaviour</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item1-before"></div></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">After &mdash; 390px, width-triggered collapse</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item1-after"></div></div>
+  </div>
+  <div class="decision-note is-good" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-check"/></svg>
+    <div>
+      <strong>Desktop is untouched.</strong>
+      At &ge;720px nothing changes: the row still shows full labels at rest and only collapses once
+      <code>useCondenseHeader</code> flips <code>.is-collapsed</code> on scroll, exactly as already shipped. This item
+      only adds behaviour below 720px, where there was previously none.
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= ITEM 2 (REVISED) ============================================================= -->
+<h2 class="frame-label" id="item2">Item 2, revised &mdash; one canonical Add-place, sized and placed per breakpoint <span class="frame-badge">supersedes the shipped v1</span></h2>
+<span class="frame-hint">
+  <strong>This section replaces the original item 2 design in place</strong> (same anchor, same file) &mdash; that
+  design shipped, passed review + QA, and is now live in <code>MapPanel.tsx</code>/<code>index.css</code>, but the
+  user rejected it after seeing it in the real app: <em>"too slim,"</em> and its location "poor compared to previous
+  iterations." The ask this time is explicit &mdash; sizing AND location should differ between desktop and mobile,
+  not just font-size at a smaller width. What's <strong>unchanged</strong> from the shipped version, and NOT up for
+  debate again: still exactly ONE Add-place affordance on the Map tab (PHASE5 locked decision), still a real
+  keyboard-focusable button in a <code>position:sticky</code> wrapper (not <code>position:fixed</code> &mdash; see
+  the shipped version's reasoning, still valid), still mounted right after the map box, before the legend. What
+  <strong>changes</strong>: the button's own size, shape and screen position now genuinely differ by breakpoint.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note is-warn" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-alert"/></svg>
+    <div>
+      <strong>Recap &mdash; what's being replaced.</strong> The shipped control: <code>btn btn-primary btn-sm</code>,
+      icon + "Add place" label, identical at 390px and on a 1400px desktop window, sitting bottom-left under the map.
+      Shown at both breakpoints below for comparison &mdash; this is the "too slim" the user is reacting to.
+    </div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Shipped v1 &mdash; desktop (unchanged by width)</div>
+    <div class="demo-viewport" style="max-height:260px;" id="mount-item2-old-desktop"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Shipped v1 &mdash; 390px (the exact same button)</div>
+    <div class="phone-frame" style="padding:12px 12px 0;"><div class="phone-screen" style="max-height:260px;" id="mount-item2-old-mobile"></div></div>
+  </div>
+
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Desktop (&ge;720px): bigger, fully labelled, same slot.</strong> Left-aligned under the map, same
+      sticky-wrapper mechanism as before, but sized well past this app's own base <code>.btn</code> scale
+      (<code>15px 28px</code> padding, 15px/700 label, 19px icon &mdash; vs. the shipped <code>6px 12px</code>/12.5px)
+      with a stronger resting shadow (<code>--shadow-md</code>, lifting to <code>--shadow-lg</code> on hover) so it
+      reads as a deliberate call-to-action next to the map, not a stray pill underneath it. Desktop has no thumb-zone
+      or bottom-dock pressure, so the extra size costs nothing &mdash; there's no competing bottom chrome to crowd.
+      This directly answers "too slim": same location, genuinely bigger, genuinely louder.
+    </div>
+  </div>
+  <div class="decision-note" style="flex-basis:100%; margin-top:-4px;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Mobile (&lt;720px): icon-only 48px circle, right-aligned, stacked directly above Auto-plan.</strong>
+      This is the genuine location change, not just a size change &mdash; and it's the hard part of this brief, so
+      here's every option weighed, not just the one picked:
+      <ul style="margin:8px 0 0; padding-left:18px;">
+        <li><strong>Rejected &mdash; absolute, inside the map, next to or above Auto-plan.</strong> This was the
+        FIRST instinct ("stack it in the map's own overlay layer") and it's exactly wrong: Auto-plan is
+        <code>position:absolute</code> <em>inside</em> <code>.map-container-outer</code>, which is a plain, non-sticky
+        block. Anything absolutely positioned in there disappears the instant the map itself scrolls out of view
+        &mdash; precisely the reachability failure the panel-head button had, and precisely why the sticky wrapper
+        exists at all. Putting Add-place there would silently reopen PHASE5 trap #2.</li>
+        <li><strong>Rejected &mdash; bottom-left, the shipped slot, just bigger.</strong> Keeps the same containing
+        block and mechanism (safe), but doesn't answer "location should differ" honestly &mdash; and bottom-left asks
+        a one-handed thumb to reach across the full screen width, which is worse ergonomics than necessary when
+        there's a better answer available.</li>
+        <li><strong>Rejected &mdash; docking into <code>.map-day-quicknav</code></strong> (the sticky day-chip
+        sub-bar; explicitly offered as an option to weigh). Attractive at first &mdash; it's already
+        <code>position:sticky</code>, already proven, already sits right under the tabbar. Rejected anyway because
+        that bar is conditionally rendered, <code>{cityDays.length > 0 && ...}</code> &mdash; making it the sole home
+        for the ONLY Add-place control would mean a city with zero days (an edge case, but a real one: nothing in
+        <code>TripRepository</code> guarantees <code>cityDays.length > 0</code> for every city that can be selected)
+        loses Add-place entirely. Not worth the risk for a control this load-bearing.</li>
+        <li><strong>Picked &mdash; stay in the existing sticky wrapper (safe, already proven), just re-aligned right
+        and stacked above Auto-plan.</strong> Same DOM position, same containing block, same mechanism that already
+        passed review once &mdash; the only things that change are <code>justify-content</code> (left &rarr; right)
+        and the button's own shape/size. Bottom-right is normally the prime one-handed thumb zone, and it's already
+        "spent" on Auto-plan &mdash; so this stacks Add-place 56px above it rather than opening a second zone
+        elsewhere on the screen. The pair reads as one deliberate cluster ("the map's floating actions live here"),
+        Auto-plan (secondary, exploratory) below Add-place (primary, and now visually louder by virtue of being a
+        filled circle vs. a smaller pill) above it.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="decision-note" style="flex-basis:100%; margin-top:-4px;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>One control, not two.</strong> Both renderings are the same <code>&lt;button aria-label="Add place"&gt;</code>
+      &mdash; the visible label (<code>.btn-label</code>) is clipped below 720px using the exact
+      <code>.btn-collapsible</code> pattern item 1 already established in this file (reused, not reinvented, per
+      DESIGN-SYSTEM &sect;4), and <code>aria-label="Add place"</code> stays on the element itself either way, so the
+      accessible name never depends on which breakpoint clipped what. CSS-only divergence: one <code>@media
+      (max-width:719px)</code> block changes size/shape/alignment; no second DOM node, no duplicate button anywhere
+      in the tree.
+    </div>
+  </div>
+</div>
+
+<div class="frame-wrap">
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Desktop &mdash; real map height (<code>min(70vh,560px)</code>), scroll to the bottom filler row</div>
+    <div class="demo-viewport" style="max-height:640px;" id="mount-item2-desktop"></div>
+  </div>
+  <div class="decision-note is-warn" style="flex-basis:100%; margin-top:-4px;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Scroll it &mdash; don't take this on faith.</strong> The map box above is the real
+      <code>min(70vh,560px)</code>, not a shrunk stand-in, so whatever this demo shows is what a real window this
+      tall will show too. Watch the button through the scroll: visible at rest (its natural flow position, right
+      below the map, is within the initial view), stays glued to the bottom of THIS <code>.demo-viewport</code> box
+      while the map + legend are still in it, then lets go and scrolls away once you're past the legend into
+      pin-detail territory &mdash; <strong>the accepted trade-off from the shipped version is retained here, not
+      closed</strong> (see the trade-off decision-note below for why, and what would be required to close it).
+    </div>
+  </div>
+</div>
+
+<div class="frame-wrap">
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile, 390px &mdash; Save bar ABSENT (the common case)</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item2-mobile-nosave"></div></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile, 390px &mdash; Save bar PRESENT (a change is staged)</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item2-mobile-save"></div></div>
+  </div>
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Two bottom-region states, both designed for, not just the empty one.</strong> Compare the two frames at
+      the same scroll position: with no staged changes, the FAB's mobile bottom offset only has to clear the tab dock
+      (unchanged from the shipped version's own clearance math). With the Save bar present &mdash; which is ALSO
+      <code>position:sticky; bottom:0</code>, scoped to the whole panel, so it can be on screen from scroll 0 with no
+      scrolling required &mdash; the FAB additionally clears the bar via <code>--map-save-bar-clearance</code>, a new
+      custom property this design introduces (see the CSS comment above <code>.map-save-bar</code>). It's meant to be
+      JS-measured off <code>#map-save-bar</code>'s real <code>offsetHeight</code>, the exact same pattern
+      <code>useStickyOffsets.ts</code> already uses for <code>--topbar-h</code>/<code>--tabbar-h</code>/<code>--itnav-h</code>
+      &mdash; DESIGN-SYSTEM &sect;5 already mandates this ("anything new that sticks... must use these, not a magic
+      number"), so this isn't a new rule, just a new consumer of an existing one. Without it, a short viewport with a
+      staged change could render the FAB overlapping the Save bar's own card.
+    </div>
+  </div>
+</div>
+
+<!-- Desktop wide-viewport proof — carried over from the shipped version's
+     own review round: `position:fixed` (an early draft, corrected before
+     shipping) doesn't know about this app's own max-width:1180px shell and
+     would drift away from the map card on a wide window; `position:sticky`
+     (used here, unchanged mechanism) doesn't have that problem. Still worth
+     demonstrating post-resize since the button itself is now a different
+     size/shape. -->
+<div style="max-width:1180px; margin:0 auto; padding:0 18px;">
+  <div class="frame-col-title">Desktop &mdash; wide browser window (the shell still maxes at 1180px, centred)</div>
+  <span class="frame-hint" style="padding:0; margin:0 0 8px;">
+    The hatched bands are "outside the shell" &mdash; browser window width this 1180px-max app never uses. The bigger
+    button still sits in ordinary document flow (not viewport-relative at all), so it lands at the shell's own left
+    edge, never the raw window edge.
+  </span>
+</div>
+
+<div class="frame-wrap" style="overflow-x:auto; padding-bottom:6px; flex-wrap:nowrap;">
+  <div style="width:1400px; max-width:none; flex:none; background:repeating-linear-gradient(135deg, var(--paper-sunk), var(--paper-sunk) 14px, var(--paper) 14px, var(--paper) 28px); border:1px solid var(--line-strong); border-radius:var(--radius-lg);">
+    <div style="max-width:1180px; margin:0 auto; background:var(--paper);">
+      <div class="demo-viewport" style="max-height:420px; border:none; border-radius:0; box-shadow:none;" id="mount-item2-wide"></div>
+    </div>
+  </div>
+</div>
+
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>The accepted trade-off (shipped version, code review round 2): retained here, not closed.</strong>
+      A sighted user scrolled past the legend into pin-detail/Save-bar territory still has no visible Add-place
+      control until they scroll back up, at both breakpoints &mdash; unchanged from what's live today. Keyboard/AT
+      reachability is unaffected either way (Tab reaches the button in DOM order regardless of its sticky/static
+      state at that moment; the browser scrolls a focused element into view on focus) &mdash; trap #2's actual
+      requirement was always about that, not about sighted visibility, and it holds here exactly as it did before.
+      <strong>Closing it would require moving the wrapper to be a direct child of <code>&lt;section
+      class="panel"&gt;</code></strong> (sibling to <code>.map-layout</code>, same scope <code>.map-day-quicknav</code>
+      and <code>.map-save-bar</code> already use) so its containing block spans the WHOLE scrollable panel instead of
+      just the map+legend column &mdash; which is a real, considered option, not a dismissed one. It was left out of
+      THIS revision because it's a structural change orthogonal to what was asked (sizing and per-breakpoint
+      location), it multiplies the Save-bar-collision surface this section already had to solve once (the FAB would
+      then need <code>--map-save-bar-clearance</code> for its ENTIRE reachable range, not just the narrow window
+      where both happen to be stuck at once), and closing it is not blocking anything &mdash; the gap is unchanged
+      from what already shipped and passed review. Flagging it explicitly, as asked, rather than silently inheriting
+      it: <strong>if the reviewer wants it closed now, it's a same-shaped follow-up, not a rethink.</strong>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= ITEM 3 ============================================================= -->
+<h2 class="frame-label" id="item3">Item 3 &mdash; mobile-succinct route strip</h2>
+<span class="frame-hint">
+  <code>fmtCompactRange</code> ("7&ndash;9 Nov") plus a two-line node reads cramped at 390px, especially once several
+  legs are visible at once. Below 719px, route-nodes drop to a single-line, city-name-only pill.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>City-only, but the date is clipped &mdash; not removed &mdash; from the accessible name.</strong>
+      This deliberately differs from the existing desktop <code>is-condensed</code> treatment of the same element
+      (<code>src/index.css</code>: <code>.route-date{ display:none }</code> there, for everyone, sighted and AT alike).
+      Two reasons it's not copied verbatim to mobile: (1) desktop's condensed state is <em>transient</em> &mdash; scroll
+      up and the date comes back for everyone; the mobile-succinct state is <em>permanent</em> at that viewport width,
+      so a screen-reader user has no scroll-triggered "escape hatch" back to the fuller announcement the way a desktop
+      user does. (2) desktop's <code>is-condensed</code> city name gets a <code>title</code> attribute so a sighted
+      <em>mouse</em> user can still recover a clipped city name on hover &mdash; there is no touchscreen equivalent of
+      hover, so mobile has no sighted-recovery path either if content is fully dropped. Given both of mobile's usual
+      "it's fine, there's a fallback" arguments don't hold, this keeps <code>.route-date</code> in the DOM and uses the
+      same <code>.visually-hidden</code>-style clip already used throughout this codebase (not <code>display:none</code>)
+      &mdash; a VoiceOver/TalkBack user still hears the full "Shanghai, 9 to 15 November", a sighted user just sees
+      "Shanghai". <strong>Flagging this explicitly for the reviewer to push back on</strong> if the desktop precedent
+      is judged to be the more consistent choice instead.
+    </div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">Desktop &mdash; unchanged, full two-line node</div>
+    <div class="demo-viewport" style="max-height:200px;" id="mount-item3-desktop"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile &mdash; 390px, city-only</div>
+    <div class="phone-frame" style="padding:12px 12px 0;"><div class="phone-screen" style="max-height:140px;" id="mount-item3-mobile"></div></div>
+    <p style="font-size:11.5px; color:var(--ink-soft); margin-top:8px; max-width:34ch;">
+      <strong>Accessible name check</strong> (what a screen reader announces per node, unchanged from before this
+      change): <em>"Singapore, 7 to 9 November, button"</em> &hellip; <em>"Shanghai, 9 to 15 November, button"</em> &hellip;
+      full date included every time, even though only "Singapore" / "Shanghai" is visible.
+    </p>
+  </div>
+</div>
+
+<!-- ============================================================= ITEMS 4-5 ============================================================= -->
+<h2 class="frame-label" id="item45">Items 4&ndash;5 &mdash; expense edit + notes, trip companions, Paid by</h2>
+<span class="frame-hint">
+  Interactive below &mdash; try it. <strong>Edit</strong> a row to see the form switch to edit mode and prefill;
+  <strong>add/rename/remove</strong> a companion in the card above the expense list; watch the <em>"Chongqing hotpot
+  dinner"</em> row, whose payer was already deleted &mdash; it renders <code>Paid by &mdash;</code>, never crashes
+  (PHASE5 trap #3). The empty-members and empty-expenses states are one click away via the debug toggles at the
+  bottom of the panel.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>One inline form, two modes &mdash; not a second modal.</strong>
+      <code>.add-form</code> is this codebase's established pattern for add flows embedded in a panel (see
+      DESIGN-SYSTEM.md &sect;4). Reused as-is for edit: a per-row pencil icon (<code>.icon-btn</code>, same 26px
+      pattern as the Itinerary stop-edit affordance) opens the same form pre-filled, swaps the heading/submit label to
+      "Editing &hellip; / Save changes", and scrolls it into view. No second form to maintain, no visual language to
+      learn twice.
+    </div>
+  </div>
+  <div class="decision-note" style="flex-basis:100%; margin-top:-4px;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Members live in their own card, above "All expenses" &mdash; not inside the expense form.</strong>
+      Per PHASE5's decision, defining companions is a one-time-ish setup action, while picking a payer happens on
+      every expense; splitting them keeps the form short and makes "who's on this trip" independently discoverable
+      (and editable) without opening an expense first. The empty state below explains this is optional: an expense
+      with no <code>paidBy</code> is completely normal, not an error state.
+    </div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">Desktop / tablet</div>
+    <div class="demo-viewport" id="mount-budget-desktop"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile &mdash; 390px</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-budget-mobile"></div></div>
+  </div>
+</div>
+
+<!-- ============================================================= ITEM 6 ============================================================= -->
+<h2 class="frame-label" id="item6">Item 6 (stretch) &mdash; per-person totals</h2>
+<span class="frame-hint">Included, not deferred. See the "By person" card inside the Budget demo above &mdash; the decision-note below explains why it was a clean fit.</span>
+<div class="frame-wrap">
+  <div class="decision-note is-good" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Why this made the cut instead of being deferred.</strong>
+      Once 4&ndash;5 land, the data needed is already sitting on every expense (<code>paidBy</code>) and the
+      conversion logic already exists and is already reused elsewhere on this exact panel (the "By category" card
+      immediately above it uses the identical bar/track/amount layout) &mdash; this is a second data slice through
+      already-computed numbers, not new UI language or a new fetch. It reuses <code>convert()</code> per expense
+      exactly like the existing summary totals (PHASE5 trap #4: never sum raw amounts across currencies), and excludes
+      no-rate expenses from the bars the same way the summary cards already flag them (<span class="rate-missing-note">"1 expense excluded (no rate)"</span>-style
+      note, not a silent drop). Empty state: no companions yet &rarr; the card doesn't render bars, it shows one line
+      pointing back at the members card above.
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= closing ============================================================= -->
+<div class="intro" style="margin-top:10px; margin-bottom:60px;">
+  <h2>Open questions for the reviewer</h2>
+  <ul>
+    <li>Item 3: is clip-not-remove for <code>.route-date</code> on mobile the right call, or should it match the desktop <code>is-condensed</code> precedent (<code>display:none</code>, gone for everyone)? Argued both ways in that section's decision-note.</li>
+    <li>Item 2 (revised): the mobile FAB's 56px stacking offset above Auto-plan is an estimate (Auto-plan's own rendered height + Leaflet's real bottom-right attribution control, neither of which this placeholder map box reproduces) &mdash; frontend-engineer should true it up against the real render, not treat the pixel as final. Also worth a second opinion on whether the accepted sticky/legend trade-off (retained, not closed &mdash; see that section's decision-note) should be closed in this same pass rather than deferred.</li>
+    <li>Item 5: expense rows now carry a fourth interactive control (edit, delete, paid-toggle, plus the row itself isn't clickable) &mdash; worth a glance at whether that's too much per-row chrome on the narrowest phones once real category-tag widths are in play.</li>
+  </ul>
+</div>
+
+<script>
+  // ---- theme ----
+  function toggleTheme(){
+    var root = document.documentElement;
+    var current = root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var next = current === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    document.getElementById('themeIcon').innerHTML = '<use href="#i-' + (next === 'dark' ? 'sun' : 'moon') + '"/>';
+  }
+
+  // ============================= ITEM 1 =============================
+  function topbarActionsHTML(collapsedClass){
+    return (
+      '<div class="topbar-actions ' + collapsedClass + '">' +
+        '<button class="btn btn-ghost btn-sm btn-collapsible" title="Export trip.json"><svg><use href="#i-download"/></svg> <span class="btn-label">Export</span></button>' +
+        '<button class="btn btn-ghost btn-sm btn-collapsible" title="Import trip.json"><svg><use href="#i-upload"/></svg> <span class="btn-label">Import</span></button>' +
+        '<span class="sync-indicator" role="status"><span class="sync-dot" aria-hidden="true"></span><span class="sync-indicator-label">Synced</span></span>' +
+        '<button class="btn btn-ghost btn-icon" aria-label="Toggle light and dark theme"><svg><use href="#i-moon"/></svg></button>' +
+        '<button class="btn autoplan-cta btn-collapsible"><svg><use href="#i-sparkle"/></svg> <span class="btn-label">Auto-plan</span></button>' +
+        '<button class="btn btn-ghost btn-sm btn-collapsible" title="Sign out"><svg><use href="#i-logout"/></svg> <span class="btn-label">Sign out</span></button>' +
+      '</div>'
+    );
+  }
+  function topbarHTML(actionsClass){
+    return (
+      '<header class="topbar" style="position:static;">' +
+        '<div class="topbar-row">' +
+          '<div class="trip-id">' +
+            '<span class="trip-eyebrow">Personal trip &middot; from Sydney</span>' +
+            '<h1 class="trip-title">China, November 2026</h1>' +
+            '<span class="trip-sub">7&ndash;30 Nov &middot; 8 legs &middot; AUD home currency</span>' +
+          '</div>' +
+          topbarActionsHTML(actionsClass) +
+        '</div>' +
+      '</header>'
+    );
+  }
+  document.getElementById('mount-item1-before').innerHTML = topbarHTML('');
+  document.getElementById('mount-item1-after').innerHTML = topbarHTML('mobile-scope');
+
+  // ============================= ITEM 2, REVISED =============================
+  var FILLER_DATA = [
+    ['var(--d-blue)', 'The Bund', 'Day 2 · Mon 10 Nov · assigned'],
+    ['var(--d-blue)', 'Nanjing Road', 'Day 2 · Mon 10 Nov · assigned'],
+    ['var(--d-amber)', 'Yu Garden', 'Day 3 · Tue 11 Nov · assigned'],
+    ['var(--d-grey)', 'Tianzifang', 'Unassigned · on the wishlist'],
+    ['var(--d-amber)', 'Shanghai Museum', 'Day 3 · Tue 11 Nov · assigned'],
+  ];
+  function fillerRowsHTML(){
+    var out = '';
+    FILLER_DATA.forEach(function(f){
+      out += '<div class="filler-row"><span class="filler-dot" style="background:' + f[0] + '"></span><div><strong>' + f[1] + '</strong><span>' + f[2] + '</span></div></div>';
+    });
+    return out;
+  }
+  // The pending-state Save bar — ported/simplified from MapSaveBar.tsx's
+  // `dataState==='pending'` branch, the common case. `id="map-save-bar"`
+  // matches the real component's `MAP_SAVE_BAR_ID` so the comment above
+  // `.map-save-bar` in this file's <style> (measuring `offsetHeight` off
+  // this exact id) reads true against real markup, not a stand-in name.
+  function saveBarHTML(force){
+    return (
+      '<div class="map-save-bar' + (force ? ' ' + force : '') + '" id="map-save-bar" role="region" aria-label="Map save status">' +
+        '<div class="map-save-bar-row">' +
+          '<div class="map-save-bar-info">' +
+            '<div class="map-save-bar-info-row"><span class="map-save-bar-dot" aria-hidden="true"></span>' +
+              '<span class="map-save-bar-text">1 unsaved change</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="map-save-bar-actions">' +
+            '<button type="button" class="btn btn-ghost">Discard (Shanghai)</button>' +
+            '<button type="button" class="btn btn-primary"><svg><use href="#i-check"/></svg><span>Save changes</span></button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+  // Hardcoded force-mobile: this markup is only ever included when
+  // includeBottomDock is true, which this file only ever passes for the
+  // mobile mounts — see the `.force-mobile` CSS comment on `.tabbar.mobile-dock`.
+  var BOTTOM_DOCK_HTML =
+    '<nav class="tabbar mobile-dock force-mobile" aria-label="Trip planner sections (demo, non-interactive)">' +
+      '<button class="tab active"><svg><use href="#i-map"/></svg><span>Map</span></button>' +
+      '<button class="tab"><svg><use href="#i-pin"/></svg><span>Places</span></button>' +
+      '<button class="tab"><svg><use href="#i-calendar"/></svg><span>Itinerary</span></button>' +
+      '<button class="tab"><svg><use href="#i-wallet"/></svg><span>Budget</span></button>' +
+    '</nav>';
+
+  // ---- recap: the SUPERSEDED shipped v1 button (identical at every width) ----
+  function oldMapPanelHTML(){
+    return (
+      '<div style="padding:16px;">' +
+        '<div class="panel-head">' +
+          '<div><h2 class="panel-title">Map</h2><span class="panel-hint">Your home screen</span></div>' +
+        '</div>' +
+        '<div class="map-showing"><span class="map-showing-dot"></span>Showing <strong>Shanghai</strong><span class="range">&middot; 9&ndash;15 Nov</span></div>' +
+        '<div class="map-stage-wrap">' +
+          '<div class="map-container-outer" style="height:180px;">' +
+            '<div class="map-badge"><svg><use href="#i-map"/></svg> Map: <b>OpenStreetMap</b></div>' +
+            '<span class="map-pin-demo" style="left:38%;top:42%;--pin-color:var(--d-blue)"></span>' +
+            '<span class="map-pin-demo" style="left:60%;top:55%;--pin-color:var(--d-amber)"></span>' +
+            '<button class="btn btn-sm autoplan-cta map-fab"><svg><use href="#i-sparkle"/></svg> Auto-plan</button>' +
+          '</div>' +
+        '</div>' +
+        '<div style="height:0;overflow:visible;display:flex;justify-content:flex-start;margin-top:10px;">' +
+          '<button type="button" class="map-add-fab-old" aria-label="Add place"><svg><use href="#i-plus"/></svg> Add place</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+  document.getElementById('mount-item2-old-desktop').innerHTML = oldMapPanelHTML();
+  document.getElementById('mount-item2-old-mobile').innerHTML = oldMapPanelHTML();
+
+  // ---- the revised, responsive design ----
+  // opts: { includeBottomDock, showSaveBar, saveBarClearancePx, force }
+  // `force` is 'force-mobile' | 'force-desktop' | undefined — see the
+  // `.force-mobile`/`.force-desktop` CSS comments above: makes each demo
+  // mount render its intended breakpoint regardless of the REVIEWER's actual
+  // browser width, on top of (not instead of) the real `@media` rules.
+  function mapPanelHTML(opts){
+    opts = opts || {};
+    var includeBottomDock = !!opts.includeBottomDock;
+    var showSaveBar = !!opts.showSaveBar;
+    var force = opts.force ? (' ' + opts.force) : '';
+    // Stand-in for the real, JS-measured `--map-save-bar-clearance` (see the
+    // CSS comment above `.map-save-bar`) — set directly here since this is a
+    // static demo, not a live layout.
+    var clearanceStyle = showSaveBar
+      ? ' style="--map-save-bar-clearance:' + (opts.saveBarClearancePx || 92) + 'px;"'
+      : '';
+    var fab =
+      '<div class="map-add-fab-wrap' + force + '"' + clearanceStyle + '>' +
+        '<button type="button" class="map-add-fab" aria-label="Add place">' +
+          '<svg><use href="#i-plus"/></svg><span class="btn-label">Add place</span>' +
+        '</button>' +
+      '</div>';
+    return (
+      '<div style="padding:16px;">' +
+        '<div class="panel-head">' +
+          '<div><h2 class="panel-title">Map</h2><span class="panel-hint">Your home screen</span></div>' +
+        '</div>' +
+        '<div class="map-showing"><span class="map-showing-dot"></span>Showing <strong>Shanghai</strong><span class="range">&middot; 9&ndash;15 Nov</span></div>' +
+        '<div class="map-day-quicknav">' +
+          '<div style="display:flex;align-items:center;gap:8px;overflow-x:auto;flex:1 1 auto;min-width:0;">' +
+            '<button class="chip active">All days</button>' +
+            '<button class="chip"><span class="chip-dot" style="background:var(--d-blue)"></span>Day 2</button>' +
+            '<button class="chip"><span class="chip-dot" style="background:var(--d-amber)"></span>Day 3</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="map-stage-wrap">' +
+          '<div class="map-container-outer">' +
+            '<div class="map-badge"><svg><use href="#i-map"/></svg> Map: <b>OpenStreetMap</b></div>' +
+            '<span class="map-pin-demo" style="left:38%;top:42%;--pin-color:var(--d-blue)"></span>' +
+            '<span class="map-pin-demo" style="left:55%;top:58%;--pin-color:var(--d-amber)"></span>' +
+            '<span class="map-pin-demo" style="left:70%;top:35%;--pin-color:var(--d-grey)"></span>' +
+            '<button class="btn btn-sm autoplan-cta map-fab"><svg><use href="#i-sparkle"/></svg> Auto-plan</button>' +
+          '</div>' +
+        '</div>' +
+        fab +
+        '<div class="legend"><div class="legend-item"><span class="legend-dot" style="background:var(--d-blue)"></span>Day 2</div><div class="legend-item"><span class="legend-dot" style="background:var(--d-amber)"></span>Day 3</div><div class="legend-item"><span class="legend-dot dashed"></span>Unassigned</div></div>' +
+        '<div class="scroll-cue">&darr; past the legend now &mdash; the FAB lets go here &darr;</div>' +
+        '<div class="pin-detail-demo"><strong>Yu Garden</strong><p>A classical Ming-dynasty garden in the Old City. Assigned to Day 3 &mdash; part of the staged change reflected in the Save bar below, if one is present in this frame.</p></div>' +
+        '<div class="filler-list">' + fillerRowsHTML() + '</div>' +
+        '<div class="scroll-cue">&darr; end of the panel &darr;</div>' +
+      '</div>' +
+      (showSaveBar ? saveBarHTML(opts.force) : '') +
+      (includeBottomDock ? BOTTOM_DOCK_HTML : '')
+    );
+  }
+  document.getElementById('mount-item2-desktop').innerHTML = mapPanelHTML({ includeBottomDock:false, showSaveBar:false, force:'force-desktop' });
+  document.getElementById('mount-item2-mobile-nosave').innerHTML = mapPanelHTML({ includeBottomDock:true, showSaveBar:false, force:'force-mobile' });
+  document.getElementById('mount-item2-mobile-save').innerHTML = mapPanelHTML({ includeBottomDock:true, showSaveBar:true, saveBarClearancePx:92, force:'force-mobile' });
+  document.getElementById('mount-item2-wide').innerHTML = mapPanelHTML({ includeBottomDock:false, showSaveBar:false, force:'force-desktop' });
+
+  // ============================= ITEM 3 =============================
+  var LEGS = [
+    ['Singapore', '7&ndash;9 Nov'], ['Shanghai', '9&ndash;15 Nov'], ['Suzhou', '15&ndash;17 Nov'],
+    ['Changsha', '17&ndash;19 Nov'], ['Zhangjiajie', '19&ndash;20 Nov'], ['Chongqing', '20&ndash;23 Nov'],
+    ['Chengdu', '23&ndash;25 Nov'], ['Guangzhou', '25&ndash;30 Nov'],
+  ];
+  function routeStripHTML(mobile){
+    var html = '<div class="route-strip' + (mobile ? ' mobile-scope' : '') + '" style="margin-top:0;">';
+    LEGS.forEach(function(leg, i){
+      html += '<button class="route-node' + (i === 1 ? ' active' : '') + '"><span class="line"></span><span class="route-dot"></span><span class="route-city">' + leg[0] + '</span><span class="route-date">' + leg[1] + '</span></button>';
+    });
+    html += '</div>';
+    return html;
+  }
+  document.getElementById('mount-item3-desktop').innerHTML = '<div style="padding:16px;">' + routeStripHTML(false) + '</div>';
+  document.getElementById('mount-item3-mobile').innerHTML = '<div style="padding:16px 12px;">' + routeStripHTML(true) + '</div>';
+
+  // ============================= ITEMS 4-5-6: budget demo (data-driven) =============================
+  var RATE = { AUD:1, CNY:0.211, SGD:1.12, USD:1.51, THB:null };
+  var SYMBOL = { AUD:'A$', CNY:'¥', SGD:'S$', USD:'US$', THB:'฿' };
+  function fmtMoney(amount, cur){ return SYMBOL[cur] + Number(amount).toLocaleString(undefined,{maximumFractionDigits:0}); }
+  function convert(amount, cur){ var r = RATE[cur]; return r == null ? undefined : amount * r; }
+
+  var members = [
+    { id:'m1', name:'Alex' },
+    { id:'m2', name:'Priya' },
+  ];
+  var expenses = [
+    { id:'e1', category:'Transport', label:'International flights (SYD&ndash;SIN&ndash;SHA &hellip; GUA&ndash;SYD)', amount:1980, currency:'AUD', attach:'Whole trip', paid:true, note:'', paidBy:null },
+    { id:'e2', category:'Accommodation', label:'Shanghai hotel &middot; 6 nights', amount:3900, currency:'CNY', attach:'Shanghai', paid:true, note:'Booked via Ctrip &mdash; confirmation #48213. Free cancellation until 1 Nov, after that it&rsquo;s non-refundable.', paidBy:'m1' },
+    { id:'e3', category:'Attractions', label:'Wulong Karst tour, incl. transport', amount:480, currency:'CNY', attach:'Day trip &middot; Sat 21 Nov', paid:false, note:'', paidBy:'m2' },
+    { id:'e4', category:'Food', label:'Chongqing hotpot dinner', amount:220, currency:'CNY', attach:'Day 1 &middot; Fri 20 Nov', paid:false, note:'', paidBy:'m-deleted' },
+    { id:'e5', category:'Food', label:'Bangkok airport snack (layover)', amount:140, currency:'THB', attach:'In transit', paid:false, note:'', paidBy:null },
+    { id:'e6', category:'Shopping', label:'Souvenirs &amp; misc shopping', amount:40, currency:'SGD', attach:'Trip-wide', paid:false, note:'', paidBy:'m2' },
+  ];
+  var editingId = null;
+  var uidCounter = 0;
+  function uid(prefix){ uidCounter += 1; return prefix + '-' + uidCounter; }
+  // decodes the &mdash;/&rsquo;/&hellip; entities used in the illustrative
+  // data above back to plain text for form fields — `.value =` (unlike
+  // innerHTML) does not run entity decoding on its own.
+  function decodeEntities(html){ var ta = document.createElement('textarea'); ta.innerHTML = html; return ta.value; }
+
+  function memberName(id){
+    var m = members.filter(function(x){ return x.id === id; })[0];
+    return m ? m.name : null;
+  }
+  // Neutral initial-letter avatar, no per-member colour — see the CSS
+  // comment on `.member-avatar` for why (colour-collision with the Day/City
+  // categorical palette across tabs).
+  function memberAvatarHTML(name, size){
+    var initial = (name || '?').trim().charAt(0).toUpperCase();
+    return '<span class="member-avatar' + (size ? ' member-avatar-' + size : '') + '" aria-hidden="true">' + initial + '</span>';
+  }
+
+  function payerMetaHTML(paidBy){
+    if(!paidBy) return '';
+    var name = memberName(paidBy);
+    if(name){
+      return '<span class="expense-payer">' + memberAvatarHTML(name, 'xs') + 'Paid by ' + name + '</span>';
+    }
+    return '<span class="expense-payer is-unset"><svg><use href="#i-user"/></svg>Paid by &mdash;</span>';
+  }
+
+  function renderExpenses(){
+    var wrap = document.querySelectorAll('.expense-list');
+    var html = '';
+    expenses.forEach(function(e){
+      var converted = convert(e.amount, e.currency);
+      var convHTML = converted === undefined
+        ? '<div class="conv rate-missing"><svg class="rate-missing-icon"><use href="#i-alert"/></svg> no rate yet</div>'
+        : (e.currency === 'AUD' ? '<div class="conv tabular"></div>' : '<div class="conv tabular">&asymp; ' + fmtMoney(converted, 'AUD') + '</div>');
+      var noteHTML = e.note ? '<div class="expense-note">' + e.note + '</div>' : '';
+      var noRateTag = converted === undefined ? '<span class="tag rate-missing-tag">No rate</span>' : '';
+      html +=
+        '<div class="card expense" data-id="' + e.id + '">' +
+          '<span class="expense-swatch" style="background:' + categoryColor(e.category) + '"></span>' +
+          '<div class="expense-main">' +
+            '<div class="expense-label">' + e.label + '</div>' +
+            '<div class="expense-meta"><span class="tag">' + e.category + '</span><span>' + e.attach + '</span>' + noRateTag + payerMetaHTML(e.paidBy) + '</div>' +
+            noteHTML +
+          '</div>' +
+          '<div class="expense-amt"><div class="orig tabular">' + fmtMoney(e.amount, e.currency) + '</div>' + convHTML + '</div>' +
+          '<label class="paid-toggle"><span class="switch"><input type="checkbox" ' + (e.paid ? 'checked' : '') + ' onchange="togglePaid(\'' + e.id + '\')" aria-label="Mark ' + e.label.replace(/<[^>]+>/g,'') + ' as paid"><span class="track"></span><span class="thumb"></span></span><span class="paid-label">' + (e.paid ? 'Paid' : 'Unpaid') + '</span></label>' +
+          '<div class="expense-actions-group">' +
+            '<button class="icon-btn" aria-label="Edit ' + e.label.replace(/<[^>]+>/g,'') + '" onclick="openEdit(\'' + e.id + '\')"><svg><use href="#i-edit"/></svg></button>' +
+            '<button class="icon-btn is-danger" aria-label="Remove ' + e.label.replace(/<[^>]+>/g,'') + '" onclick="removeExpense(\'' + e.id + '\')"><svg><use href="#i-trash"/></svg></button>' +
+          '</div>' +
+        '</div>';
+    });
+    if(!expenses.length){
+      html = '<div class="budget-empty"><svg><use href="#i-wallet"/></svg><strong>No expenses logged yet</strong><span>Add flights, hotels and tickets as you book them.</span><button class="btn btn-primary btn-sm" onclick="openAdd()" style="margin-top:2px"><svg><use href="#i-plus"/></svg> Add your first expense</button></div>';
+    }
+    wrap.forEach(function(el){ el.innerHTML = html; });
+    renderByPerson();
+  }
+  function categoryColor(cat){
+    var map = { Accommodation:'var(--d-indigo)', Transport:'var(--d-blue)', Attractions:'var(--d-amber)', Shopping:'var(--d-moss)', Food:'var(--d-terra)', Other:'var(--d-grey)' };
+    return map[cat] || 'var(--d-grey)';
+  }
+  function togglePaid(id){
+    expenses.forEach(function(e){ if(e.id === id) e.paid = !e.paid; });
+    renderExpenses();
+  }
+  function removeExpense(id){
+    expenses = expenses.filter(function(e){ return e.id !== id; });
+    if(editingId === id) closeForm();
+    renderExpenses();
+  }
+
+  function paidBySelectHTML(selected){
+    var html = '<option value="">&mdash; none &mdash;</option>';
+    members.forEach(function(m){
+      html += '<option value="' + m.id + '"' + (m.id === selected ? ' selected' : '') + '>' + m.name + '</option>';
+    });
+    return html;
+  }
+
+  function openAdd(){
+    editingId = null;
+    document.querySelectorAll('.add-form').forEach(function(f){
+      f.classList.add('open');
+      f.querySelector('.add-form-head h4').textContent = 'Add expense';
+      f.querySelector('.add-form-head .tag').style.display = 'none';
+      f.querySelector('.js-submit-label').textContent = 'Add expense';
+      f.querySelector('[data-f="cat"]').value = 'Transport';
+      f.querySelector('[data-f="currency"]').value = 'CNY';
+      f.querySelector('[data-f="amt"]').value = '';
+      f.querySelector('[data-f="label"]').value = '';
+      f.querySelector('[data-f="attach"]').value = '';
+      f.querySelector('[data-f="note"]').value = '';
+      f.querySelector('[data-f="paidby"]').innerHTML = paidBySelectHTML('');
+      f.dataset.editingId = '';
+    });
+  }
+  function openEdit(id){
+    var e = expenses.filter(function(x){ return x.id === id; })[0];
+    if(!e) return;
+    editingId = id;
+    document.querySelectorAll('.add-form').forEach(function(f){
+      f.classList.add('open');
+      f.querySelector('.add-form-head h4').textContent = 'Editing expense';
+      f.querySelector('.add-form-head .tag').style.display = 'inline-flex';
+      f.querySelector('.js-submit-label').textContent = 'Save changes';
+      f.querySelector('[data-f="cat"]').value = e.category;
+      f.querySelector('[data-f="currency"]').value = e.currency;
+      f.querySelector('[data-f="amt"]').value = e.amount;
+      f.querySelector('[data-f="label"]').value = decodeEntities(e.label);
+      f.querySelector('[data-f="attach"]').value = decodeEntities(e.attach);
+      f.querySelector('[data-f="note"]').value = decodeEntities(e.note || '');
+      f.querySelector('[data-f="paidby"]').innerHTML = paidBySelectHTML(e.paidBy && memberName(e.paidBy) ? e.paidBy : '');
+      f.dataset.editingId = id;
+      f.scrollIntoView({ behavior:'smooth', block:'center' });
+    });
+  }
+  function closeForm(){
+    editingId = null;
+    document.querySelectorAll('.add-form').forEach(function(f){ f.classList.remove('open'); });
+  }
+  function submitExpenseForm(ev, formEl){
+    ev.preventDefault();
+    var cat = formEl.querySelector('[data-f="cat"]').value;
+    var currency = formEl.querySelector('[data-f="currency"]').value;
+    var amt = parseFloat(formEl.querySelector('[data-f="amt"]').value) || 0;
+    var label = formEl.querySelector('[data-f="label"]').value || 'Untitled expense';
+    var attach = formEl.querySelector('[data-f="attach"]').value || 'Whole trip';
+    var note = formEl.querySelector('[data-f="note"]').value;
+    var paidBy = formEl.querySelector('[data-f="paidby"]').value || null;
+    var id = formEl.dataset.editingId;
+    if(id){
+      expenses.forEach(function(e){
+        if(e.id === id){ e.category = cat; e.currency = currency; e.amount = amt; e.label = label; e.attach = attach; e.note = note; e.paidBy = paidBy; }
+      });
+    } else {
+      expenses.unshift({ id: uid('e'), category:cat, currency:currency, amount:amt, label:label, attach:attach, note:note, paidBy:paidBy, paid:false });
+    }
+    closeForm();
+    renderExpenses();
+    return false;
+  }
+
+  // ---- members ----
+  function renderMembers(){
+    document.querySelectorAll('.members-list').forEach(function(list){
+      var html = '';
+      members.forEach(function(m){
+        html +=
+          '<span class="member-chip" data-id="' + m.id + '">' +
+            memberAvatarHTML(m.name) +
+            '<span class="member-name">' + m.name + '</span>' +
+            '<button type="button" class="icon-btn" aria-label="Rename ' + m.name + '" onclick="startRename(this,\'' + m.id + '\')"><svg><use href="#i-edit"/></svg></button>' +
+            '<button type="button" class="icon-btn is-danger" aria-label="Remove ' + m.name + '" onclick="removeMember(\'' + m.id + '\')"><svg><use href="#i-trash"/></svg></button>' +
+          '</span>';
+      });
+      list.innerHTML = html;
+      list.style.display = members.length ? 'flex' : 'none';
+    });
+    document.querySelectorAll('.members-empty').forEach(function(el){ el.style.display = members.length ? 'none' : 'flex'; });
+    document.querySelectorAll('[data-f="paidby"]').forEach(function(sel){
+      var current = sel.value;
+      sel.innerHTML = paidBySelectHTML(current);
+    });
+    renderExpenses();
+  }
+  function startRename(btn, id){
+    var chip = btn.closest('.member-chip');
+    var nameEl = chip.querySelector('.member-name');
+    var current = nameEl.textContent;
+    var input = document.createElement('input');
+    input.type = 'text'; input.className = 'rename-input'; input.value = current;
+    input.setAttribute('aria-label', 'Rename companion');
+    nameEl.replaceWith(input);
+    input.focus(); input.select();
+    function commit(){
+      var val = input.value.trim() || current;
+      members.forEach(function(m){ if(m.id === id) m.name = val; });
+      renderMembers();
+    }
+    input.addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter'){ commit(); }
+      if(ev.key === 'Escape'){ renderMembers(); }
+    });
+    input.addEventListener('blur', commit);
+  }
+  function removeMember(id){
+    members = members.filter(function(m){ return m.id !== id; });
+    renderMembers();
+  }
+  function addMemberSubmit(ev, formEl){
+    ev.preventDefault();
+    var input = formEl.querySelector('input');
+    var val = input.value.trim();
+    if(val){ members.push({ id: uid('m'), name: val }); input.value = ''; renderMembers(); }
+    return false;
+  }
+
+  // ---- item 6: by-person ----
+  function renderByPerson(){
+    document.querySelectorAll('.by-person-card').forEach(function(card){
+      var body = card.querySelector('.by-person-body');
+      if(!members.length){
+        body.innerHTML = '<p class="panel-hint" style="margin:4px 0 2px;">No companions yet &mdash; add one above to see who paid what.</p>';
+        return;
+      }
+      var totals = members.map(function(m){
+        var sum = 0; var excluded = 0;
+        expenses.forEach(function(e){
+          if(e.paidBy !== m.id) return;
+          var c = convert(e.amount, e.currency);
+          if(c === undefined){ excluded += 1; return; }
+          sum += c;
+        });
+        return { m:m, sum:sum, excluded:excluded };
+      });
+      var max = Math.max.apply(null, totals.map(function(t){ return t.sum; }).concat([1]));
+      var html = '';
+      totals.forEach(function(t){
+        var pct = Math.max(4, (t.sum / max) * 100);
+        html +=
+          '<div class="cat-row">' +
+            '<span class="cat-label">' + memberAvatarHTML(t.m.name, 'xs') + '<span>' + t.m.name + '</span></span>' +
+            '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + pct + '%"></div></div>' +
+            '<span class="cat-amt tabular"><span class="cat-amt-value">' + fmtMoney(t.sum, 'AUD') + '</span>' + (t.excluded ? '<span class="cat-amt-note">' + t.excluded + ' excl. (no rate)</span>' : '') + '</span>' +
+          '</div>';
+      });
+      // Trap #3 (orphan tolerance) made visible, not just non-crashing: an
+      // expense whose paidBy points at a member that's since been removed
+      // (e.g. "Chongqing hotpot dinner" → m-deleted, below) can't be
+      // attributed to anyone, so it silently wouldn't count toward ANY
+      // total — a per-person sum that legitimately falls short of the trip
+      // total with zero explanation is exactly the kind of thing the
+      // existing "no rate" exclusion note already exists to prevent (see
+      // .cat-amt-note above). Same treatment here, not a silent drop.
+      var orphanCount = 0;
+      expenses.forEach(function(e){ if(e.paidBy && !memberName(e.paidBy)) orphanCount += 1; });
+      if(orphanCount){
+        html += '<p class="panel-hint" style="margin:10px 0 0;"><span class="rate-missing-note">' +
+          orphanCount + ' expense' + (orphanCount > 1 ? 's' : '') + ' excluded &mdash; payer no longer in your companions list</span></p>';
+      }
+      body.innerHTML = html;
+    });
+  }
+
+  // ============================= build the two budget frames =============================
+  // `suffix` keeps element ids unique between the desktop and mobile mounts
+  // on this same page (both render the SAME form markup for side-by-side
+  // comparison) — real production only ever mounts one instance, so the real
+  // implementation doesn't need this, it's purely so <label for> stays
+  // correctly associated in THIS comparison file rather than both copies'
+  // labels silently binding to whichever id happens to come first in the DOM.
+  function budgetPanelHTML(suffix){
+    var id = function(base){ return base + '-' + suffix; };
+    return (
+      '<div style="padding:16px;">' +
+        '<div class="panel-head"><h2 class="panel-title">Budget</h2><span class="panel-hint">Totals in <strong>AUD</strong></span></div>' +
+        '<div class="summary-grid">' +
+          '<div class="card summary-card"><div class="label">Trip total</div><div class="home tabular">A$5,965</div><div class="summary-sub">from 4 currencies &middot; <span class="rate-missing-note">1 expense excluded (no rate)</span></div></div>' +
+          '<div class="card summary-card"><div class="label">Paid / booked</div><div class="home tabular" style="color:var(--jade)">A$5,090</div></div>' +
+          '<div class="card summary-card"><div class="label">Still to pay</div><div class="home tabular" style="color:var(--gold)">A$875</div></div>' +
+        '</div>' +
+        '<div class="card cat-breakdown">' +
+          '<div class="field-label" style="margin-bottom:10px;">By category</div>' +
+          '<div class="cat-row"><span class="cat-label"><span>Accommodation</span></span><div class="cat-bar-track"><div class="cat-bar-fill" style="width:42%"></div></div><span class="cat-amt tabular"><span class="cat-amt-value">A$2,493</span></span></div>' +
+          '<div class="cat-row"><span class="cat-label"><span>Transport</span></span><div class="cat-bar-track"><div class="cat-bar-fill" style="width:52%"></div></div><span class="cat-amt tabular"><span class="cat-amt-value">A$3,107</span></span></div>' +
+        '</div>' +
+        // Summary grid + By-category above are static illustrative figures —
+        // NOT wired to the live `expenses`/`members` arrays the By-person
+        // card and expense list below are. Called out explicitly so editing
+        // an expense in the interactive demo below doesn't read as a bug
+        // when these numbers don't move.
+        '<p class="panel-hint" style="margin:-10px 0 16px;">(Trip total / Paid / Still to pay / By category above are static illustrative figures for this mockup &mdash; By person and the expense list below ARE wired to the live demo data.)</p>' +
+        '<div class="card members-card">' +
+          '<div class="panel-head" style="margin-bottom:0;"><h3 class="panel-title" style="font-size:1rem;">Trip companions</h3></div>' +
+          '<span class="panel-hint">Who\'s splitting costs on this trip &mdash; pick one as "Paid by" on any expense below.</span>' +
+          '<div class="members-empty"><svg><use href="#i-user"/></svg><div><strong>No companions yet</strong><span> Add yourself and anyone else you\'re splitting costs with.</span></div></div>' +
+          '<div class="members-list"></div>' +
+          '<form class="add-member-form" onsubmit="return addMemberSubmit(event, this)">' +
+            '<label class="visually-hidden" for="' + id('new-member') + '">New companion name</label>' +
+            '<input type="text" id="' + id('new-member') + '" class="text-input" placeholder="Companion name, e.g. Priya">' +
+            '<button type="submit" class="btn btn-primary btn-sm"><svg><use href="#i-plus"/></svg> Add</button>' +
+          '</form>' +
+        '</div>' +
+        '<div class="card cat-breakdown by-person-card">' +
+          '<div class="field-label" style="margin-bottom:10px;">By person <span style="text-transform:none;font-weight:600;color:var(--ink-faint);">&middot; who paid, converted to AUD</span></div>' +
+          '<div class="by-person-body"></div>' +
+        '</div>' +
+        '<div class="panel-head" style="margin-top:22px;">' +
+          '<h3 class="panel-title" style="font-size:1.05rem">All expenses</h3>' +
+          '<button class="btn btn-primary btn-sm" onclick="openAdd()"><svg><use href="#i-plus"/></svg> Add expense</button>' +
+        '</div>' +
+        '<form class="add-form card" onsubmit="return submitExpenseForm(event, this)">' +
+          '<div class="add-form-head"><h4>Add expense</h4><span class="tag" style="display:none;">Editing</span></div>' +
+          '<div class="add-form-grid">' +
+            '<div><label for="' + id('e-cat') + '">Category</label><select id="' + id('e-cat') + '" data-f="cat"><option>Accommodation</option><option>Transport</option><option>Food</option><option>Attractions</option><option>Shopping</option><option>Other</option></select></div>' +
+            '<div><label for="' + id('e-amt') + '">Amount</label><div class="amount-currency-field"><select aria-label="Currency paid in" data-f="currency"><option value="AUD">AUD A$</option><option value="CNY">CNY ¥</option><option value="SGD">SGD S$</option><option value="USD">USD US$</option><option value="THB">THB ฿</option></select><input class="num-input" type="number" id="' + id('e-amt') + '" data-f="amt" min="0" step="any" inputmode="decimal" placeholder="0"></div></div>' +
+            '<div class="full"><label for="' + id('e-label') + '">Label</label><input class="text-input" type="text" id="' + id('e-label') + '" data-f="label" placeholder="e.g. Xi\'an noodles"></div>' +
+            '<div class="full"><label for="' + id('e-attach') + '">Attach to</label><input class="text-input" type="text" id="' + id('e-attach') + '" data-f="attach" placeholder="e.g. Day 2 &middot; Shanghai, or Whole trip"></div>' +
+            '<div><label for="' + id('e-paidby') + '">Paid by</label><select id="' + id('e-paidby') + '" data-f="paidby"></select></div>' +
+            '<div class="full"><label for="' + id('e-note') + '">Note <span style="text-transform:none;font-weight:500;color:var(--ink-faint);">&middot; optional</span></label><textarea class="text-input" id="' + id('e-note') + '" data-f="note" placeholder="Confirmation numbers, reminders, anything worth remembering&hellip;"></textarea></div>' +
+          '</div>' +
+          '<div style="display:flex; gap:8px;">' +
+            '<button type="submit" class="btn btn-primary btn-sm"><span class="js-submit-label">Add expense</span></button>' +
+            '<button type="button" class="btn btn-ghost btn-sm" onclick="closeForm()">Cancel</button>' +
+          '</div>' +
+        '</form>' +
+        '<div class="expense-list"></div>' +
+        '<div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">' +
+          '<button type="button" class="debug-toggle" onclick="toggleEmptyExpensesPreview(this)">Preview: empty expenses</button>' +
+          '<button type="button" class="debug-toggle" onclick="toggleEmptyMembersPreview(this)">Preview: empty companions</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+  document.getElementById('mount-budget-desktop').innerHTML = budgetPanelHTML('desktop');
+  document.getElementById('mount-budget-mobile').innerHTML = budgetPanelHTML('mobile');
+  renderMembers();
+
+  var savedExpenses = null, savedMembers = null;
+  function toggleEmptyExpensesPreview(btn){
+    if(savedExpenses === null){ savedExpenses = expenses; expenses = []; btn.textContent = 'Preview: restore expenses'; }
+    else { expenses = savedExpenses; savedExpenses = null; btn.textContent = 'Preview: empty expenses'; }
+    renderExpenses();
+  }
+  function toggleEmptyMembersPreview(btn){
+    if(savedMembers === null){ savedMembers = members; members = []; btn.textContent = 'Preview: restore companions'; }
+    else { members = savedMembers; savedMembers = null; btn.textContent = 'Preview: empty companions'; }
+    renderMembers();
+  }
+</script>
+</body>
+</html>

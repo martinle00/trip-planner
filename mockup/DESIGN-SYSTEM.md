@@ -92,6 +92,76 @@ These were deliberately chosen to **avoid the hue zones owned by `--jade` (paid)
 `--gold` (owed)** so the categorical and semantic vocabularies never visually collide.
 If you add a categorical colour, respect that constraint.
 
+### Member colour palette (`--m-*`) — Phase 6
+
+A **third** categorical pool, added for `TripMember.color?`. Purpose is narrower than
+the day/city palettes above: it colours the **member avatar ring and member chip
+only**. It is never used for the By-person budget bar, which stays `--jade` — see
+§7 and the rule below.
+
+Six fixed swatches, pick-one-of-N (not a free colour picker — an arbitrary user hue
+can't be pre-verified against the `-soft-ink` rule):
+
+| Token | Hue (°) | Light `base` | Light `-soft` | Light `-soft-ink` | Dark `base`/`-soft-ink` | Dark `-soft` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `--m-chartreuse` | 78 | `#8FAE47` | `#EAF1DA` | `#506321` | `#AFCA72` | `#293215` |
+| `--m-denim` | 221 | `#4768AE` | `#DAE1F1` | `#213663` | `#728ECA` | `#151E32` |
+| `--m-periwinkle` | 253 | `#5D47AE` | `#DFDAF1` | `#302163` | `#9281CF` | `#1C1532` |
+| `--m-orchid` | 289 | `#9B47AE` | `#EDDAF1` | `#572163` | `#BD7ACC` | `#2D1532` |
+| `--m-berry` | 326 | `#AE4781` | `#F1DAE7` | `#632147` | `#CA72A4` | `#321526` |
+| `--m-sand` | 40 (desaturated) | `#847E71` | `#E8E6E3` | `#403B30` | `#A8A194` | `#272520` |
+
+**Hue selection method.** The wheel is already dense — `--accent`, `--jade`, `--gold`
+and the nine `--d-*`/city tokens occupy roughly one hue every 20–35°. Rather than
+eyeball six more, every candidate hue was checked for angular clearance from all
+existing tokens, with two bands *excluded outright* regardless of clearance:
+~350–20° (`--accent`) and ~20–55° (`--gold`/`--d-amber`) — the two zones the rule
+above says must stay clear — plus ~140–185° (`--jade`/`--d-teal`). `--m-chartreuse`
+(78°), `--m-denim` (221°), `--m-periwinkle` (253°) and `--m-orchid` (289°) all land
+in genuinely open gaps (≥20° clearance both sides). `--m-berry` (326°, ~17° from
+`--d-plum` at 309° and ~14° from `--d-rose` at 340°) is the tightest saturated pick —
+the best of a crowded neighbourhood, not a wide-open slot.
+
+`--m-sand` is the deliberate exception: its hue angle (40°) sits *inside* the excluded
+gold band. It's included anyway because at its actual saturation (≤14%, versus
+`--gold`'s ~60%+) it reads as a neutral warm taupe, not amber — the hue-number
+collision doesn't survive contact with the eye. Verified side-by-side in the mockup
+swatch grid (`mockup/phase6-nav-settings-expenses.html` §8), not just asserted here.
+Every avatar/chip also always prints the member's name alongside the colour (same
+posture Phase 5 already took when it shipped members with *no* colour at all) — colour
+is reinforcement, never the sole signifier.
+
+**Contrast, measured per token, both themes** (`-soft-ink` text on `-soft` fill):
+
+| Token | Light ratio | Dark ratio |
+| --- | --- | --- |
+| `--m-chartreuse` | 5.75:1 | 7.38:1 |
+| `--m-denim` | 9.04:1 | 5.10:1 |
+| `--m-periwinkle` | 10.13:1 | 5.21:1 |
+| `--m-orchid` | 8.82:1 | 5.39:1 |
+| `--m-berry` | 8.66:1 | 5.08:1 |
+| `--m-sand` | 8.94:1 | 5.97:1 |
+
+All clear the 4.5:1 AA floor in both themes, but **not by a uniform margin, and that's
+the point of measuring rather than assuming**: every dark-theme `base`/`-soft-ink` was
+built from the same HSL recipe (hue varies, saturation/lightness held constant per
+role) as a starting point, and two of six — `--m-periwinkle` and `--m-orchid` —
+initially computed under 4.5:1 (as low as 4.38:1) at that shared lightness. HSL
+lightness isn't perceptually uniform across hues (a blue-violet at L65% is not as
+luminant as a yellow-green at L65% — green dominates the luminance formula's weights).
+Both were nudged 2–4 points lighter in dark mode specifically, and only those two,
+until each independently measured ≥5:1. **Never carry a `-soft`/`-soft-ink` pair
+forward from a formula without checking the actual ratio** — this is the second time
+in this document a plausible-looking recipe produced a token that failed AA (see the
+raw jade-on-jade-soft example in the rule above) and had to be corrected against the
+real numbers.
+
+**The rule this section exists to state:** `--m-*` colours the avatar ring and the
+member chip. It never touches the By-person bar fill (stays `--jade` — "money already
+accounted for," same as By-category) and it never becomes body text on its own
+`-soft` background without going through the `-soft-ink` companion, same as every
+other soft-tinted token in this document.
+
 ### Radius, shadow, type
 
 ```
@@ -185,6 +255,38 @@ when assigned, `dashed` when unassigned/wishlist. Used by `.city-section` and
   not a magic number.
 - Standard page padding 16px; card padding 12–16px.
 
+### Mobile-succinct
+
+**Rule: below the 720px breakpoint, trip chrome (nav, identity, secondary labels — not
+content) shows the minimum needed to stay usable, not the fullest form that fits.**
+Phone screens don't get a scroll-triggered "condense" escape hatch the way desktop does
+(the condensing header in `App.tsx`/`useCondenseHeader.ts` is gated `>=720px`) — mobile's
+succinct form has to be the *permanent* default, since there's no larger state to reveal
+later by scrolling. Practical consequences, both introduced in Phase 5:
+
+- **Topbar utility row** (Export/Import/sync pill/Auto-plan/Sign out) collapses to
+  icon-only unconditionally below 720px — the exact same `.btn-collapsible` /
+  `.is-collapsed` visual treatment the desktop condense state already uses, just gated by
+  `@media (max-width:719px)` instead of a scroll-driven class. One mechanism, two
+  triggers — see `mockup/phase5-mobile-and-expenses.html` item 1.
+- **Route-strip nodes** drop to a single-line, city-name-only pill below the same
+  threshold (full two-line "city + date range" node is a desktop-only luxury) — see that
+  file's item 3.
+
+`719px`, not a new breakpoint: it's the `max-width` complement of the `720px` entry
+already listed above, matching the existing mobile/desktop split (bottom tab dock,
+condensing-header gate) so "mobile mode" stays one threshold across the app, not several.
+
+**The a11y catch:** succinct ≠ deleted. If the hidden content is (or is part of) an
+interactive element's *only* accessible name — e.g. a route-node button whose name comes
+entirely from its own visible text (city + date) — dropping it needs the
+`.visually-hidden`-style clip technique (stays in the DOM, stays in the accessible name),
+not `display:none` (removes it for AT users too, unless there's a specific, stated reason
+that's fine — see the desktop `is-condensed` route-date treatment in `src/index.css`,
+which does use `display:none` deliberately, with that reasoning written down in a code
+comment next to it). Never justify a `display:none` on "it's just secondary text" alone —
+say why AT users specifically don't need it either, or clip it.
+
 ---
 
 ## 6. Accessibility — the floor
@@ -214,6 +316,9 @@ when assigned, `dashed` when unassigned/wishlist. Used by `.city-section` and
 7. **Semantic colours mean things.** Jade is not "a nice green" — it means paid/done.
 8. **Comment the *why*.** The stylesheet documents rationale, not restatement of the
    rule. Match that standard.
+9. **Mobile = as succinct as possible, but clip, don't strip.** See §5's "Mobile-succinct"
+   subsection. Dropping secondary chrome below 720px is correct; dropping it from the
+   accessible name too needs its own justification, not an assumption.
 
 ---
 

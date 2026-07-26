@@ -32,6 +32,10 @@ interface TripRow {
   rates_updated_at: string | null;
   rates_base: string | null;
   cities: Trip['cities'];
+  /** JSONB column, mirrors `Trip.members` (Phase 5). `null`/absent means "no
+   *  members defined yet" — mapped to `undefined`, never an empty-array lie
+   *  about what was actually stored. */
+  members: Trip['members'] | null;
 }
 
 function tripFromRow(row: TripRow): Trip {
@@ -46,6 +50,7 @@ function tripFromRow(row: TripRow): Trip {
     ratesUpdatedAt: row.rates_updated_at ?? undefined,
     ratesBase: row.rates_base ?? undefined,
     cities: row.cities,
+    members: row.members ?? undefined,
   };
 }
 
@@ -62,6 +67,7 @@ function tripToRow(trip: Trip, userId: string): Omit<TripRow, never> {
     rates_updated_at: trip.ratesUpdatedAt ?? null,
     rates_base: trip.ratesBase ?? null,
     cities: trip.cities,
+    members: trip.members ?? null,
   };
 }
 
@@ -178,26 +184,36 @@ function itineraryToRow(item: ItineraryItem): ItineraryRow {
 interface ExpenseRow {
   id: string;
   trip_id: string;
-  day_id: string | null;
-  item_id: string | null;
   category: string;
   label: string;
   amount: number;
   currency: string;
   paid: boolean;
+  note: string | null;
+  paid_by: string | null;
+  /** Replaces `day_id` (Phase 6) — matches a `City.name`, like `Place.city`.
+   *  `null` means "Whole trip". See schema.ts's `Expense.city` doc comment. */
+  city: string | null;
+  /** Replaces nothing — new in Phase 6. `null`/absent means "everyone"; see
+   *  schema.ts's `Expense.coversMemberIds` doc comment. Nullable jsonb array
+   *  of `TripMember.id`s, mapped straight through (no per-element mapping
+   *  needed, unlike `cities`/`members`, since it's a flat string array). */
+  covers_member_ids: string[] | null;
 }
 
 function expenseFromRow(row: ExpenseRow): Expense {
   return {
     id: row.id,
     tripId: row.trip_id,
-    dayId: row.day_id ?? undefined,
-    itemId: row.item_id ?? undefined,
     category: row.category,
     label: row.label,
     amount: row.amount,
     currency: row.currency,
     paid: row.paid,
+    note: row.note ?? undefined,
+    paidBy: row.paid_by ?? undefined,
+    city: row.city ?? undefined,
+    coversMemberIds: row.covers_member_ids ?? undefined,
   };
 }
 
@@ -205,13 +221,15 @@ function expenseToRow(expense: Expense): ExpenseRow {
   return {
     id: expense.id,
     trip_id: expense.tripId,
-    day_id: expense.dayId ?? null,
-    item_id: expense.itemId ?? null,
     category: expense.category,
     label: expense.label,
     amount: expense.amount,
     currency: expense.currency,
     paid: expense.paid,
+    note: expense.note ?? null,
+    paid_by: expense.paidBy ?? null,
+    city: expense.city ?? null,
+    covers_member_ids: expense.coversMemberIds ?? null,
   };
 }
 
@@ -382,7 +400,7 @@ export class SupabaseTripRepository implements TripRepository {
       this.listAllItinerary(trip.id),
       this.listExpenses(trip.id),
     ]);
-    return { version: 3, trip, days, places, itinerary, expenses };
+    return { version: 5, trip, days, places, itinerary, expenses };
   }
 
   async importSnapshot(snapshot: TripSnapshot): Promise<void> {

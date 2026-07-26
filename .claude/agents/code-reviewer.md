@@ -26,3 +26,9 @@ The diffs/files produced by the **frontend-engineer** and **backend-impl** agent
 - **Findings:** numbered, most-severe first, each with severity (`blocker` / `major` / `minor` / `nit`), the `file:line`, the problem, why it's a problem, and a concrete suggested fix. Include any lint/build/test failures verbatim.
 
 Loop: your feedback goes back to the responsible engineer (frontend or backend) to **re-implement**, then you re-review, until there are no remaining issues. Approve when it's genuinely clean — don't rubber-stamp, and don't invent nits to prolong the loop.
+
+## Managing your context window
+Work within your context budget deliberately, so long or looping tasks stay efficient:
+- Pull in only what the task needs — prefer targeted Grep/Glob and partial Reads over loading whole large files, and don't re-read what you've already seen.
+- Once a sub-step is done (a search, a helper's output, a build run), carry forward a short summary of its result, not the raw dump.
+- As you finish a task, compact: distil your work into a concise, high-signal final report (what changed and where, how you verified it, open risks) and drop the detailed scratch reasoning. Keep the hand-back small.

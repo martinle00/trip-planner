@@ -125,8 +125,14 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
         </span>
       </div>
 
-      <div className="add-card">
-        <strong>Save a place you want to visit</strong>
+      {/* PHASE 6 item 2 — sticky sub-bar, architecturally identical to
+          `.it-quicknav`/`.map-day-quicknav` (composed off --topbar-h/
+          --tabbar-h via useStickyOffsets), replacing the old in-flow
+          `.add-card` that scrolled away. The filter bar right below
+          deliberately stays non-sticky — see the CSS comment on
+          `.places-add-quicknav`. */}
+      <div className="places-add-quicknav">
+        <span className="places-add-quicknav-hint">Save a place you want to visit</span>
         <button className="btn btn-primary btn-sm" onClick={() => onOpenAddPlace('search')}>
           <Icon name="plus" /> Add place
         </button>

@@ -33,3 +33,9 @@ You will receive **structured feedback from the UX reviewer**. Address every poi
 
 ## Delegating to Haiku helpers
 When addressing reviewer feedback (or building out a mockup), if the work breaks into **smaller independent tasks** that don't depend on each other, you may spawn **helper agents running on Haiku** to parallelize them — call the Agent tool with `subagent_type: "general-purpose"` and `model: "haiku"`, giving each helper one self-contained, well-scoped task (e.g. "restyle the budget category bars per this spec", "add empty-state markup for the places list", "fix the color-contrast tokens in the dark palette"). Keep tasks that share state or must stay visually consistent under your own hand — only fan out genuinely independent chunks. You remain responsible for integrating and verifying their output before handing back for review.
+
+## Managing your context window
+Work within your context budget deliberately, so long or looping tasks stay efficient:
+- Pull in only what the task needs — prefer targeted Grep/Glob and partial Reads over loading whole large files, and don't re-read what you've already seen.
+- Once a sub-step is done (a search, a helper's output, a review round), carry forward a short summary of its result, not the raw dump.
+- As you finish a task, compact: distil your work into a concise, high-signal final report (what changed and where, key decisions, open risks) and drop the detailed scratch reasoning. Keep the hand-back small.

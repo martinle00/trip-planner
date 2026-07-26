@@ -14,7 +14,7 @@ const trip: Trip = {
   cities: [],
 };
 
-const snapshot: TripSnapshot = { version: 3, trip, days: [], places: [], itinerary: [], expenses: [] };
+const snapshot: TripSnapshot = { version: 5, trip, days: [], places: [], itinerary: [], expenses: [] };
 
 function makeRepo(overrides: Partial<TripRepository>): TripRepository {
   return {

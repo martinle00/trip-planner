@@ -1,0 +1,1818 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 6 — nav corrections, mobile legibility, Settings, expense sharing</title>
+<style>
+  /* ============================= TOKENS (ported from src/index.css — do not hand-edit values here, port again if the source changes) ============================= */
+  :root{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350;
+    --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    /* ---- NEW this phase: member-colour swatch set (item 8) — see
+       DESIGN-SYSTEM.md "Member colour palette (--m-*)" for the hue-selection
+       method and the measured contrast table. Base = ring/dot only, never
+       text. -soft/-soft-ink follow the same pairing every other semantic
+       token uses. ---- */
+    --m-chartreuse:#8FAE47; --m-chartreuse-soft:#EAF1DA; --m-chartreuse-soft-ink:#506321;
+    --m-denim:#4768AE; --m-denim-soft:#DAE1F1; --m-denim-soft-ink:#213663;
+    --m-periwinkle:#5D47AE; --m-periwinkle-soft:#DFDAF1; --m-periwinkle-soft-ink:#302163;
+    --m-orchid:#9B47AE; --m-orchid-soft:#EDDAF1; --m-orchid-soft-ink:#572163;
+    --m-berry:#AE4781; --m-berry-soft:#F1DAE7; --m-berry-soft-ink:#632147;
+    --m-sand:#847E71; --m-sand-soft:#E8E6E3; --m-sand-soft-ink:#403B30;
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-full: 999px;
+    --shadow-sm: 0 1px 2px rgba(60,40,20,.08), 0 1px 1px rgba(60,40,20,.05);
+    --shadow-md: 0 8px 24px -8px rgba(60,40,20,.22), 0 2px 6px rgba(60,40,20,.08);
+    --shadow-lg: 0 24px 60px -16px rgba(30,20,10,.35);
+    --font-display: 'Songti SC','STSong','Noto Serif SC', Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Consolas', 'Roboto Mono', monospace;
+    --tab-active-bg: var(--ink); --tab-active-ink: var(--paper);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+      --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+      --line: #362E24; --line-strong: #453A2C;
+      --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+      --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B;
+      --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+      --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+      --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+      --m-chartreuse:#AFCA72; --m-chartreuse-soft:#293215; --m-chartreuse-soft-ink:#AFCA72;
+      --m-denim:#728ECA; --m-denim-soft:#151E32; --m-denim-soft-ink:#728ECA;
+      --m-periwinkle:#9281CF; --m-periwinkle-soft:#1C1532; --m-periwinkle-soft-ink:#9281CF;
+      --m-orchid:#BD7ACC; --m-orchid-soft:#2D1532; --m-orchid-soft-ink:#BD7ACC;
+      --m-berry:#CA72A4; --m-berry-soft:#321526; --m-berry-soft-ink:#CA72A4;
+      --m-sand:#A8A194; --m-sand-soft:#272520; --m-sand-soft-ink:#A8A194;
+      --tab-active-bg: var(--accent); --tab-active-ink: var(--accent-ink);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+    --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+    --line: #362E24; --line-strong: #453A2C;
+    --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+    --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+    --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+    --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+    --m-chartreuse:#AFCA72; --m-chartreuse-soft:#293215; --m-chartreuse-soft-ink:#AFCA72;
+    --m-denim:#728ECA; --m-denim-soft:#151E32; --m-denim-soft-ink:#728ECA;
+    --m-periwinkle:#9281CF; --m-periwinkle-soft:#1C1532; --m-periwinkle-soft-ink:#9281CF;
+    --m-orchid:#BD7ACC; --m-orchid-soft:#2D1532; --m-orchid-soft-ink:#BD7ACC;
+    --m-berry:#CA72A4; --m-berry-soft:#321526; --m-berry-soft-ink:#CA72A4;
+    --m-sand:#A8A194; --m-sand-soft:#272520; --m-sand-soft-ink:#A8A194;
+    --tab-active-bg: var(--accent); --tab-active-ink: var(--accent-ink);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --m-chartreuse:#8FAE47; --m-chartreuse-soft:#EAF1DA; --m-chartreuse-soft-ink:#506321;
+    --m-denim:#4768AE; --m-denim-soft:#DAE1F1; --m-denim-soft-ink:#213663;
+    --m-periwinkle:#5D47AE; --m-periwinkle-soft:#DFDAF1; --m-periwinkle-soft-ink:#302163;
+    --m-orchid:#9B47AE; --m-orchid-soft:#EDDAF1; --m-orchid-soft-ink:#572163;
+    --m-berry:#AE4781; --m-berry-soft:#F1DAE7; --m-berry-soft-ink:#632147;
+    --m-sand:#847E71; --m-sand-soft:#E8E6E3; --m-sand-soft-ink:#403B30;
+    --tab-active-bg: var(--ink); --tab-active-ink: var(--paper);
+    color-scheme: light;
+  }
+
+  /* ============================= RESET ============================= */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,h4,p{ margin:0; }
+  button{ font:inherit; color:inherit; }
+  button, .tab, .bottom-tab, .route-node, .chip{ cursor:pointer; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  svg{ display:block; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
+  .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .tabular{ font-variant-numeric: tabular-nums; }
+
+  /* ============================= SCAFFOLDING (review tooling — not shipped UI) ============================= */
+  .spec-bar{
+    position:sticky; top:0; z-index:200; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    flex-wrap:wrap; background:var(--ink); color:var(--paper); padding:12px 18px; font-size:13px;
+  }
+  .spec-bar strong{ font-size:14px; }
+  .spec-bar span.sub{ color:#cabfae; }
+  .spec-bar-tools{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .spec-bar-tools a{
+    font-size:11px; font-weight:700; color:#cabfae; text-decoration:none; padding:5px 10px;
+    border:1px dashed rgba(255,255,255,.3); border-radius:var(--radius-full);
+  }
+  .spec-bar-tools a:hover{ color:var(--paper); border-color:rgba(255,255,255,.6); }
+  .spec-bar .btn-icon{ background:transparent; border:1px solid rgba(255,255,255,.3); color:var(--paper); width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .spec-bar .btn-icon:hover{ background:rgba(255,255,255,.12); }
+  .spec-bar .btn-icon svg{ width:15px; height:15px; }
+
+  .intro{ max-width:920px; margin:26px auto 6px; padding:0 18px; font-size:13.5px; color:var(--ink-soft); line-height:1.6; }
+  .intro h2{ font-family:var(--font-display); font-size:1.3rem; font-weight:600; color:var(--ink); margin-bottom:8px; }
+  .intro p{ margin:0 0 10px; }
+  .intro ul{ margin:0 0 10px; padding-left:20px; }
+  .intro li{ margin-bottom:5px; }
+  .intro code{ font-family:var(--font-mono); font-size:12.5px; background:var(--paper-sunk); padding:1px 5px; border-radius:4px; }
+
+  .frame-label{ max-width:1180px; margin:36px auto 4px; padding:0 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); }
+  .frame-label .frame-badge{
+    display:inline-flex; align-items:center; font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:none;
+    background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line); border-radius:var(--radius-full); padding:2px 9px; margin-left:8px;
+  }
+  .frame-badge-warn{ background:var(--gold-soft); color:var(--gold-soft-ink); border-color:transparent; }
+  .frame-hint{ display:block; max-width:920px; margin:0 auto 12px; padding:0 18px; font-size:12.5px; color:var(--ink-soft); font-weight:400; text-transform:none; letter-spacing:0; line-height:1.6; }
+  .frame-wrap{ max-width:1180px; margin:0 auto 8px; padding:0 18px; display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .frame-col{ flex:1 1 320px; min-width:0; }
+  .frame-col-title{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); margin-bottom:8px; }
+
+  .demo-viewport{
+    position:relative; max-height:640px; overflow-y:auto; overflow-x:hidden;
+    border:1px solid var(--line-strong); border-radius:var(--radius-lg); background:var(--paper);
+    box-shadow:var(--shadow-sm);
+  }
+  .phone-frame{
+    position:relative; width:390px; max-width:100%; margin:0; padding:12px;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:34px; box-shadow:var(--shadow-md);
+  }
+  .phone-screen{ position:relative; background:var(--paper); border-radius:22px; overflow-y:auto; overflow-x:hidden; max-height:600px; }
+  .frame-inner{ position:relative; }
+
+  .decision-note{
+    display:flex; gap:9px; align-items:flex-start; background:var(--accent-soft); color:var(--accent-soft-ink);
+    border-radius:var(--radius-md); padding:11px 14px; margin:0 0 14px; font-size:12.5px; line-height:1.55;
+    max-width:920px; margin-left:auto; margin-right:auto;
+  }
+  .decision-note svg{ width:15px; height:15px; flex:none; margin-top:2px; }
+  .decision-note strong{ display:block; color:var(--accent-soft-ink); font-size:12.5px; margin-bottom:2px; }
+  .decision-note.is-warn{ background:var(--gold-soft); color:var(--gold-soft-ink); }
+  .decision-note.is-warn strong{ color:var(--gold-soft-ink); }
+  .decision-note.is-fix{ background:var(--jade-soft); color:var(--jade-soft-ink); }
+  .decision-note.is-fix strong{ color:var(--jade-soft-ink); }
+
+  .debug-toggle{
+    font-size:10.5px; font-weight:600; color:var(--ink-soft); background:var(--paper-sunk);
+    border:1px dashed var(--line-strong); border-radius:var(--radius-full); padding:5px 12px;
+  }
+  .debug-toggle:hover{ color:var(--ink); border-color:var(--accent); }
+
+  /* ============================= BUTTONS (ported) ============================= */
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; border-radius:var(--radius-full);
+    padding:9px 16px; font-size:13.5px; font-weight:600; background:var(--paper-raised); border-color:var(--line-strong); color:var(--ink);
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease, width .15s ease, padding .15s ease; white-space:nowrap;
+  }
+  .btn:hover{ box-shadow:var(--shadow-sm); }
+  .btn:active{ transform:scale(.97); }
+  .btn svg{ width:15px; height:15px; flex:none; }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-ghost{ background:transparent; border-color:var(--line-strong); }
+  .btn-ghost:hover{ background:var(--paper-sunk); }
+  .btn-sm{ padding:6px 12px; font-size:12.5px; }
+  .btn-block{ width:100%; justify-content:center; }
+  .btn[disabled]{ opacity:.5; pointer-events:none; }
+  .btn-icon{ width:38px; height:38px; padding:0; justify-content:center; border-radius:50%; flex:none; }
+  .btn-icon svg{ width:17px; height:17px; }
+  .icon-btn{ width:26px; height:26px; border-radius:50%; border:none; background:transparent; display:flex; align-items:center; justify-content:center; color:var(--ink-soft); flex:none; }
+  .icon-btn:hover{ background:var(--paper-sunk); color:var(--ink); }
+  .icon-btn.is-danger:hover{ background:var(--gold-soft); color:var(--gold-soft-ink); }
+  .icon-btn svg{ width:14px; height:14px; }
+  .autoplan-cta{ background:linear-gradient(135deg, var(--accent), var(--d-terra)); color:var(--accent-ink); border:none; box-shadow:var(--shadow-sm); }
+  .btn-collapsible .btn-label{ display:inline; }
+  .is-collapsed .btn-collapsible{ width:38px; height:38px; padding:0; justify-content:center; border-radius:50%; }
+  .is-collapsed .btn-collapsible .btn-label{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+  /* ============================= TOPBAR / IDENTITY (ported) ============================= */
+  .topbar{ position:sticky; top:0; z-index:30; background:var(--paper); border-bottom:1px solid var(--line); padding:18px 16px 14px; }
+  .topbar-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+  .trip-id{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+  .trip-eyebrow{ font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
+  .trip-title{ font-family:var(--font-display); font-weight:600; font-size:1.5rem; letter-spacing:.01em; }
+  .trip-sub{ font-size:12.5px; color:var(--ink-soft); }
+  .topbar-actions{ display:flex; align-items:center; gap:8px; flex:none; }
+  .sync-indicator{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-soft);
+    padding:6px 11px; border-radius:var(--radius-full); background:var(--paper-sunk); border:1px solid var(--line); white-space:nowrap;
+  }
+  .sync-dot{ width:9px; height:9px; border-radius:50%; flex:none; background:var(--jade); }
+
+  /* ============================= ROUTE STRIP (ported, base — item 4 overrides mobile-scope below) ============================= */
+  .route-strip{ display:flex; gap:0; margin:16px 0 0; padding:2px 2px 18px; overflow-x:auto; scrollbar-width:thin; }
+  .route-node{
+    flex:none; display:flex; flex-direction:column; align-items:center; gap:6px; width:104px; text-align:center;
+    background:none; border:none; padding:4px 2px 0; position:relative;
+  }
+  /* z-index:-1, not 0 — item 4's fix. See the item-4 section CSS for the full
+     painting-order explanation; the same base rule applies to every viewport,
+     desktop included, as "defense in depth" so this bug class can't recur
+     under some future layout change that puts the line back at label height. */
+  .route-node .line{ position:absolute; top:11px; left:-52px; width:104px; height:2px; background:var(--line-strong); z-index:-1; }
+  .route-node:first-child .line{ display:none; }
+  .route-dot{
+    width:10px; height:10px; border-radius:50%; background:var(--ink-soft); border:2px solid var(--paper);
+    box-shadow:0 0 0 1.5px var(--line-strong); position:relative; z-index:1;
+  }
+  .route-city{ font-size:12px; font-weight:700; }
+  .route-date{ font-size:10.5px; color:var(--ink-soft); }
+  .route-node.active .route-dot{ width:13px; height:13px; background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+  .route-node.active .route-city{ color:var(--accent); font-weight:800; }
+  .route-node.active .route-date{ color:var(--accent-soft-ink); }
+
+  /* ============================= TABS (ported) ============================= */
+  .tabbar{ position:sticky; top:var(--topbar-h,0px); z-index:29; display:flex; gap:4px; padding:8px 16px; background:var(--paper); border-bottom:1px solid var(--line); overflow-x:auto; }
+  .tab{ flex:none; display:flex; align-items:center; gap:7px; padding:9px 14px; border-radius:var(--radius-full); background:transparent; border:1px solid transparent; font-size:13.5px; font-weight:600; color:var(--ink-soft); }
+  .tab svg{ width:16px; height:16px; }
+  .tab:hover{ background:var(--paper-sunk); color:var(--ink); }
+  .tab.active{ background:var(--tab-active-bg); color:var(--tab-active-ink); }
+
+  /* ============================= PANEL / CHIP / TAG / CARD (ported) ============================= */
+  main{ padding:16px; padding-bottom:56px; }
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .panel-title{ font-family:var(--font-display); font-size:1.2rem; font-weight:600; }
+  .panel-hint{ font-size:12.5px; color:var(--ink-soft); }
+  .card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-md); box-shadow:var(--shadow-sm); }
+  .chiprow{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .chip{ padding:7px 13px; border-radius:var(--radius-full); border:1px solid var(--line-strong); background:var(--paper-raised); font-size:12.5px; font-weight:600; color:var(--ink-soft); display:inline-flex; align-items:center; gap:6px; }
+  .chip.active{ background:var(--ink); border-color:var(--ink); color:var(--paper); }
+  .chip-dot{ width:7px; height:7px; border-radius:50%; flex:none; }
+  .tag{ display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 9px; border-radius:var(--radius-full); letter-spacing:.02em; background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line); }
+  .tag.rate-missing-tag{ background:var(--gold-soft); color:var(--gold-soft-ink); border-color:transparent; }
+  .rate-missing-note{ color:var(--gold-soft-ink); font-weight:600; }
+  .field-label{ font-size:11.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; }
+  select, .text-input, .num-input, textarea.text-input{
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:8px 10px; font-size:13px; color:var(--ink); font-family:inherit;
+  }
+  textarea.text-input{ resize:vertical; min-height:56px; line-height:1.45; }
+  select{
+    appearance:none; -webkit-appearance:none; padding-right:28px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239C9184' stroke-width='2'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 8px center; background-size:14px;
+  }
+  .add-form{ display:none; margin-bottom:18px; padding:16px; }
+  .add-form.open{ display:block; }
+  .add-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+  .add-form-grid .full{ grid-column:1/-1; }
+  .add-form label{ display:block; font-size:11.5px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+  .add-form input, .add-form select, .add-form textarea{ width:100%; }
+  .add-form-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .add-form-head h4{ font-family:var(--font-display); font-size:1rem; font-weight:600; }
+  .add-form-head .tag{ background:var(--accent-soft); color:var(--accent-soft-ink); border-color:transparent; }
+  .amount-currency-field{ display:flex; gap:6px; }
+  .amount-currency-field select{ flex:0 0 112px; min-width:0; padding-left:8px; padding-right:24px; }
+  .amount-currency-field input{ flex:1; min-width:0; }
+  @media (max-width:479px){ .amount-currency-field{ flex-direction:column; } .amount-currency-field select{ flex:none; width:100%; } }
+
+  /* ============================= BUDGET summary / breakdown bars (ported) ============================= */
+  .summary-grid{ display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:14px; }
+  @media (min-width:480px) and (max-width:639px){ .summary-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media (min-width:640px){ .summary-grid{ grid-template-columns:repeat(3,1fr); } }
+  .summary-card{ padding:14px; }
+  .summary-card .label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+  .summary-card .home{ font-family:var(--font-mono); font-size:1.35rem; font-weight:700; margin-top:4px; }
+  .summary-card .summary-sub{ font-size:11.5px; color:var(--ink-soft); margin-top:3px; }
+  .cat-breakdown{ margin-bottom:18px; padding:14px 16px; }
+  .cat-row{ display:grid; grid-template-columns:96px 1fr 96px; align-items:center; gap:10px; padding:6px 0; font-size:12.5px; }
+  .cat-row .cat-label{ font-weight:600; color:var(--ink-soft); display:flex; align-items:center; gap:6px; min-width:0; }
+  .cat-row .cat-label span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cat-bar-track{ height:8px; border-radius:var(--radius-full); background:var(--paper-sunk); overflow:hidden; }
+  .cat-bar-fill{ height:100%; background:var(--jade); border-radius:var(--radius-full); transition:width .25s ease; }
+  .cat-row .cat-amt{ display:flex; flex-direction:column; align-items:flex-end; text-align:right; font-family:var(--font-mono); font-weight:600; }
+  .cat-amt-note{ font-family:var(--font-body); font-weight:600; font-size:10.5px; color:var(--ink-faint); }
+  @media (max-width:480px){ .cat-row{ grid-template-columns:88px 1fr 96px; } }
+
+  /* ============================= RATES CARD (ported — item 6's Budget-side half) =============================
+     Classes ported byte-for-byte from index.css (~L868-896): .rates-card,
+     .rates-row(-home/-status), .rates-home-field, .rates-home-hint,
+     .rates-status-text, .rates-state-dot(.state-*), .rate-chip-row/.rate-chip.
+     Item 6 only removes the home-currency <select> from .rates-home-field —
+     everything else (refresh button, status dot/text, rate chips) is
+     unchanged, so the "before" and "after" renders below reuse the same CSS,
+     differing only in what's mounted inside .rates-home-field. */
+  .rates-card{ padding:14px 16px; margin-bottom:16px; display:flex; flex-direction:column; gap:12px; }
+  .rates-row{ display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; }
+  .rates-row-home{ justify-content:space-between; }
+  .rates-home-field{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .rates-home-field select{ min-width:198px; font-weight:700; }
+  .rates-home-hint{ font-size:11.5px; color:var(--ink-faint); }
+  .rates-row-status{ justify-content:space-between; padding-top:11px; border-top:1px solid var(--line); }
+  .rates-status-text{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-soft); min-width:0; }
+  .rates-state-dot{ width:8px; height:8px; border-radius:50%; flex:none; background:var(--jade); }
+  .rate-chip-row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .rate-chip{ font-size:11px; font-family:var(--font-mono); font-weight:600; color:var(--ink-soft); background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-full); padding:4px 10px; }
+  @media (max-width:480px){ .rates-home-field select{ min-width:0; flex:1; } }
+  /* NEW this phase, item 6: the after-state's read-only home-currency line +
+     link into Settings — not a ported class, since nothing like it existed
+     before (the field used to always be an editable <select> here). */
+  .rates-home-readonly{ font-size:13px; font-weight:700; color:var(--ink); }
+  .rates-home-link{ background:none; border:none; padding:0; font:inherit; font-size:11.5px; font-weight:700; color:var(--accent); text-decoration:underline; cursor:pointer; }
+
+  /* ============================= MEMBER avatar / chip (ported base + item 8 colour ring) ============================= */
+  .member-avatar{
+    width:18px; height:18px; border-radius:50%; flex:none; display:inline-flex; align-items:center; justify-content:center;
+    background:var(--paper-sunk); border:2px solid var(--line-strong); color:var(--ink-soft);
+    font-size:9px; font-weight:800; line-height:1;
+  }
+  .member-avatar-xs{ width:14px; height:14px; font-size:7.5px; border-width:1.5px; }
+  .member-chip{
+    display:inline-flex; align-items:center; gap:7px; padding:5px 6px 5px 10px; border-radius:var(--radius-full);
+    background:var(--paper-sunk); border:1px solid var(--line); font-size:12.5px; font-weight:600;
+  }
+  .member-chip .icon-btn{ width:22px; height:22px; }
+  .member-chip .icon-btn svg{ width:12px; height:12px; }
+  .member-chip input.rename-input{
+    border:1px solid var(--accent); border-radius:6px; padding:2px 6px; font-size:12.5px; font-weight:600;
+    width:100px; background:var(--paper-raised); color:var(--ink);
+  }
+  .members-empty{
+    display:flex; align-items:center; gap:10px; padding:12px 14px; border:1.5px dashed var(--line-strong);
+    border-radius:var(--radius-md); background:var(--paper-sunk); color:var(--ink-soft); font-size:12.5px; margin:10px 0;
+  }
+  .members-empty svg{ width:18px; height:18px; opacity:.55; flex:none; }
+  .members-empty strong{ display:block; color:var(--ink); font-size:12.5px; font-weight:700; margin-bottom:1px; }
+  .add-member-form{ display:flex; gap:8px; margin-top:4px; }
+  .add-member-form input{ flex:1; min-width:0; }
+
+  /* ============================= EXPENSE LIST (ported) ============================= */
+  .expense-list{ display:flex; flex-direction:column; gap:8px; }
+  .expense{ display:flex; align-items:flex-start; gap:12px; padding:12px 14px; }
+  .expense-swatch{ width:8px; align-self:stretch; border-radius:4px; flex:none; }
+  .expense-main{ flex:1; min-width:0; }
+  .expense-label{ font-size:13.5px; font-weight:700; }
+  .expense-meta{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .expense-payer{ display:inline-flex; align-items:center; gap:4px; }
+  .expense-payer svg{ width:11px; height:11px; flex:none; }
+  .expense-payer.is-unset{ color:var(--ink-faint); }
+  .expense-amt{ flex:none; text-align:right; }
+  .expense-amt .orig{ font-family:var(--font-mono); font-weight:700; font-size:14px; }
+  .expense-amt .conv{ font-size:11px; color:var(--ink-soft); font-family:var(--font-mono); }
+  .expense-amt .conv:empty{ display:none; }
+  .paid-toggle{ flex:none; display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .switch{ position:relative; width:36px; height:21px; }
+  .switch input{ opacity:0; width:100%; height:100%; position:absolute; margin:0; }
+  .switch .track{ position:absolute; inset:0; background:var(--line-strong); border-radius:var(--radius-full); transition:.15s; pointer-events:none; }
+  .switch .thumb{ position:absolute; top:2.5px; left:2.5px; width:16px; height:16px; border-radius:50%; background:var(--paper-raised); box-shadow:var(--shadow-sm); transition:.15s; pointer-events:none; }
+  .switch input:checked + .track{ background:var(--jade); }
+  .switch input:checked + .track + .thumb{ transform:translateX(15px); }
+  .paid-label{ font-size:10px; font-weight:700; color:var(--ink-faint); }
+  .expense-actions-group{ flex:none; display:flex; flex-direction:column; gap:4px; align-self:center; }
+  .budget-empty{
+    display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; padding:32px 20px;
+    border:1.5px dashed var(--line-strong); border-radius:var(--radius-lg); background:var(--paper-sunk); margin-bottom:16px;
+  }
+  .budget-empty svg{ width:26px; height:26px; opacity:.5; }
+  .budget-empty strong{ color:var(--ink-soft); font-size:14px; }
+  .budget-empty span{ font-size:12.5px; max-width:34ch; }
+  .flash-confirm{ animation:flashConfirm 1.1s ease; }
+  @keyframes flashConfirm{ 0%{ box-shadow:0 0 0 3px var(--jade-soft); } 100%{ box-shadow:0 0 0 0 transparent; } }
+
+  /* ============================= ITEM 1 — skip-to-Add-place link (no-new-chrome a11y mitigation) ============================= */
+  /* Standard skip-link idiom: clipped off-screen at rest (same visual result
+     as .visually-hidden), but NOT that class verbatim — it needs to un-clip
+     on its own focus, which .visually-hidden alone doesn't do. Zero
+     permanent visual chrome for a sighted mouse user; the first Tab stop
+     inside the Map panel for a keyboard user. */
+  .skip-to-add{
+    position:absolute; left:8px; top:8px; z-index:100; transform:translateY(-160%);
+    background:var(--accent); color:var(--accent-ink); padding:10px 16px; border-radius:var(--radius-full);
+    font-size:13px; font-weight:700; text-decoration:none; box-shadow:var(--shadow-md);
+    transition:transform .15s ease;
+  }
+  .skip-to-add:focus-visible{ transform:translateY(0); outline:2px solid var(--paper); outline-offset:2px; }
+  @media (prefers-reduced-motion:reduce){ .skip-to-add{ transition:none; } }
+
+  /* ============================= MODAL (ported — reused verbatim for Settings and the paid-toggle payer prompt, items 6 and 11) ============================= */
+  .overlay{
+    position:fixed; inset:0; background:rgba(20,14,8,.5); backdrop-filter:blur(2px);
+    display:flex; align-items:flex-end; justify-content:center; z-index:1000; padding:0;
+  }
+  .overlay.open{ animation:overlayin .15s ease; }
+  @keyframes overlayin{ from{ opacity:0; } to{ opacity:1; } }
+  .modal{
+    background:var(--paper-raised); width:100%; max-width:620px; max-height:92vh; overflow-y:auto;
+    border-radius:var(--radius-lg) var(--radius-lg) 0 0; box-shadow:var(--shadow-lg);
+    padding:20px 18px 24px; animation:modalup .2s ease;
+  }
+  @keyframes modalup{ from{ transform:translateY(24px); opacity:0; } to{ transform:none; opacity:1; } }
+  @media (min-width:720px){ .overlay{ align-items:center; } .modal{ border-radius:var(--radius-lg); max-height:85vh; } }
+  .modal-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:6px; }
+  .modal-title{ font-family:var(--font-display); font-size:1.3rem; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .modal-title svg{ width:20px; height:20px; color:var(--accent); }
+  .modal-close{ width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--paper-sunk); border:none; flex:none; }
+  .modal-close svg{ width:14px; height:14px; }
+  .modal-intro{ font-size:13px; color:var(--ink-soft); margin-bottom:16px; max-width:52ch; }
+  /* demo-only: these two mockup modals are mounted INSIDE a .demo-viewport,
+     not the real document root, so position:fixed above would escape the
+     frame entirely — same "MOCKUP STAND-IN" reasoning already used elsewhere
+     in this file's siblings for position:sticky vs position:fixed. Real
+     production CSS is the .overlay rule above, unmodified. */
+  .demo-viewport .overlay, .phone-screen .overlay{ position:absolute; }
+
+  /* ============================= ICON SPRITE ============================= */
+</style>
+</head>
+<body>
+
+<div class="spec-bar">
+  <div><strong>Phase 6 &mdash; nav corrections, mobile legibility, Settings, expense sharing</strong> <span class="sub">&middot; mockup for ux-reviewer &middot; corrects two Phase 5 decisions (items 1, 7)</span></div>
+  <div class="spec-bar-tools">
+    <a href="#item1">1&middot; Add-place</a>
+    <a href="#item2">2&middot; Places sticky</a>
+    <a href="#item3">3&middot; Short dates</a>
+    <a href="#item4">4&middot; Route node</a>
+    <a href="#item5">5&middot; Back-to-top</a>
+    <a href="#item6">6&middot; Settings</a>
+    <a href="#item7">7&middot; By-person fix</a>
+    <a href="#item8">8&middot; Member colour</a>
+    <a href="#item911">9-11&middot; Sharing</a>
+    <button type="button" class="btn-icon" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Toggle light / dark">
+      <svg id="themeIcon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+  </div>
+</div>
+
+<svg class="visually-hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0112 2a7 7 0 017 7.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.5 8.5 0 1110 3.3 6.7 6.7 0 0020 14.2z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9M7 14l5-5 5 5"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4H6a1 1 0 00-1 1v14a1 1 0 001 1h9"/><path d="M10 12h11M17 8l4 4-4 4"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.3l9.7 17.4H2.3L12 3.3z"/><path d="M12 10v4.2"/><circle cx="12" cy="17.4" r="0.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="8" r="3"/><circle cx="16.5" cy="9" r="2.4"/><path d="M2.3 20c0-3.5 2.8-6 6.2-6s6.2 2.5 6.2 6"/><path d="M14.3 14.3c2.6.3 4.4 2.5 4.4 5.7"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.2a7.6 7.6 0 000-2.4l1.9-1.5-1.9-3.3-2.3.7a7.6 7.6 0 00-2.1-1.2L14.6 3h-5.2l-.4 2.5a7.6 7.6 0 00-2.1 1.2l-2.3-.7-1.9 3.3 1.9 1.5a7.6 7.6 0 000 2.4l-1.9 1.5 1.9 3.3 2.3-.7a7.6 7.6 0 002.1 1.2l.4 2.5h5.2l.4-2.5a7.6 7.6 0 002.1-1.2l2.3.7 1.9-3.3z"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6"/><path d="M5.5 12.5L12 6l6.5 6.5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0115.3-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15.3 6.4L3 16"/><path d="M3 21v-5h5"/></symbol>
+  </defs>
+</svg>
+
+<div class="intro">
+  <h2>What's in this file</h2>
+  <p>
+    Phase 6 comes out of real-browser use of Phase 5, which shipped without that verification step. All 11 items
+    from <code>PHASE6.md</code>, one section each, in the same order as that document's scope list. Two sections
+    are explicit <strong>corrections</strong> to Phase 5 decisions, called out in their own prose so the diff is
+    legible: item 1 restores Add-place to the panel head (Phase 5 moved it to a floating FAB, which read wrong at
+    the real map size); item 7 fixes the By-person bar's math (it currently scales against the top payer instead of
+    the trip total, unlike its sibling By-category card one row up).
+  </p>
+  <p>Toggle light/dark with the moon/sun icon in the bar above &mdash; every section below is theme-reactive. Phone frames are real ~390px renderings, scrollable like the actual device.</p>
+</div>
+
+<!-- ======================================================================= ITEM 1 ======================================================================= -->
+<h2 class="frame-label" id="item1">Item 1 &mdash; Add-place returns to the panel head; the FAB is deleted<span class="frame-badge frame-badge-warn">corrects Phase 5</span></h2>
+<span class="frame-hint">
+  Phase 5 shipped a single sticky FAB (<code>.map-add-fab-wrap</code>) after real use of the original panel-head
+  button was rejected as "too slim." In production, at the map's real size (<code>min(70vh,560px)</code>, not the
+  mockup's old 280px demo box), the FAB reads as bulky and sits awkwardly near/over the map instead of reading as
+  chrome. <strong>Fix, per the user's decision (over the reviewer's recommendation to promote it into the sticky
+  day quick-nav instead):</strong> delete <code>.map-add-fab-wrap</code> entirely and put a single "Add place"
+  button back in <code>.panel-head</code>, top-right beside the "Map" title &mdash; exactly the placement already
+  approved in <code>mockup/header-nav-hierarchy.html</code>'s <code>#v3-condense</code> frames. That file's
+  <code>mapPanelFillerHTML()</code> is the source for the markup below, unchanged.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note is-warn" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>The keyboard/AT reachability gap is knowingly re-opened, not solved.</strong>
+      Once the panel head scrolls out of view, a keyboard-only or screen-reader user has no way to reach Add-place
+      without scrolling all the way back up &mdash; the same gap <code>header-nav-hierarchy.html</code> flagged and
+      the FAB briefly worked around. <strong>This is an accepted trade-off, decided by the user</strong>: it's where
+      the button lived before, it matches the approved header mockup, and the sticky-bar alternative keeps a control
+      pinned in chrome this phase is otherwise trying to slim down. <strong>Do not "fix" this by adding a second
+      Add-place control</strong> &mdash; that recreates the exact redundancy Phase 5 item 2 existed to remove. See
+      <code>PHASE6.md</code>'s Decisions section and trap #3.
+    </div>
+  </div>
+  <div class="decision-note is-fix" style="flex-basis:100%; margin-top:-4px;">
+    <svg aria-hidden="true"><use href="#i-check"/></svg>
+    <div>
+      <strong>No-new-chrome mitigation: two identically-hidden skip links, not a second button.</strong>
+      A visually-hidden link, the first focusable thing in the Map panel, jumps focus straight to the panel-head
+      Add-place button on activation &mdash; the same well-understood "skip to content" idiom used for skip-to-main
+      links, invisible until it receives keyboard focus (<code>.skip-to-add</code> below: clipped off-screen at
+      rest, slides into view on <code>:focus-visible</code>). It adds <strong>zero</strong> permanent visual chrome
+      &mdash; a sighted mouse user never sees it exist. <strong>A second copy of the same link comes after the pin
+      list in DOM/tab order</strong> &mdash; added in review round 1 to close the gap the first round of this file
+      honestly flagged as unaddressed (round-1 ux-reviewer suggestion, non-blocking but taken). This is a tab-order
+      claim, not a spatial one: both copies share the identical <code>position:absolute; top:8px; left:8px</code>
+      placement inside the scrolling panel, so the second one doesn't visually sit down by the pins &mdash; the
+      instant it receives focus, the browser scrolls the panel back to the top to bring it into view, and it
+      appears in exactly the same spot the first one did. The saving is entirely in <em>how many Tab presses it
+      takes to reach it</em> (right after the pin list, not back at the very start), not in where it visually
+      shows up. Neither is a second <em>visible</em> Add-place affordance, so trap #3 isn't re-triggered: both are
+      inert until they receive keyboard focus, at which point they render identically (same class, same
+      clipped/reveal treatment, both jump to the one real button). <strong>Tab into the frame below and press Tab
+      once</strong> to see the first appear; tab all the way through the pin list to reach the second &mdash; watch
+      the panel scroll back to the top when it does. Try it for real, it's genuine markup, not a screenshot.
+      <p style="margin:8px 0 0;">
+        <strong>Honest limit, still not a full fix:</strong> two fixed skip-link stops help "just arrived on the
+        tab" and "just reached the bottom of today's pin list," but a user parked in the <em>middle</em> of a long
+        list still has to tab past whichever stop is nearer rather than jump from exactly where they are. A bare
+        single-letter keyboard shortcut (e.g. "a") was considered and rejected: several screen readers reserve
+        unmodified letter keys for their own browse-mode navigation (headings, landmarks, form fields), so a global
+        "a" shortcut would collide with the exact assistive technology this is meant to help. A modifier-based
+        shortcut (e.g. Alt+Shift+A) is a possible follow-up, not solved here.
+      </p>
+    </div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">Desktop / tablet</div>
+    <div class="demo-viewport" id="mount-item1-desktop" style="max-height:520px;"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile &mdash; 390px</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item1-mobile"></div></div>
+  </div>
+</div>
+
+<!-- ======================================================================= ITEM 2 ======================================================================= -->
+<h2 class="frame-label" id="item2">Item 2 &mdash; Places tab: "Add place" sticky to the top</h2>
+<span class="frame-hint">
+  Today Places' Add-place is an in-flow <code>.add-card</code> that scrolls away with everything else &mdash; Places
+  currently has zero sticky sub-bars. <strong>Fix:</strong> a slim sticky sub-bar, architecturally identical to the
+  existing <code>.it-quicknav</code> / <code>.map-day-quicknav</code> (composed off <code>--topbar-h</code>/
+  <code>--tabbar-h</code> via <code>useStickyOffsets</code>), holding a short status line + the Add-place button.
+  <strong><code>.places-filter-bar</code> (the city/status selects) deliberately stays in normal flow, non-sticky,
+  directly under this bar</strong> &mdash; making both sticky in the same pass would stack a two-select row under a
+  new sticky button, recreating the "too much fixed chrome" complaint that started this phase.
+</span>
+<div class="frame-wrap">
+  <div class="frame-col">
+    <div class="frame-col-title">Desktop / tablet &mdash; scrolled, sub-bar pinned</div>
+    <div class="demo-viewport" id="mount-item2-desktop" style="max-height:480px;"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile &mdash; 390px &mdash; scrolled</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item2-mobile"></div></div>
+  </div>
+</div>
+
+<!-- ======================================================================= ITEM 3 ======================================================================= -->
+<h2 class="frame-label" id="item3">Item 3 &mdash; Map day quick-nav: short numeric date on mobile</h2>
+<span class="frame-hint">
+  Chips today read the full <code>dayLabel</code> ("Day 2 &middot; Mon 9 Nov"), which elongates and breaks the
+  chip row at narrow widths. <strong>Fix:</strong> a new <code>fmtShortNumeric(iso)</code> in <code>lib/dates.ts</code>
+  &mdash; <code>`${d.getDate()}/${d.getMonth()+1}`</code>, no leading zeros, matching the existing
+  parse-as-local-date convention &mdash; renders "9/11", "10/11" on mobile only. <strong>Trap #4:</strong> the chip's
+  full text is today its <em>entire</em> accessible name (only the wrapping group carries an <code>aria-label</code>).
+  The full label is kept, clipped with the same <code>.visually-hidden</code> technique used everywhere else in this
+  codebase &mdash; never <code>display:none</code>'d.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Markup: two spans, one clipped, one <code>aria-hidden</code> &mdash; not two separate rules per breakpoint.</strong>
+      Every chip always renders both a <code>.chip-date-full</code> span (the complete <code>dayLabel</code> text)
+      and a <code>.chip-date-short</code> span (the numeric form), in the DOM at all times. Desktop shows the full
+      span and <code>display:none</code>'s the short one (pure decoration duplicate, so it's fine to remove outright
+      for everyone there). Below 719px that flips: the short span becomes visible and is marked
+      <code>aria-hidden="true"</code> (it's now the visual duplicate), while the full span gets the
+      <code>.visually-hidden</code> clip &mdash; present, unclipped in the accessibility tree, invisible on screen.
+      Net effect: the chip's accessible name is <strong>always</strong> the complete "Day 2 &middot; Mon 9 Nov" form,
+      on both viewports, regardless of which text is visually showing.
+    </div>
+  </div>
+  <div class="frame-col" style="flex:1 1 420px;">
+    <div class="frame-col-title">Desktop &mdash; full label visible</div>
+    <div class="card" style="padding:14px;" id="mount-item3-desktop"></div>
+  </div>
+  <div class="frame-col" style="flex:1 1 320px;">
+    <div class="frame-col-title">Mobile &mdash; 390px &mdash; short numeric visible, full label clipped</div>
+    <div class="phone-frame"><div class="phone-screen" style="padding:14px;" id="mount-item3-mobile"></div></div>
+  </div>
+  <div class="frame-col" style="flex-basis:100%;">
+    <button type="button" class="debug-toggle" onclick="inspectChipName()">Inspect: read the mobile chip's actual accessible-name text</button>
+    <span id="chipNameReadout" class="panel-hint" style="display:block; margin-top:8px;"></span>
+  </div>
+</div>
+
+<!-- ======================================================================= ITEM 4 ======================================================================= -->
+<h2 class="frame-label" id="item4">Item 4 &mdash; mobile route node: fix the strikethrough and clipped names</h2>
+<span class="frame-hint">
+  Root cause is CSS painting order, not a styling miss. Per CSS2.1's painting order, in-flow inline text (step 5)
+  paints <em>before</em> a positioned descendant at <code>z-index:0</code> (step 6) &mdash; so <code>.route-node
+  .line</code> (absolutely positioned, <code>z-index:0</code>) always paints <em>over</em> <code>.route-city</code>,
+  regardless of DOM order. Desktop never shows it because <code>top:11px</code> puts the line at dot height,
+  spatially clear of the text below; mobile's <code>flex-direction:row</code> + <code>top:50%</code> puts the line
+  dead centre through the letters. Phase 5's 74px mobile node width also left only ~59px for the label after the dot
+  and gap, hence "Zhangjiajie" clipping hard.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note is-warn" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>The fix is structural, not cosmetic &mdash; two changes, both load-bearing.</strong>
+      (1) Mobile reverts to the <strong>same stacked layout as desktop</strong> (dot above, label below,
+      <code>flex-direction:column</code>) instead of Phase 5's row layout &mdash; this alone puts the line back at
+      dot height, spatially clear of the text, same as desktop. (2) The node widens from 74px to <strong>92px</strong>
+      (within the 88&ndash;96px range <code>PHASE6.md</code> calls for), giving the label real room. <strong>On top
+      of both</strong>, the base <code>.route-node .line</code> rule changes from <code>z-index:0</code> to
+      <code>z-index:-1</code> globally (not just in a mobile override) &mdash; this moves the line into CSS2.1's
+      step 2 (negative stacking contexts), which paints <em>before</em> any in-flow content, block or inline. That
+      makes the fix hold <strong>regardless of layout</strong>: even if some future change reintroduces a row layout
+      or repositions the line, it can no longer paint over text by construction. The stacked layout fixes today's
+      bug; the <code>z-index</code> change is what stops it from being able to recur.
+    </div>
+  </div>
+  <div class="frame-col" style="flex:1 1 320px;">
+    <div class="frame-col-title">Before &mdash; Phase 5 shipped (74px, row layout, line at label height)</div>
+    <div class="phone-frame"><div class="phone-screen" style="padding:14px;" id="mount-item4-before"></div></div>
+  </div>
+  <div class="frame-col" style="flex:1 1 320px;">
+    <div class="frame-col-title">After &mdash; fixed (92px, stacked layout, line at dot height, z-index:-1)</div>
+    <div class="phone-frame"><div class="phone-screen" style="padding:14px;" id="mount-item4-after"></div></div>
+  </div>
+</div>
+
+<!-- ======================================================================= ITEM 5 ======================================================================= -->
+<h2 class="frame-label" id="item5">Item 5 &mdash; Itinerary back-to-top affordance</h2>
+<span class="frame-hint">
+  Scrolling into a city late in the trip leaves no quick way back to the top of the Itinerary tab. <strong>Fix:</strong>
+  a floating round button that appears once scrolled past a threshold and returns to the top on activation. Respects
+  <code>prefers-reduced-motion</code> (the codebase's existing <code>prefersReducedMotion()</code> pattern from
+  <code>RouteStrip.tsx</code>/<code>MapPanel.tsx</code>, reused rather than re-derived) and clears the mobile bottom
+  dock's height, same clearance math the Map save bar already uses.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Positioning: floating bottom-right, clear of the Map save bar's pattern and the bottom dock.</strong>
+      Itinerary has no sticky-bottom bar of its own today, so there's nothing on THIS tab to literally collide with
+      &mdash; but the button reuses the exact same clearance variable pattern the Map save bar already established
+      (<code>--map-save-bar-clearance</code>-style composition, here read as a general bottom-safe-area offset) so
+      that if Itinerary ever grows its own bottom bar, the two compose instead of needing a redesign. Below 719px it
+      sits above the bottom tab dock; at &ge;720px (no dock) it drops to a plain 24px inset.
+    </div>
+  </div>
+  <div class="frame-col" style="flex:1 1 420px;">
+    <div class="frame-col-title">Live &mdash; scroll down inside this frame</div>
+    <span class="scroll-readout-label" id="readout-item5" style="display:inline-flex; font-family:var(--font-mono); font-size:10.5px; font-weight:700; color:var(--ink-soft); background:var(--paper-sunk); border:1px dashed var(--line-strong); border-radius:var(--radius-full); padding:3px 10px; margin:0 0 8px;">scrollY 0px &middot; hidden</span>
+    <div class="demo-viewport" id="mount-item5" style="max-height:480px;"></div>
+  </div>
+  <div class="frame-col" style="flex:1 1 320px;">
+    <div class="frame-col-title">Mobile &mdash; 390px &mdash; pre-scrolled, button visible above the dock</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item5-mobile"></div></div>
+  </div>
+</div>
+
+<!-- ======================================================================= ITEM 6 ======================================================================= -->
+<h2 class="frame-label" id="item6">Item 6 &mdash; Settings surface, opened from a topbar gear</h2>
+<span class="frame-hint">
+  <strong>User's decision, over the reviewer's recommendation and over Phase 5's own decision</strong> (Phase 5 kept
+  companions on Budget deliberately). Overridden because the surface now earns its keep from more than companions:
+  it also absorbs home currency, theme, export/import and sign-out &mdash; directly relieving the mobile topbar
+  crowding Phase 5 item 1 only partly solved &mdash; and it removes the CRUD card that was wedged between Budget's
+  two breakdown cards (item 7 below). <strong>A modal from a gear icon, not a fifth tab</strong> &mdash; the mobile
+  bottom dock keeps exactly 4 tabs by the approved <code>header-nav-hierarchy.html</code> design.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>What moves in, what's left in the topbar.</strong>
+      Moved into Settings: Trip companions (add/rename/remove, plus the item-8 colour swatch), Home currency
+      (previously a field inside Budget's rates card), Theme, Export, Import, Sign out. Left behind in
+      <code>.topbar-actions</code>: the sync-status pill (a status, not a utility action) and the Auto-plan CTA (the
+      app's one primary cross-tab action, not a settings concern). Six buttons collapse to three elements &mdash;
+      sync pill, Auto-plan, gear &mdash; which is most of this item's mobile-crowding relief on its own, before any
+      icon-collapse is even considered.
+    </div>
+  </div>
+  <div class="decision-note" style="flex-basis:100%; margin-top:-4px;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Rates card stays on Budget, minus the Home-currency field.</strong>
+      Live exchange-rate refresh/status/chips are conversion-math housekeeping tied to whatever expenses are on
+      screen right now &mdash; a Budget-tab concern, not a settings concern &mdash; so that card stays put. It now
+      reads home currency instead of setting it ("Converting to AUD &middot; change this in Settings"), with a link
+      into Settings rather than a duplicate control.
+    </div>
+  </div>
+  <div class="frame-col-title" style="flex-basis:100%; margin:6px 0 -6px;">Desktop &mdash; topbar before / after</div>
+  <div class="frame-col">
+    <div class="frame-col-title">Before (Phase 5, ported)</div>
+    <div class="demo-viewport" id="mount-item6-topbar-before-desktop" style="max-height:180px;"></div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">After &mdash; reduced, gear added</div>
+    <div class="demo-viewport" id="mount-item6-topbar-after-desktop" style="max-height:180px;"></div>
+  </div>
+  <div class="frame-col-title" style="flex-basis:100%; margin:14px 0 -6px;">Mobile 390px &mdash; topbar before / after</div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Before (Phase 5, ported)</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item6-topbar-before-mobile"></div></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">After &mdash; reduced, gear added</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-item6-topbar-after-mobile"></div></div>
+  </div>
+  <div class="frame-col-title" style="flex-basis:100%; margin:14px 0 -6px;">Budget's rates-card, before / after &mdash; the half of this item that stays on Budget</div>
+  <span class="frame-hint" style="margin:0 0 8px;">
+    Ported <code>.rates-card</code> CSS, unchanged: <code>.rates-row-status</code> (refresh button, live status dot,
+    rate chips) is identical in both states. Only <code>.rates-home-field</code> changes &mdash; an editable
+    <code>&lt;select&gt;</code> before, a read-only value + a link into Settings after.
+  </span>
+  <div class="frame-col">
+    <div class="frame-col-title">Before (Phase 5 shape, ported)</div>
+    <div class="card rates-card" id="mount-item6-rates-before"></div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">After &mdash; home currency read-only, links to Settings</div>
+    <div class="card rates-card" id="mount-item6-rates-after"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile 390px &mdash; after</div>
+    <div class="phone-frame"><div class="phone-screen" style="padding:14px;"><div class="card rates-card" id="mount-item6-rates-after-mobile"></div></div></div>
+  </div>
+  <div class="frame-col-title" style="flex-basis:100%; margin:14px 0 -6px;">The Settings modal itself &mdash; click the gear above, or here:</div>
+  <div class="frame-col" style="flex-basis:100%;">
+    <button type="button" class="btn btn-primary btn-sm" onclick="openSettings()"><svg aria-hidden="true"><use href="#i-gear"/></svg> Open Settings</button>
+    <span class="panel-hint" style="margin-left:10px;">Bottom sheet under 720px, centred dialog at/above it &mdash; same <code>.overlay</code>/<code>.modal</code> component the rest of the app already uses.</span>
+  </div>
+  <div class="frame-col" style="flex-basis:100%; margin-top:10px;">
+    <div class="demo-viewport" id="mount-item6-settings-modal" style="max-height:640px; min-height:60px;"></div>
+  </div>
+</div>
+
+<!-- ======================================================================= ITEM 7 ======================================================================= -->
+<h2 class="frame-label" id="item7">Item 7 &mdash; fix the By-person bar's math and grouping<span class="frame-badge frame-badge-warn">corrects Phase 5</span></h2>
+<span class="frame-hint">
+  Two real defects. <strong>Math:</strong> "By category" sizes bars as <code>amount / budget.total</code> (share of
+  the whole trip). "By person" sizes them as <code>sum / byPersonMax</code> (share of the <em>top payer</em>) &mdash;
+  same visual widget one card apart, two different scales. A person covering 90% of the trip and the largest of
+  several small payers can render as an <strong>identical</strong> full-width bar. <strong>Fix:</strong>
+  <code>r.sum / budget.total * 100</code>, keeping the existing <code>Math.max(4, &hellip;)</code> legibility floor.
+  <strong>Grouping:</strong> item 6 moving companions into Settings resolves the second defect for free &mdash; By-category
+  and By-person are now adjacent, no CRUD card wedged between them. <strong>Not changed:</strong> the avatar-in-label-slot
+  and the shared jade fill &mdash; both stay exactly as documented in <code>index.css</code>.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note is-warn" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Made concrete below with two scenarios, same total trip budget.</strong>
+      Scenario A: one payer covers most of the trip. Scenario B: several payers each cover a small, similar share.
+      Under the <span class="rate-missing-note">old (buggy)</span> math both scenarios' top bar renders at the same
+      near-full width, because each is scaled against its own top payer. Under the <strong>fixed</strong> math the
+      two scenarios look visibly different, because both are scaled against the same fixed reference (the trip
+      total) &mdash; which is the entire point of a shared-scale bar chart.
+    </div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">Scenario A &mdash; one dominant payer</div>
+    <div class="card cat-breakdown" id="mount-item7-scenarioA" style="padding:14px 16px;"></div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">Scenario B &mdash; several small payers</div>
+    <div class="card cat-breakdown" id="mount-item7-scenarioB" style="padding:14px 16px;"></div>
+  </div>
+  <div class="frame-col" style="flex-basis:100%;">
+    <button type="button" class="debug-toggle" onclick="toggleByPersonMath()" id="byPersonMathBtn">Show old (buggy) math instead</button>
+  </div>
+  <div class="frame-col" style="flex-basis:100%; margin-top:10px;">
+    <div class="frame-col-title">Corrected panel grouping &mdash; By-category and By-person adjacent, no card between them</div>
+    <div class="card" style="padding:14px 16px;" id="mount-item7-grouping"></div>
+  </div>
+</div>
+
+<!-- ======================================================================= ITEM 8 ======================================================================= -->
+<h2 class="frame-label" id="item8">Item 8 &mdash; per-member colour, a constrained swatch set</h2>
+<span class="frame-hint">
+  Schema: <code>TripMember.color?: string</code>. UI: pick-one-of-6, applied to the member avatar ring and member
+  chip <strong>only</strong>. Not a free colour picker &mdash; an arbitrary user hue can't be pre-verified against
+  the <code>-soft-ink</code> rule. Hues were chosen to avoid the <code>--jade</code>/<code>--gold</code> zones and
+  avoid exact overlap with the <code>--d-*</code> day/city palette; every <code>-soft</code>/<code>-soft-ink</code>
+  pair is contrast-measured in both themes below and written up in <code>DESIGN-SYSTEM.md</code>.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>The By-person bar stays jade &mdash; this is the one rule item 8 must not break.</strong>
+      Recolouring the bar per-member would make one green mean two contradictory things in the same view: jade
+      already means "paid" everywhere else on this panel. The swatches below colour the avatar ring / chip fill
+      only; the bar demo underneath keeps its jade fill unchanged, shown side by side specifically so this isn't
+      just asserted.
+    </div>
+  </div>
+  <div class="frame-col" style="flex-basis:100%;">
+    <div class="frame-col-title">The 6 swatches &mdash; base ring colour, then the -soft/-soft-ink pair used on the chip</div>
+    <div id="mount-item8-swatches" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px;"></div>
+  </div>
+  <div class="frame-col" style="flex-basis:100%; margin-top:8px;">
+    <div class="frame-col-title">In context &mdash; companions card (avatar ring + chip use colour) vs. By-person card (bar stays jade)</div>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div class="card members-card" style="padding:14px 16px; flex:1 1 320px;" id="mount-item8-members"></div>
+      <div class="card cat-breakdown" style="padding:14px 16px; flex:1 1 320px;" id="mount-item8-byperson"></div>
+    </div>
+  </div>
+  <div class="frame-col" style="flex-basis:100%; margin-top:4px;">
+    <div class="frame-col-title">Measured contrast &mdash; -soft-ink text on -soft fill, both themes</div>
+    <div id="mount-item8-contrast"></div>
+  </div>
+</div>
+
+<!-- ======================================================================= ITEMS 9-11 ======================================================================= -->
+<h2 class="frame-label" id="item911">Items 9&ndash;11 &mdash; expense sharing: attach-to, who it covers, paid-by prompt</h2>
+<span class="frame-hint">
+  Three related schema/UI changes to the expense form and rows, demoed together since they touch the same form.
+  <strong>9:</strong> "Attach to" becomes a select of city names (or "Whole trip") &mdash; <code>Expense.dayId</code>
+  is dropped, <code>Expense.city?: string</code> added; an unresolvable/legacy value degrades to "Whole trip", never
+  throws. <strong>10:</strong> "Covers" &mdash; everyone, one person, or a subset (<code>coversMemberIds?: ID[]</code>,
+  absent = everyone). <strong>11:</strong> toggling an expense <em>to</em> paid now prompts for a payer; toggling
+  back to unpaid never prompts; the add-expense form gains an "already paid" option.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Judgement call: the empty-<code>coversMemberIds</code> ambiguity is resolved by the interaction, not by render logic.</strong>
+      <code>PHASE6.md</code> flags an explicit empty array as "meaningful-but-degenerate" and asks for a documented
+      choice. This mockup's Covers control makes an explicit empty array <strong>unreachable</strong>: deselecting
+      the last remaining member snaps the control straight back to "Everyone" mode (which writes <code>undefined</code>,
+      not <code>[]</code>). That normalises the ambiguity away at the interaction layer instead of adding a
+      special case to every reader of <code>coversMemberIds</code>. Flagging this for the reviewer specifically
+      because it's a judgement call, not a spec requirement &mdash; the alternative (treat <code>[]</code> as
+      "everyone" in render logic, and allow it to exist) is equally defensible and touches fewer interaction states.
+    </div>
+  </div>
+  <div class="decision-note" style="flex-basis:100%; margin-top:-4px;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Paid-toggle prompt reuses the Settings modal's component, not a new pattern</strong> &mdash; a compact
+      <code>.overlay</code>/<code>.modal</code> asking "Who paid?" with one tap per member, plus "Mark paid without a
+      payer". Toggling to <strong>unpaid</strong> never opens it. With <strong>zero members defined</strong> (trap
+      #8), toggling on skips the prompt entirely and marks paid with no payer &mdash; there's nothing to pick, so
+      nothing is asked.
+    </div>
+  </div>
+  <div class="frame-col" style="flex-basis:100%;">
+    <div class="frame-col-title">Interactive &mdash; try it: edit an expense's Attach-to/Covers, add a new one with "already paid" checked, toggle paid on an unpaid row</div>
+    <div class="demo-viewport" id="mount-item911" style="max-height:720px;"></div>
+  </div>
+  <div class="frame-col" style="flex-basis:100%; margin-top:6px;">
+    <button type="button" class="debug-toggle" onclick="toggleZeroMembersDemo()">Preview: zero companions defined (paid-toggle skips the prompt)</button>
+  </div>
+</div>
+
+<!-- ======================================================================= CLOSING ======================================================================= -->
+<div class="intro" style="margin-top:20px; margin-bottom:60px;">
+  <h2>Open questions / judgement calls for the reviewer</h2>
+  <ul>
+    <li><strong>Item 1</strong>: now two skip links (top and after the pin list, added in review round 1) instead of one &mdash; covers "just arrived" and "reached the bottom of the list", but not "parked in the middle of a long list". Is that remaining gap acceptable, or does it need a third stop / a different mechanism?</li>
+    <li><strong>Item 4</strong>: 92px was picked as the middle of the 88&ndash;96px range <code>PHASE6.md</code> gives &mdash; worth checking against the longest real city name ("Zhangjiajie", 11 characters) at the actual mobile font stack, not just this mockup's rendering.</li>
+    <li><strong>Item 6</strong>: rates-card keeps live refresh/status/chips on Budget while Home currency itself moves to Settings &mdash; splitting one card's contents across two surfaces. Reasonable given refresh/chips are conversion-math housekeeping rather than a settings concern, but worth a second opinion.</li>
+    <li><strong>Item 8</strong>: <code>--m-sand</code>'s hue angle (40&deg;) sits inside the excluded gold band, justified only by its much lower saturation reading as neutral rather than amber &mdash; see the swatch grid and the <code>DESIGN-SYSTEM.md</code> writeup's own flagging of this as the one deliberate exception.</li>
+    <li><strong>Items 9&ndash;11</strong>: the empty-<code>coversMemberIds</code> resolution (interaction-level, not render-level) is a judgement call, not a spec requirement &mdash; see that section's decision-note.</li>
+  </ul>
+</div>
+
+<script>
+  // ============================= shared helpers =============================
+  function toggleTheme(){
+    var root = document.documentElement;
+    var current = root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var next = current === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    document.getElementById('themeIcon').innerHTML = '<use href="#i-' + (next === 'dark' ? 'sun' : 'moon') + '"/>';
+  }
+  // Mirrors the codebase's existing prefersReducedMotion() helper
+  // (RouteStrip.tsx / MapPanel.tsx) rather than re-deriving it — item 5 reuses
+  // this for the back-to-top scroll behaviour.
+  function prefersReducedMotion(){
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  function mount(id, html){ var el = document.getElementById(id); if(el) el.innerHTML = html; }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+  // New in lib/dates.ts — day/month numeric, no leading zeros, same
+  // parse-as-local-date convention as the rest of that file.
+  function fmtShortNumeric(y,m,d){ return d + '/' + m; }
+
+  var MEMBER_COLORS = [
+    { id:'m-chartreuse', name:'Chartreuse' },
+    { id:'m-denim', name:'Denim' },
+    { id:'m-periwinkle', name:'Periwinkle' },
+    { id:'m-orchid', name:'Orchid' },
+    { id:'m-berry', name:'Berry' },
+    { id:'m-sand', name:'Sand' },
+  ];
+
+  function memberAvatarHTML(name, color, size){
+    var initial = (name || '?').trim().charAt(0).toUpperCase();
+    var ringStyle = color ? ' style="border-color:var(--' + color + ')"' : '';
+    return '<span class="member-avatar' + (size ? ' member-avatar-' + size : '') + '"' + ringStyle + ' aria-hidden="true">' + initial + '</span>';
+  }
+
+  // ============================= ITEM 1 — panel-head Add-place + skip link =============================
+  function item1PanelHTML(idPrefix){
+    return '' +
+      '<a class="skip-to-add" href="#' + idPrefix + '-add-btn">Skip to Add place</a>' +
+      '<div style="padding:16px;">' +
+        '<div class="panel-head">' +
+          '<div><h2 class="panel-title">Map</h2><span class="panel-hint">Your home screen &middot; tap a city in the timeline to change what&rsquo;s shown</span></div>' +
+          '<button type="button" id="' + idPrefix + '-add-btn" class="btn btn-primary btn-sm"><svg aria-hidden="true"><use href="#i-plus"/></svg> Add place</button>' +
+        '</div>' +
+        '<div class="chiprow"><span class="chip active">All days</span><span class="chip">Day 2 &middot; Mon</span><span class="chip">Day 3 &middot; Tue</span></div>' +
+        '<div style="height:260px;border-radius:var(--radius-lg);border:1px solid var(--line);background:var(--paper-sunk);display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:12.5px;margin-bottom:16px;">Map area (placeholder)</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;">' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">The Bund</strong><span style="font-size:11.5px;color:var(--ink-soft);">Landmark &middot; Day 2</span></div>' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">Yu Garden</strong><span style="font-size:11.5px;color:var(--ink-soft);">Garden &middot; Day 3</span></div>' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">Shanghai Museum</strong><span style="font-size:11.5px;color:var(--ink-soft);">Museum &middot; Day 3</span></div>' +
+        '</div>' +
+        // Second identically-hidden skip link, after the pin list — closes
+        // the "already scrolled deep" half of the gap the first skip link
+        // (top of panel) honestly couldn't reach. Same .skip-to-add clip/
+        // reveal-on-focus treatment, so it costs zero additional visible
+        // chrome and is NOT a second Add-place control (PHASE6.md trap #3
+        // forbids a second visible affordance — a hidden skip-link isn't
+        // one). Coordinator-relayed ux-review suggestion, round 1.
+        '<a class="skip-to-add" href="#' + idPrefix + '-add-btn">Back to Add place</a>' +
+      '</div>';
+  }
+  mount('mount-item1-desktop', item1PanelHTML('i1d'));
+  mount('mount-item1-mobile', item1PanelHTML('i1m'));
+
+  // ============================= ITEM 2 — Places sticky Add-place sub-bar =============================
+  // top:calc(var(--topbar-h,0px) + var(--tabbar-h,0px)) — the SAME composed
+  // expression `.it-quicknav` (index.css ~L774) and `.map-day-quicknav`
+  // (index.css ~L1445) already use, not a bare `top:0`. In THIS isolated demo
+  // frame those custom properties are never set by useStickyOffsets, so they
+  // resolve to their `0px` fallback and the bar sticks to the frame's own
+  // top edge — that's a property of the demo, not the real value. Shipping
+  // `top:0` verbatim (as the frame would render either way) would place the
+  // real bar UNDER the real sticky topbar+tabbar instead of below them —
+  // exactly the Phase 5 FAB failure mode (mockup box dimensions/behaviour
+  // silently diverging from production). Composing off the measured vars
+  // here, even though they're inert in isolation, is what keeps a verbatim
+  // port correct once mounted inside the real app shell.
+  var placesAddQuicknavCSS = '' +
+    '<style>' +
+      '.places-add-quicknav{ position:sticky; top:calc(var(--topbar-h,0px) + var(--tabbar-h,0px)); z-index:27; display:flex; align-items:center; justify-content:space-between; gap:10px;' +
+        'background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-md); padding:10px 10px 10px 14px; margin:0 0 14px; }' +
+      '.places-add-quicknav span{ font-size:12.5px; font-weight:600; color:var(--ink-soft); }' +
+      '.places-filter-bar-demo{ display:flex; gap:8px; margin-bottom:14px; }' +
+      '.places-filter-bar-demo select{ flex:1; }' +
+    '</style>';
+  function item2PanelHTML(){
+    return placesAddQuicknavCSS +
+      '<div style="padding:16px;">' +
+        '<div class="panel-head"><h2 class="panel-title">Places</h2><span class="panel-hint">14 saved &middot; 5 wishlist</span></div>' +
+        '<div class="places-add-quicknav"><span>14 places across 4 cities</span><button type="button" class="btn btn-primary btn-sm"><svg aria-hidden="true"><use href="#i-plus"/></svg> Add place</button></div>' +
+        '<div class="places-filter-bar-demo"><select aria-label="Filter by city"><option>All cities</option><option>Shanghai</option><option>Xi&rsquo;an</option></select><select aria-label="Filter by status"><option>All</option><option>Wishlist</option><option>Planned</option></select></div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;">' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">The Bund</strong><span style="font-size:11.5px;color:var(--ink-soft);">Landmark &middot; Shanghai</span></div>' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">Yu Garden</strong><span style="font-size:11.5px;color:var(--ink-soft);">Garden &middot; Shanghai</span></div>' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">Terracotta Army</strong><span style="font-size:11.5px;color:var(--ink-soft);">Museum &middot; Xi&rsquo;an</span></div>' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">Muslim Quarter</strong><span style="font-size:11.5px;color:var(--ink-soft);">Food &middot; Xi&rsquo;an</span></div>' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">Big Wild Goose Pagoda</strong><span style="font-size:11.5px;color:var(--ink-soft);">Landmark &middot; Xi&rsquo;an</span></div>' +
+          '<div class="card" style="padding:11px 13px;"><strong style="display:block;font-size:13.5px;">Huanglong scenic area</strong><span style="font-size:11.5px;color:var(--ink-soft);">Nature &middot; Chengdu</span></div>' +
+        '</div>' +
+      '</div>';
+  }
+  mount('mount-item2-desktop', item2PanelHTML());
+  mount('mount-item2-mobile', item2PanelHTML());
+  // pre-scroll both demo boxes so the sticky sub-bar's pinned state is what's shown on load
+  ['mount-item2-desktop','mount-item2-mobile'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) requestAnimationFrame(function(){ el.scrollTop = 90; });
+  });
+
+  // ============================= ITEM 3 — short-date day chips =============================
+  var DAY_CHIPS_DEMO = [
+    { full:'All days', short:null, color:null, active:true },
+    { full:'Day 2 · Mon 9 Nov', short:'9/11', color:'var(--d-blue)' },
+    { full:'Day 3 · Tue 10 Nov', short:'10/11', color:'var(--d-amber)' },
+    { full:'Day 4 · Wed 11 Nov', short:'11/11', color:'var(--d-moss)' },
+    { full:'Unassigned', short:null, color:null },
+  ];
+  function dayChipsHTML(mobile){
+    var html = '<div class="chiprow" aria-label="Filter pins by day" style="margin-bottom:0;">';
+    DAY_CHIPS_DEMO.forEach(function(c){
+      var dot = c.color ? '<span class="chip-dot" style="background:' + c.color + '" aria-hidden="true"></span>' : '';
+      var inner;
+      if(!c.short){
+        inner = '<span>' + c.full + '</span>';
+      } else if(mobile){
+        inner = '<span class="visually-hidden">' + c.full + '</span><span aria-hidden="true">' + c.short + '</span>';
+      } else {
+        inner = '<span>' + c.full + '</span><span aria-hidden="true" style="display:none">' + c.short + '</span>';
+      }
+      html += '<button type="button" class="chip' + (c.active ? ' active' : '') + '">' + dot + inner + '</button>';
+    });
+    return html + '</div>';
+  }
+  mount('mount-item3-desktop', dayChipsHTML(false));
+  mount('mount-item3-mobile', dayChipsHTML(true));
+  function inspectChipName(){
+    var wrap = document.getElementById('mount-item3-mobile');
+    var chip = wrap.querySelectorAll('.chip')[1];
+    // Approximates what an accessibility tree reads as the accessible name:
+    // all text content, including .visually-hidden spans (clipped, not
+    // display:none — still text content), excluding aria-hidden ones.
+    var parts = [];
+    chip.childNodes.forEach(function(n){
+      if(n.nodeType === 1 && n.getAttribute('aria-hidden') === 'true') return;
+      parts.push(n.textContent);
+    });
+    document.getElementById('chipNameReadout').textContent =
+      'Accessible name of the 2nd chip (mobile view): "' + parts.join('').trim() + '" — the full label, not "9/11".';
+  }
+
+  // ============================= ITEM 4 — mobile route node fix =============================
+  var routeNodeCSS = '' +
+    '<style>' +
+      '.rn-strip{ display:flex; gap:0; padding:2px 2px 10px; overflow-x:auto; }' +
+      /* BEFORE — Phase 5 shipped: 74px, row layout, line at 50% (label height) */
+      '.rn-node-before{ flex:none; display:flex; flex-direction:row; align-items:center; gap:5px; width:74px; padding:6px 2px; position:relative; text-align:center; }' +
+      '.rn-node-before .rn-line{ position:absolute; top:50%; left:-37px; width:74px; height:2px; background:var(--line-strong); z-index:0; }' +
+      '.rn-node-before:first-child .rn-line{ display:none; }' +
+      '.rn-node-before .rn-dot{ width:10px; height:10px; border-radius:50%; background:var(--accent); border:2px solid var(--paper); box-shadow:0 0 0 1.5px var(--accent-soft); position:relative; z-index:1; flex:none; }' +
+      '.rn-node-before .rn-city{ font-size:11.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; position:relative; }' +
+      /* AFTER — fixed: 92px, stacked layout (matches desktop), line z-index:-1 */
+      '.rn-node-after{ flex:none; display:flex; flex-direction:column; align-items:center; gap:6px; width:92px; padding:4px 2px 0; position:relative; text-align:center; }' +
+      '.rn-node-after .rn-line{ position:absolute; top:11px; left:-46px; width:92px; height:2px; background:var(--line-strong); z-index:-1; }' +
+      '.rn-node-after:first-child .rn-line{ display:none; }' +
+      '.rn-node-after .rn-dot{ width:10px; height:10px; border-radius:50%; background:var(--accent); border:2px solid var(--paper); box-shadow:0 0 0 1.5px var(--accent-soft); position:relative; z-index:1; flex:none; }' +
+      /* 11.5px, matching index.css's real mobile rule verbatim
+         (@media(max-width:719px) .route-city{font-size:11.5px}, ~L294) —
+         NOT the 12px base/desktop size. An earlier draft of this demo used
+         12px, which happened to still fit "Zhangjiajie" in this box but
+         quietly diverged from the value it's meant to validate; matching it
+         exactly means this demo's fit is the real one, not a more generous
+         stand-in. (ux-review round 1, minor #4.) */
+      '.rn-node-after .rn-city{ font-size:11.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }' +
+    '</style>';
+  var ROUTE_CITIES = ['Shanghai','Xi’an','Chengdu','Zhangjiajie'];
+  function routeNodeBeforeHTML(){
+    var html = routeNodeCSS + '<div class="rn-strip">';
+    ROUTE_CITIES.forEach(function(city){
+      html += '<button type="button" class="rn-node-before"><span class="rn-line"></span><span class="rn-dot"></span><span class="rn-city">' + city + '</span></button>';
+    });
+    return html + '</div><p class="panel-hint" style="margin-top:4px;">Notice the line strikes through every city name, and "Zhangjiajie" is clipped hardest.</p>';
+  }
+  function routeNodeAfterHTML(){
+    var html = routeNodeCSS + '<div class="rn-strip">';
+    ROUTE_CITIES.forEach(function(city){
+      html += '<button type="button" class="rn-node-after"><span class="rn-line"></span><span class="rn-dot"></span><span class="rn-city">' + city + '</span></button>';
+    });
+    return html + '</div><p class="panel-hint" style="margin-top:4px;">Line sits at dot height (spatially clear) AND is z-index:-1 (structurally clear) &mdash; both, per the decision-note above.</p>';
+  }
+  mount('mount-item4-before', routeNodeBeforeHTML());
+  mount('mount-item4-after', routeNodeAfterHTML());
+
+  // ============================= ITEM 5 — back-to-top =============================
+  var backToTopCSS = '' +
+    '<style>' +
+      '.it-day-block{ padding:14px 16px; border:1px solid var(--line); border-radius:var(--radius-md); background:var(--paper-raised); margin-bottom:12px; }' +
+      '.it-day-block h3{ font-family:var(--font-display); font-size:1rem; margin-bottom:6px; }' +
+      /* position:sticky is a MOCKUP STAND-IN — this preview lives inside its
+         own scroll container (.demo-viewport / .phone-screen), so a real
+         position:fixed here would escape the illustration and pin to the
+         actual browser viewport, same reasoning documented elsewhere in this
+         file's siblings for the Map save bar / bottom dock. Real production
+         CSS is position:fixed relative to the true device viewport. */
+      '.back-to-top-demo{ position:sticky; float:right; right:12px; bottom:16px; margin-top:-52px; margin-right:4px;' +
+        'width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;' +
+        'background:var(--paper-raised); border:1px solid var(--line-strong); box-shadow:var(--shadow-md); color:var(--ink-soft);' +
+        'opacity:0; transform:translateY(8px); pointer-events:none; transition:opacity .18s ease, transform .18s ease; z-index:20; }' +
+      '.back-to-top-demo.visible{ opacity:1; transform:none; pointer-events:auto; }' +
+      '@media (prefers-reduced-motion:reduce){ .back-to-top-demo{ transition:none; } }' +
+    '</style>';
+  function itineraryFillerHTML(withDock){
+    var html = backToTopCSS + '<div style="padding:16px;' + (withDock ? 'padding-bottom:80px;' : '') + '">' +
+      '<div class="panel-head"><h2 class="panel-title">Itinerary</h2><span class="panel-hint">9&ndash;20 Nov &middot; 4 cities</span></div>';
+    var cities = ['Shanghai','Xi’an','Chengdu','Zhangjiajie'];
+    for(var c=0;c<cities.length;c++){
+      for(var d=1;d<=3;d++){
+        html += '<div class="it-day-block"><h3>' + cities[c] + ' &middot; Day ' + d + '</h3><p class="panel-hint">Morning: sightseeing &middot; Afternoon: local food &middot; Evening: free time</p></div>';
+      }
+    }
+    html += '<button type="button" class="back-to-top-demo" aria-label="Back to top" title="Back to top"><svg aria-hidden="true"><use href="#i-arrow-up"/></svg></button>' +
+      '</div>';
+    return html;
+  }
+  mount('mount-item5', itineraryFillerHTML(false));
+  mount('mount-item5-mobile', itineraryFillerHTML(true));
+  function wireBackToTop(scrollElId, btnSelector, readoutId){
+    var scrollEl = document.getElementById(scrollElId);
+    if(!scrollEl) return;
+    var btn = scrollEl.querySelector(btnSelector);
+    var threshold = 220;
+    function update(){
+      var y = scrollEl.scrollTop;
+      if(btn) btn.classList.toggle('visible', y > threshold);
+      var readout = readoutId && document.getElementById(readoutId);
+      if(readout) readout.textContent = 'scrollY ' + Math.round(y) + 'px · ' + (y > threshold ? 'visible' : 'hidden');
+    }
+    scrollEl.addEventListener('scroll', update, { passive:true });
+    if(btn) btn.addEventListener('click', function(){
+      scrollEl.scrollTo({ top:0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    });
+    update();
+  }
+  wireBackToTop('mount-item5', '.back-to-top-demo', 'readout-item5');
+  wireBackToTop('mount-item5-mobile', '.back-to-top-demo', null);
+  requestAnimationFrame(function(){ var el = document.getElementById('mount-item5-mobile'); if(el) el.scrollTop = 260; });
+
+  // ============================= ITEM 6 — Settings modal + reduced topbar =============================
+  function topbarBeforeHTML(collapsed){
+    return '' +
+      '<header class="topbar" style="position:static;">' +
+        '<div class="topbar-row">' +
+          '<div class="trip-id"><span class="trip-eyebrow">Personal trip &middot; from Sydney</span><h1 class="trip-title" style="font-size:1.2rem;">China 2026</h1><span class="trip-sub">9&ndash;20 Nov &middot; 4 legs</span></div>' +
+          '<div class="topbar-actions' + (collapsed ? ' is-collapsed' : '') + '">' +
+            '<button class="btn btn-ghost btn-sm btn-collapsible" title="Export"><svg aria-hidden="true"><use href="#i-download"/></svg> <span class="btn-label">Export</span></button>' +
+            '<button class="btn btn-ghost btn-sm btn-collapsible" title="Import"><svg aria-hidden="true"><use href="#i-upload"/></svg> <span class="btn-label">Import</span></button>' +
+            '<span class="sync-indicator"><span class="sync-dot" aria-hidden="true"></span>Synced</span>' +
+            '<button class="btn btn-ghost btn-icon" aria-label="Toggle theme"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>' +
+            '<button class="btn autoplan-cta btn-collapsible"><svg aria-hidden="true"><use href="#i-sparkle"/></svg> <span class="btn-label">Auto-plan</span></button>' +
+            '<button class="btn btn-ghost btn-sm btn-collapsible" title="Sign out"><svg aria-hidden="true"><use href="#i-logout"/></svg> <span class="btn-label">Sign out</span></button>' +
+          '</div>' +
+        '</div>' +
+      '</header>';
+  }
+  function topbarAfterHTML(collapsed){
+    return '' +
+      '<header class="topbar" style="position:static;">' +
+        '<div class="topbar-row">' +
+          '<div class="trip-id"><span class="trip-eyebrow">Personal trip &middot; from Sydney</span><h1 class="trip-title" style="font-size:1.2rem;">China 2026</h1><span class="trip-sub">9&ndash;20 Nov &middot; 4 legs</span></div>' +
+          '<div class="topbar-actions' + (collapsed ? ' is-collapsed' : '') + '">' +
+            '<span class="sync-indicator"><span class="sync-dot" aria-hidden="true"></span>Synced</span>' +
+            '<button class="btn autoplan-cta btn-collapsible"><svg aria-hidden="true"><use href="#i-sparkle"/></svg> <span class="btn-label">Auto-plan</span></button>' +
+            '<button class="btn btn-ghost btn-icon" aria-label="Settings" title="Settings" onclick="openSettings()"><svg aria-hidden="true"><use href="#i-gear"/></svg></button>' +
+          '</div>' +
+        '</div>' +
+      '</header>';
+  }
+  mount('mount-item6-topbar-before-desktop', topbarBeforeHTML(false));
+  mount('mount-item6-topbar-after-desktop', topbarAfterHTML(false));
+  mount('mount-item6-topbar-before-mobile', topbarBeforeHTML(true));
+  mount('mount-item6-topbar-after-mobile', topbarAfterHTML(true));
+
+  // The status row (refresh button, live dot, rate chips) is IDENTICAL
+  // between before/after — only .rates-home-field's content changes. Shared
+  // here rather than duplicated per state, so the two can't drift apart.
+  function ratesStatusRowHTML(){
+    return '' +
+      '<div class="rates-row rates-row-status">' +
+        '<div class="rates-status-text"><span class="rates-state-dot state-fresh" aria-hidden="true"></span><span>Rates updated 2 hours ago</span></div>' +
+        '<button type="button" class="btn btn-ghost btn-sm rates-refresh-btn"><svg aria-hidden="true"><use href="#i-refresh"/></svg> Refresh rates</button>' +
+      '</div>' +
+      '<div class="rate-chip-row" aria-label="Current exchange rates used for conversion">' +
+        '<span class="rate-chip">1 CNY &asymp; A$0.21</span><span class="rate-chip">1 SGD &asymp; A$1.12</span><span class="rate-chip">1 USD &asymp; A$1.52</span>' +
+      '</div>';
+  }
+  function ratesCardBeforeHTML(){
+    return '' +
+      '<div class="rates-row rates-row-home">' +
+        '<div class="rates-home-field"><span class="field-label">Home currency</span>' +
+          '<select aria-label="Home currency — all totals convert to this"><option>AUD &middot; Australian Dollar</option><option>USD &middot; US Dollar</option><option>SGD &middot; Singapore Dollar</option><option>CNY &middot; Chinese Yuan</option></select>' +
+        '</div>' +
+        '<span class="rates-home-hint">Summary, categories &amp; totals below all convert to this.</span>' +
+      '</div>' +
+      ratesStatusRowHTML();
+  }
+  function ratesCardAfterHTML(){
+    return '' +
+      '<div class="rates-row rates-row-home">' +
+        '<div class="rates-home-field"><span class="field-label">Home currency</span>' +
+          '<span class="rates-home-readonly">AUD &middot; Australian Dollar</span>' +
+          '<button type="button" class="rates-home-link" onclick="openSettings()">Change in Settings</button>' +
+        '</div>' +
+        '<span class="rates-home-hint">Summary, categories &amp; totals below all convert to this.</span>' +
+      '</div>' +
+      ratesStatusRowHTML();
+  }
+  mount('mount-item6-rates-before', ratesCardBeforeHTML());
+  mount('mount-item6-rates-after', ratesCardAfterHTML());
+  mount('mount-item6-rates-after-mobile', ratesCardAfterHTML());
+
+  var settingsMembers = [
+    { id:'m1', name:'Alex', color:'m-denim' },
+    { id:'m2', name:'Priya', color:'m-berry' },
+    { id:'m3', name:'Sam', color:'m-chartreuse' },
+  ];
+  function settingsMemberChipHTML(m){
+    // Three controls, not two: rename and remove are the pre-existing
+    // members-card pattern (unchanged), plus ONE new addition for item 8 — a
+    // small coloured-dot button that opens the swatch picker. Deliberately
+    // NOT repurposing the rename icon for this: the edit icon means "rename"
+    // everywhere else this chip pattern appears (Budget's old members-card),
+    // so reusing it for a different action here would be a silent meaning
+    // change to an established control, not just a new one.
+    return '<span class="member-chip" data-id="' + m.id + '">' + memberAvatarHTML(m.name, m.color) +
+      '<span class="member-name">' + m.name + '</span>' +
+      '<button type="button" class="icon-btn colour-trigger-btn" aria-label="Choose colour for ' + m.name + '" title="Choose colour" onclick="toggleColourPicker(this)">' +
+        '<span aria-hidden="true" style="display:block;width:12px;height:12px;border-radius:50%;background:var(--' + (m.color || 'ink-faint') + ');"></span>' +
+      '</button>' +
+      '<button type="button" class="icon-btn" aria-label="Rename ' + m.name + '" onclick="startRenameSettings(this,\'' + m.id + '\')"><svg aria-hidden="true"><use href="#i-edit"/></svg></button>' +
+      '<button type="button" class="icon-btn is-danger" aria-label="Remove ' + m.name + '" onclick="removeSettingsMember(\'' + m.id + '\')"><svg aria-hidden="true"><use href="#i-trash"/></svg></button>' +
+    '</span>';
+  }
+  // aria-checked is REQUIRED state for role="radio" (ux-review round 1,
+  // major #1) — it's how a screen reader announces which swatch is
+  // currently selected, not optional decoration. Computed fresh every render
+  // from the member's actual `color`, not toggled by hand, so it can never
+  // drift out of sync with what's visually shown (the ring below does the
+  // same "computed from real state" thing for sighted users).
+  function colourPickerRowHTML(memberId, currentColor){
+    var html = '<div class="colour-picker-row" role="radiogroup" aria-label="Choose a colour" style="display:none; gap:6px; margin:6px 0 2px; padding-left:4px;">';
+    MEMBER_COLORS.forEach(function(c){
+      var checked = c.id === currentColor;
+      html += '<button type="button" role="radio" aria-checked="' + checked + '" class="colour-swatch-btn" data-member="' + memberId + '" data-color="' + c.id + '" aria-label="' + c.name + '" title="' + c.name + '" ' +
+        'style="width:22px;height:22px;border-radius:50%;border:2px solid ' + (checked ? 'var(--ink)' : 'var(--line-strong)') + ';background:var(--' + c.id + ');' + (checked ? 'box-shadow:0 0 0 2px var(--paper-raised), 0 0 0 4px var(--ink);' : '') + '" onclick="pickColour(this)"></button>';
+    });
+    return html + '</div>';
+  }
+  function renderSettingsMembers(){
+    var list = document.getElementById('settingsMembersList');
+    if(!list) return;
+    var html = '';
+    settingsMembers.forEach(function(m){
+      html += '<div>' + settingsMemberChipHTML(m) + colourPickerRowHTML(m.id, m.color) + '</div>';
+    });
+    list.innerHTML = html;
+  }
+  function toggleColourPicker(btn){
+    var row = btn.closest('div').querySelector('.colour-picker-row');
+    var open = row.style.display !== 'none';
+    document.querySelectorAll('.colour-picker-row').forEach(function(r){ r.style.display = 'none'; });
+    row.style.display = open ? 'none' : 'flex';
+  }
+  // Explicit focus decision (ux-review round 2, should-fix #1): picking a
+  // swatch closes the picker (colourPickerRowHTML always renders it back to
+  // `display:none` by default), so the picker's OWN trigger is where focus
+  // goes — the standard disclosure-widget contract ("closing a popover
+  // returns focus to whatever opened it"), not "onto the swatch just
+  // clicked" (that swatch is about to be hidden along with the rest of the
+  // row, so focusing it would just be a stop on the way to nowhere).
+  // `renderSettingsMembers()` rebuilds every chip via `innerHTML =`, which
+  // destroys the very button the click came from — so this restoration is
+  // NOT something the DOM gives you for free; it has to be done by hand, in
+  // the same tick, or focus silently falls back to <body>. This is the same
+  // class of bug as Phase 5's rename/Escape-blur issue and AuthGate's
+  // re-gating bug: state that destroys a focused node without a deliberate
+  // decision about where focus lands next. It may or may not reproduce in
+  // the real React component (the reconciler often preserves focus when
+  // keys/positions are stable) — that ambiguity is exactly why intent is
+  // spelled out here instead of left implicit.
+  function pickColour(btn){
+    var memberId = btn.dataset.member;
+    var color = btn.dataset.color;
+    settingsMembers.forEach(function(m){ if(m.id === memberId) m.color = color; });
+    renderSettingsMembers();
+    var trigger = document.querySelector('.member-chip[data-id="' + memberId + '"] .colour-trigger-btn');
+    if(trigger) trigger.focus();
+  }
+  function startRenameSettings(btn, id){
+    var chip = btn.closest('.member-chip');
+    var nameEl = chip.querySelector('.member-name');
+    var current = nameEl.textContent;
+    var input = document.createElement('input');
+    input.type = 'text'; input.className = 'rename-input'; input.value = current;
+    input.setAttribute('aria-label', 'Rename companion');
+    nameEl.replaceWith(input);
+    input.focus(); input.select();
+    function commit(){
+      var val = input.value.trim() || current;
+      settingsMembers.forEach(function(m){ if(m.id === id) m.name = val; });
+      renderSettingsMembers();
+    }
+    input.addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter'){ commit(); }
+      if(ev.key === 'Escape'){ renderSettingsMembers(); }
+    });
+    input.addEventListener('blur', commit);
+  }
+  function removeSettingsMember(id){
+    settingsMembers = settingsMembers.filter(function(m){ return m.id !== id; });
+    renderSettingsMembers();
+  }
+  function addSettingsMember(ev, formEl){
+    ev.preventDefault();
+    var input = formEl.querySelector('input');
+    var val = input.value.trim();
+    if(val){
+      settingsMembers.push({ id: uid911('sm'), name: val, color: MEMBER_COLORS[settingsMembers.length % MEMBER_COLORS.length].id });
+      input.value = '';
+      renderSettingsMembers();
+    }
+    return false;
+  }
+
+  function settingsModalHTML(){
+    return '' +
+      '<div class="overlay open" id="settingsOverlay" onclick="if(event.target===this) closeSettings()">' +
+        '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">' +
+          '<div class="modal-head">' +
+            '<h2 class="modal-title" id="settingsTitle"><svg aria-hidden="true"><use href="#i-gear"/></svg> Settings</h2>' +
+            '<button type="button" class="modal-close" aria-label="Close" onclick="closeSettings()"><svg aria-hidden="true"><use href="#i-close"/></svg></button>' +
+          '</div>' +
+          '<p class="modal-intro">Trip companions, home currency, theme and data &mdash; moved here from Budget and the topbar so both stay focused. (Mockup note: this demo\'s companion list is a separate instance from the items 9&ndash;11 expense-form demo further down the page &mdash; in the real app there is exactly one <code>trip.members</code> array shared everywhere.)</p>' +
+
+          '<div class="field-label" style="margin-bottom:8px;">Trip companions</div>' +
+          '<div id="settingsMembersList" style="display:flex; flex-direction:column; gap:2px; margin-bottom:10px;"></div>' +
+          '<form class="add-member-form" onsubmit="return addSettingsMember(event, this)" style="margin-bottom:18px;">' +
+            '<label class="visually-hidden" for="settings-new-member">New companion name</label>' +
+            '<input type="text" id="settings-new-member" class="text-input" placeholder="Companion name, e.g. Priya">' +
+            '<button type="submit" class="btn btn-primary btn-sm"><svg aria-hidden="true"><use href="#i-plus"/></svg> Add</button>' +
+          '</form>' +
+          '<hr style="border:none;border-top:1px solid var(--line); margin:0 0 18px;">' +
+
+          '<div class="field-label" style="margin-bottom:8px;">Home currency</div>' +
+          '<select aria-label="Home currency — all totals convert to this" style="width:100%; margin-bottom:18px;">' +
+            '<option>AUD &middot; Australian Dollar</option><option>USD &middot; US Dollar</option><option>SGD &middot; Singapore Dollar</option><option>CNY &middot; Chinese Yuan</option>' +
+          '</select>' +
+          '<hr style="border:none;border-top:1px solid var(--line); margin:0 0 18px;">' +
+
+          '<div class="field-label" style="margin-bottom:8px;">Appearance</div>' +
+          '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">' +
+            '<span class="panel-hint">Theme</span>' +
+            '<div style="display:inline-flex; gap:4px; background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-full); padding:3px;" role="radiogroup" aria-label="Theme">' +
+              '<button type="button" class="chip" id="settingsLightBtn" style="border:none;" onclick="setThemeExplicit(\'light\')" role="radio" aria-checked="false">Light</button>' +
+              '<button type="button" class="chip" id="settingsDarkBtn" style="border:none;" onclick="setThemeExplicit(\'dark\')" role="radio" aria-checked="false">Dark</button>' +
+            '</div>' +
+          '</div>' +
+          '<hr style="border:none;border-top:1px solid var(--line); margin:0 0 18px;">' +
+
+          '<div class="field-label" style="margin-bottom:8px;">Data</div>' +
+          '<div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">' +
+            '<button type="button" class="btn btn-ghost btn-sm"><svg aria-hidden="true"><use href="#i-download"/></svg> Export trip.json</button>' +
+            '<button type="button" class="btn btn-ghost btn-sm"><svg aria-hidden="true"><use href="#i-upload"/></svg> Import trip.json</button>' +
+          '</div>' +
+          '<hr style="border:none;border-top:1px solid var(--line); margin:0 0 18px;">' +
+
+          '<button type="button" class="btn btn-ghost btn-block"><svg aria-hidden="true"><use href="#i-logout"/></svg> Sign out</button>' +
+        '</div>' +
+      '</div>';
+  }
+  // Mounted into its own dedicated, properly-sized demo-viewport rather than
+  // appended inside the ~180px topbar-comparison box above it — the modal's
+  // real content (companions/currency/theme/data/sign-out) needs real room,
+  // and a position:absolute overlay inside an auto-height container sized to
+  // "just the topbar" doesn't reliably cover its own content in every
+  // browser. Same mount point every real Settings-modal action targets.
+  function openSettings(){
+    mount('mount-item6-settings-modal', settingsModalHTML());
+    renderSettingsMembers();
+    syncSettingsThemeButtons();
+    document.addEventListener('keydown', settingsEscHandler);
+  }
+  function closeSettings(){
+    mount('mount-item6-settings-modal', '');
+    document.removeEventListener('keydown', settingsEscHandler);
+  }
+  function settingsEscHandler(e){ if(e.key === 'Escape') closeSettings(); }
+  function setThemeExplicit(mode){
+    document.documentElement.setAttribute('data-theme', mode);
+    document.getElementById('themeIcon').innerHTML = '<use href="#i-' + (mode === 'dark' ? 'sun' : 'moon') + '"/>';
+    syncSettingsThemeButtons();
+  }
+  // aria-checked, not just the visual .active class (ux-review round 1,
+  // major #1) — same fix as the colour picker above: the .chip.active
+  // visual inversion was carrying the entire "which one is selected" signal,
+  // which a screen reader can't see. Both attributes are now driven from the
+  // same `current` read, so they can't disagree with each other.
+  function syncSettingsThemeButtons(){
+    var current = document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var l = document.getElementById('settingsLightBtn'), d = document.getElementById('settingsDarkBtn');
+    if(l){ l.classList.toggle('active', current === 'light'); l.setAttribute('aria-checked', String(current === 'light')); }
+    if(d){ d.classList.toggle('active', current === 'dark'); d.setAttribute('aria-checked', String(current === 'dark')); }
+  }
+
+  // ============================= ITEM 7 — corrected By-person math =============================
+  var BUDGET_TOTAL = 5965;
+  var scenarioA = [ { name:'Alex', sum:5370 }, { name:'Priya', sum:400 }, { name:'Sam', sum:195 } ];
+  var scenarioB = [ { name:'Alex', sum:1790 }, { name:'Priya', sum:1670 }, { name:'Sam', sum:1505 } ];
+  var byPersonShowOld = false;
+  function byPersonRowsHTML(rows){
+    var max = Math.max.apply(null, rows.map(function(r){ return r.sum; }).concat([1]));
+    var html = '<div class="field-label" style="margin-bottom:10px;">By person</div>';
+    rows.forEach(function(r){
+      var pct = byPersonShowOld
+        ? Math.max(4, (r.sum / max) * 100)
+        : Math.max(4, (r.sum / BUDGET_TOTAL) * 100);
+      html += '<div class="cat-row"><span class="cat-label"><span>' + r.name + '</span></span>' +
+        '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+        '<span class="cat-amt tabular"><span class="cat-amt-value">A$' + r.sum.toLocaleString() + '</span></span></div>';
+    });
+    html += '<p class="panel-hint" style="margin:8px 0 0;">' +
+      (byPersonShowOld ? '<span class="rate-missing-note">Old math: sum / top payer.</span>' : 'Fixed math: sum / trip total (A$' + BUDGET_TOTAL.toLocaleString() + ').') +
+      '</p>';
+    return html;
+  }
+  function renderItem7(){
+    mount('mount-item7-scenarioA', byPersonRowsHTML(scenarioA));
+    mount('mount-item7-scenarioB', byPersonRowsHTML(scenarioB));
+  }
+  function toggleByPersonMath(){
+    byPersonShowOld = !byPersonShowOld;
+    document.getElementById('byPersonMathBtn').textContent = byPersonShowOld ? 'Show fixed math instead' : 'Show old (buggy) math instead';
+    renderItem7();
+  }
+  renderItem7();
+  mount('mount-item7-grouping', '' +
+    '<div class="cat-breakdown" style="margin-bottom:14px;">' +
+      '<div class="field-label" style="margin-bottom:10px;">By category</div>' +
+      '<div class="cat-row"><span class="cat-label"><span>Accommodation</span></span><div class="cat-bar-track"><div class="cat-bar-fill" style="width:42%"></div></div><span class="cat-amt tabular"><span class="cat-amt-value">A$2,493</span></span></div>' +
+      '<div class="cat-row"><span class="cat-label"><span>Transport</span></span><div class="cat-bar-track"><div class="cat-bar-fill" style="width:52%"></div></div><span class="cat-amt tabular"><span class="cat-amt-value">A$3,107</span></span></div>' +
+    '</div>' +
+    '<div class="cat-breakdown" style="margin-bottom:0;">' + byPersonRowsHTML(scenarioB) + '</div>' +
+    '<p class="panel-hint" style="margin-top:10px;">&uarr; No companions-CRUD card between these two anymore &mdash; it moved to Settings (item 6).</p>'
+  );
+
+  // ============================= ITEM 8 — member colour swatches =============================
+  var CONTRAST_DATA = {
+    'm-chartreuse': { light:'5.75:1', dark:'7.38:1' },
+    'm-denim': { light:'9.04:1', dark:'5.10:1' },
+    'm-periwinkle': { light:'10.13:1', dark:'5.21:1' },
+    'm-orchid': { light:'8.82:1', dark:'5.39:1' },
+    'm-berry': { light:'8.66:1', dark:'5.08:1' },
+    'm-sand': { light:'8.94:1', dark:'5.97:1 · desaturated, sits inside the gold hue band on purpose — see note' },
+  };
+  var swatchHTML = '';
+  MEMBER_COLORS.forEach(function(c){
+    swatchHTML += '<div class="card" style="padding:12px 14px;">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+        '<span style="width:20px;height:20px;border-radius:50%;background:var(--' + c.id + ');flex:none;" aria-hidden="true"></span>' +
+        '<strong style="font-size:13px;">' + c.name + '</strong>' +
+      '</div>' +
+      '<span class="member-chip" style="background:var(--' + c.id + '-soft); color:var(--' + c.id + '-soft-ink); border-color:transparent;">' +
+        memberAvatarHTML(c.name, c.id) + '<span>' + c.name + '</span>' +
+      '</span>' +
+    '</div>';
+  });
+  mount('mount-item8-swatches', swatchHTML);
+
+  mount('mount-item8-members', '' +
+    '<div class="panel-head" style="margin-bottom:0;"><h3 class="panel-title" style="font-size:1rem;">Trip companions</h3></div>' +
+    '<span class="panel-hint">Colour rings the avatar and tints the chip &mdash; decorative reinforcement, name is always printed too.</span>' +
+    '<div style="display:flex; flex-wrap:wrap; gap:8px; margin:10px 0;">' +
+      '<span class="member-chip" style="background:var(--m-denim-soft); color:var(--m-denim-soft-ink); border-color:transparent;">' + memberAvatarHTML('Alex','m-denim') + '<span>Alex</span></span>' +
+      '<span class="member-chip" style="background:var(--m-berry-soft); color:var(--m-berry-soft-ink); border-color:transparent;">' + memberAvatarHTML('Priya','m-berry') + '<span>Priya</span></span>' +
+      '<span class="member-chip" style="background:var(--m-chartreuse-soft); color:var(--m-chartreuse-soft-ink); border-color:transparent;">' + memberAvatarHTML('Sam','m-chartreuse') + '<span>Sam</span></span>' +
+    '</div>'
+  );
+  mount('mount-item8-byperson', '' +
+    '<div class="field-label" style="margin-bottom:10px;">By person <span style="text-transform:none;font-weight:600;color:var(--ink-faint);">&middot; bar stays jade, not per-member colour</span></div>' +
+    '<div class="cat-row"><span class="cat-label">' + memberAvatarHTML('Alex','m-denim','xs') + '<span>Alex</span></span><div class="cat-bar-track"><div class="cat-bar-fill" style="width:30%"></div></div><span class="cat-amt tabular"><span class="cat-amt-value">A$1,790</span></span></div>' +
+    '<div class="cat-row"><span class="cat-label">' + memberAvatarHTML('Priya','m-berry','xs') + '<span>Priya</span></span><div class="cat-bar-track"><div class="cat-bar-fill" style="width:28%"></div></div><span class="cat-amt tabular"><span class="cat-amt-value">A$1,670</span></span></div>' +
+    '<div class="cat-row"><span class="cat-label">' + memberAvatarHTML('Sam','m-chartreuse','xs') + '<span>Sam</span></span><div class="cat-bar-track"><div class="cat-bar-fill" style="width:25%"></div></div><span class="cat-amt tabular"><span class="cat-amt-value">A$1,505</span></span></div>'
+  );
+  (function(){
+    var rows = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;max-width:640px;">' +
+      '<thead><tr><th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--ink-faint);font-size:11px;text-transform:uppercase;">Token</th>' +
+      '<th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--ink-faint);font-size:11px;text-transform:uppercase;">Light</th>' +
+      '<th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--ink-faint);font-size:11px;text-transform:uppercase;">Dark</th></tr></thead><tbody>';
+    MEMBER_COLORS.forEach(function(c){
+      var d = CONTRAST_DATA[c.id];
+      rows += '<tr><td style="padding:6px 10px;border-bottom:1px solid var(--line);"><code style="font-family:var(--font-mono);">--' + c.id + '</code></td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--line);" class="tabular">' + d.light + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--line);" class="tabular">' + d.dark + '</td></tr>';
+    });
+    mount('mount-item8-contrast', rows + '</tbody></table>');
+  })();
+
+  // ============================= ITEMS 9-11 — expense form + paid-toggle prompt =============================
+  var CITIES_DEMO = ['Shanghai','Xi’an','Chengdu','Zhangjiajie'];
+  var members911 = [
+    { id:'m1', name:'Alex', color:'m-denim' },
+    { id:'m2', name:'Priya', color:'m-berry' },
+    { id:'m3', name:'Sam', color:'m-chartreuse' },
+  ];
+  var savedMembers911 = null;
+  var expenses911 = [
+    { id:'e1', category:'Accommodation', label:'Shanghai hotel, 3 nights', amount:612, currency:'CNY', city:'Shanghai', paid:true, paidBy:'m1', coversMemberIds:undefined },
+    { id:'e2', category:'Transport', label:'Bullet train to Xi’an', amount:154, currency:'CNY', city:'Xi’an', paid:true, paidBy:'m2', coversMemberIds:undefined },
+    { id:'e3', category:'Food', label:'Muslim Quarter food crawl', amount:210, currency:'CNY', city:'Xi’an', paid:false, paidBy:null, coversMemberIds:['m1','m2'] },
+    { id:'e4', category:'Attractions', label:'Terracotta Army tickets', amount:360, currency:'CNY', city:'Xi’an', paid:false, paidBy:null, coversMemberIds:undefined },
+    { id:'e5', category:'Shopping', label:'Souvenirs', amount:80, currency:'SGD', city:null, paid:false, paidBy:'m3', coversMemberIds:['m3'] },
+  ];
+  var editingId911 = null;
+  var uidCounter911 = 0;
+  function uid911(p){ uidCounter911 += 1; return p + '-' + uidCounter911; }
+  function memberName911(id){ var m = members911.filter(function(x){ return x.id === id; })[0]; return m ? m.name : null; }
+  function memberColor911(id){ var m = members911.filter(function(x){ return x.id === id; })[0]; return m ? m.color : null; }
+
+  function attachSelectHTML(selected){
+    var html = '<option value=""' + (!selected ? ' selected' : '') + '>Whole trip</option>';
+    CITIES_DEMO.forEach(function(c){
+      html += '<option value="' + c + '"' + (c === selected ? ' selected' : '') + '>' + c + '</option>';
+    });
+    return html;
+  }
+  function attachLabel911(city){ return city || 'Whole trip'; }
+
+  function coversLabel911(ids){
+    if(!ids || !ids.length) return 'Everyone';
+    var names = ids.map(memberName911).filter(Boolean);
+    return names.length ? names.join(', ') : 'Everyone';
+  }
+  // Covers control: "Everyone" quick-chip + a per-member checklist. Deselecting
+  // the last remaining member snaps back to Everyone rather than allowing an
+  // explicit empty array to exist — see this section's decision-note.
+  function coversFieldHTML(suffix, ids){
+    var isEveryone = !ids || !ids.length;
+    var html = '<div class="covers-field" data-suffix="' + suffix + '">' +
+      '<div style="display:flex; gap:6px; margin-bottom:8px;">' +
+        '<button type="button" class="chip' + (isEveryone ? ' active' : '') + '" data-covers-mode="everyone" onclick="setCoversMode(this,\'everyone\')"><svg aria-hidden="true"><use href="#i-users"/></svg> Everyone</button>' +
+        '<button type="button" class="chip' + (!isEveryone ? ' active' : '') + '" data-covers-mode="custom" onclick="setCoversMode(this,\'custom\')">Choose people&hellip;</button>' +
+      '</div>' +
+      '<div class="covers-members" style="display:' + (isEveryone ? 'none' : 'flex') + '; gap:8px; flex-wrap:wrap;">';
+    members911.forEach(function(m){
+      var checked = isEveryone ? true : (ids.indexOf(m.id) !== -1);
+      html += '<label class="chip" style="gap:6px;">' +
+        '<input type="checkbox" data-member="' + m.id + '" ' + (checked ? 'checked' : '') + ' onchange="coversMemberToggled(this)" style="margin:0;"> ' + m.name +
+      '</label>';
+    });
+    return html + '</div></div>';
+  }
+  function setCoversMode(btn, mode){
+    var field = btn.closest('.covers-field');
+    field.querySelectorAll('[data-covers-mode]').forEach(function(b){ b.classList.toggle('active', b === btn); });
+    var membersRow = field.querySelector('.covers-members');
+    if(mode === 'everyone'){
+      membersRow.style.display = 'none';
+      membersRow.querySelectorAll('input[type=checkbox]').forEach(function(cb){ cb.checked = true; });
+    } else {
+      membersRow.style.display = 'flex';
+    }
+  }
+  function coversMemberToggled(cb){
+    var field = cb.closest('.covers-field');
+    var boxes = field.querySelectorAll('input[type=checkbox]');
+    var anyChecked = Array.prototype.some.call(boxes, function(b){ return b.checked; });
+    if(!anyChecked){
+      // Last member deselected — snap back to Everyone rather than allow an
+      // explicit empty coversMemberIds to exist (this file's normalisation
+      // choice; see the decision-note in the items 9–11 section).
+      boxes.forEach(function(b){ b.checked = true; });
+      field.querySelectorAll('[data-covers-mode]').forEach(function(b){ b.classList.toggle('active', b.dataset.coversMode === 'everyone'); });
+      field.querySelector('.covers-members').style.display = 'none';
+    }
+  }
+  function readCoversField(field){
+    var mode = field.querySelector('[data-covers-mode].active').dataset.coversMode;
+    if(mode === 'everyone') return undefined;
+    var ids = [];
+    field.querySelectorAll('input[type=checkbox]:checked').forEach(function(cb){ ids.push(cb.dataset.member); });
+    return ids.length ? ids : undefined;
+  }
+
+  function payerMetaHTML911(paidBy){
+    if(!paidBy) return '';
+    var name = memberName911(paidBy);
+    if(name) return '<span class="expense-payer">' + memberAvatarHTML(name, memberColor911(paidBy), 'xs') + 'Paid by ' + name + '</span>';
+    return '<span class="expense-payer is-unset"><svg aria-hidden="true"><use href="#i-user"/></svg>Paid by &mdash;</span>';
+  }
+  function categoryColor911(cat){
+    var map = { Accommodation:'var(--d-indigo)', Transport:'var(--d-blue)', Attractions:'var(--d-amber)', Shopping:'var(--d-moss)', Food:'var(--d-terra)', Other:'var(--d-grey)' };
+    return map[cat] || 'var(--d-grey)';
+  }
+  function renderExpenses(){
+    var wrap = document.getElementById('expense911List');
+    if(!wrap) return;
+    var html = '';
+    expenses911.forEach(function(e){
+      html += '' +
+        '<div class="card expense" data-id="' + e.id + '">' +
+          '<span class="expense-swatch" style="background:' + categoryColor911(e.category) + '"></span>' +
+          '<div class="expense-main">' +
+            '<div class="expense-label">' + e.label + '</div>' +
+            '<div class="expense-meta"><span class="tag">' + e.category + '</span><span>' + attachLabel911(e.city) + '</span>' +
+              '<span class="tag" title="Who this expense counts toward"><svg aria-hidden="true" style="width:10px;height:10px;"><use href="#i-users"/></svg> ' + coversLabel911(e.coversMemberIds) + '</span>' +
+              payerMetaHTML911(e.paidBy) +
+            '</div>' +
+          '</div>' +
+          '<div class="expense-amt"><div class="orig tabular">' + e.currency + ' ' + e.amount.toLocaleString() + '</div></div>' +
+          '<label class="paid-toggle"><span class="switch"><input type="checkbox" ' + (e.paid ? 'checked' : '') + ' onchange="onPaidToggle(this,\'' + e.id + '\')" aria-label="Mark ' + e.label.replace(/'/g,'') + ' as paid"><span class="track"></span><span class="thumb"></span></span><span class="paid-label">' + (e.paid ? 'Paid' : 'Unpaid') + '</span></label>' +
+          '<div class="expense-actions-group">' +
+            '<button class="icon-btn" aria-label="Edit ' + e.label.replace(/'/g,'') + '" onclick="openEdit911(\'' + e.id + '\')"><svg aria-hidden="true"><use href="#i-edit"/></svg></button>' +
+            '<button class="icon-btn is-danger" aria-label="Remove ' + e.label.replace(/'/g,'') + '"><svg aria-hidden="true"><use href="#i-trash"/></svg></button>' +
+          '</div>' +
+        '</div>';
+    });
+    wrap.innerHTML = html || '<div class="budget-empty"><svg aria-hidden="true"><use href="#i-wallet"/></svg><strong>No expenses logged yet</strong></div>';
+  }
+
+  function paidBySelectHTML911(selected){
+    var html = '<option value="">&mdash; none &mdash;</option>';
+    members911.forEach(function(m){ html += '<option value="' + m.id + '"' + (m.id === selected ? ' selected' : '') + '>' + m.name + '</option>'; });
+    return html;
+  }
+  function openAdd911(){
+    editingId911 = null;
+    var f = document.getElementById('expense911Form');
+    f.classList.add('open');
+    f.querySelector('.js-heading').textContent = 'Add expense';
+    f.querySelector('.js-submit-label').textContent = 'Add expense';
+    f.querySelector('[data-f=cat]').value = 'Transport';
+    f.querySelector('[data-f=currency]').value = 'CNY';
+    f.querySelector('[data-f=amt]').value = '';
+    f.querySelector('[data-f=label]').value = '';
+    f.querySelector('[data-f=attach]').innerHTML = attachSelectHTML('');
+    f.querySelector('[data-f=paidby]').innerHTML = paidBySelectHTML911('');
+    f.querySelector('[data-f=alreadypaid]').checked = false;
+    f.querySelector('.covers-slot').innerHTML = coversFieldHTML('add', undefined);
+    f.dataset.editingId = '';
+  }
+  function openEdit911(id){
+    var e = expenses911.filter(function(x){ return x.id === id; })[0];
+    if(!e) return;
+    editingId911 = id;
+    var f = document.getElementById('expense911Form');
+    f.classList.add('open');
+    f.querySelector('.js-heading').textContent = 'Editing expense';
+    f.querySelector('.js-submit-label').textContent = 'Save changes';
+    f.querySelector('[data-f=cat]').value = e.category;
+    f.querySelector('[data-f=currency]').value = e.currency;
+    f.querySelector('[data-f=amt]').value = e.amount;
+    f.querySelector('[data-f=label]').value = e.label;
+    f.querySelector('[data-f=attach]').innerHTML = attachSelectHTML(e.city);
+    f.querySelector('[data-f=paidby]').innerHTML = paidBySelectHTML911(e.paidBy);
+    f.querySelector('[data-f=alreadypaid]').checked = !!e.paid;
+    f.querySelector('.covers-slot').innerHTML = coversFieldHTML('edit', e.coversMemberIds);
+    f.dataset.editingId = id;
+    f.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block:'center' });
+  }
+  function closeForm911(){
+    editingId911 = null;
+    document.getElementById('expense911Form').classList.remove('open');
+  }
+  function submitExpense911(ev, formEl){
+    ev.preventDefault();
+    var cat = formEl.querySelector('[data-f=cat]').value;
+    var currency = formEl.querySelector('[data-f=currency]').value;
+    var amt = parseFloat(formEl.querySelector('[data-f=amt]').value) || 0;
+    var label = formEl.querySelector('[data-f=label]').value || 'Untitled expense';
+    var city = formEl.querySelector('[data-f=attach]').value || null;
+    var paidBy = formEl.querySelector('[data-f=paidby]').value || null;
+    var alreadyPaid = formEl.querySelector('[data-f=alreadypaid]').checked;
+    var covers = readCoversField(formEl.querySelector('.covers-slot .covers-field'));
+    var id = formEl.dataset.editingId;
+    if(id){
+      expenses911.forEach(function(e){
+        if(e.id === id){ e.category=cat; e.currency=currency; e.amount=amt; e.label=label; e.city=city; e.paidBy=paidBy; e.coversMemberIds=covers;
+          // editing doesn't change paid state via the checkbox — that's the
+          // toggle's job (item 11's prompt flow); the checkbox here only
+          // matters at ADD time, matching "the add-expense form gains an
+          // already-paid option" (it's an add-time convenience, not a
+          // silent way to flip paid state while editing something else).
+        }
+      });
+    } else {
+      expenses911.unshift({ id: uid911('e'), category:cat, currency:currency, amount:amt, label:label, city:city, paidBy:paidBy, paid:alreadyPaid, coversMemberIds:covers });
+    }
+    closeForm911();
+    renderExpenses();
+    return false;
+  }
+
+  // ---- item 11: paid-toggle prompt ----
+  var pendingToggleId = null;
+  function onPaidToggle(input, id){
+    var e = expenses911.filter(function(x){ return x.id === id; })[0];
+    if(!e) return;
+    if(input.checked){
+      // toggling ON. Zero-members degenerate case (trap #8): nothing to
+      // pick, so mark paid with no payer and skip the prompt entirely.
+      if(!members911.length){
+        e.paid = true;
+        renderExpenses();
+        return;
+      }
+      pendingToggleId = id;
+      openPayerPrompt(e);
+      // revert the checkbox visually until the prompt resolves — renderExpenses()
+      // below (on confirm/skip) redraws the row from the true e.paid state.
+      input.checked = false;
+    } else {
+      // toggling OFF never prompts.
+      e.paid = false;
+      renderExpenses();
+    }
+  }
+  // PRODUCTION NOTE (ux-review round 2, should-fix #2): PHASE6.md states this
+  // prompt "reuses the Settings modal's component, not a new pattern" — in
+  // the real app that means rendering it through the shared
+  // `src/components/Modal.tsx`, which already supplies Escape-to-close,
+  // focus-trap and focus-restore-on-close for free, the same as every other
+  // modal in the codebase. This mockup hand-rolls its own `.overlay`/`.modal`
+  // markup (same as the Settings modal above) because there is no
+  // Modal.tsx here to import, NOT because this prompt should get bespoke
+  // interaction behaviour. Escape is wired by hand below for exactly that
+  // reason: so this section can't be read as "the payer prompt doesn't need
+  // Escape," which would be the wrong lesson to port into the real
+  // component. Don't hand-roll a second overlay in production — use
+  // Modal.tsx, same as Settings.
+  function openPayerPrompt(e){
+    var opts = members911.map(function(m){
+      return '<button type="button" class="btn btn-ghost btn-sm" style="justify-content:flex-start;" onclick="confirmPayer(\'' + m.id + '\')">' + memberAvatarHTML(m.name, m.color) + ' ' + m.name + '</button>';
+    }).join('');
+    document.getElementById('payerPromptMount').innerHTML = '' +
+      '<div class="overlay open" onclick="if(event.target===this) cancelPayerPrompt()">' +
+        '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="payerPromptTitle" style="max-width:420px;">' +
+          '<div class="modal-head"><h2 class="modal-title" id="payerPromptTitle" style="font-size:1.1rem;">Who paid?</h2>' +
+            '<button type="button" class="modal-close" aria-label="Cancel" onclick="cancelPayerPrompt()"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>' +
+          '<p class="modal-intro">"' + e.label + '" &mdash; marking this paid. Pick who paid it, or skip.</p>' +
+          '<div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">' + opts + '</div>' +
+          '<button type="button" class="btn btn-ghost btn-block" onclick="confirmPayer(null)">Mark paid without a payer</button>' +
+        '</div>' +
+      '</div>';
+    document.addEventListener('keydown', payerPromptEscHandler);
+  }
+  function payerPromptEscHandler(ev){ if(ev.key === 'Escape') cancelPayerPrompt(); }
+  function confirmPayer(memberId){
+    var e = expenses911.filter(function(x){ return x.id === pendingToggleId; })[0];
+    if(e){ e.paid = true; if(memberId) e.paidBy = memberId; }
+    pendingToggleId = null;
+    document.getElementById('payerPromptMount').innerHTML = '';
+    document.removeEventListener('keydown', payerPromptEscHandler);
+    renderExpenses();
+  }
+  function cancelPayerPrompt(){
+    // Cancelling the prompt leaves the expense unpaid — the toggle never
+    // silently commits to "paid" without either a confirmed payer or an
+    // explicit "mark paid without a payer".
+    pendingToggleId = null;
+    document.getElementById('payerPromptMount').innerHTML = '';
+    document.removeEventListener('keydown', payerPromptEscHandler);
+    renderExpenses();
+  }
+  function toggleZeroMembersDemo(){
+    if(savedMembers911 === null){
+      savedMembers911 = members911;
+      members911 = [];
+    } else {
+      members911 = savedMembers911;
+      savedMembers911 = null;
+    }
+    renderExpenses();
+    var btn = event.currentTarget;
+    btn.textContent = savedMembers911 === null && members911.length === 0
+      ? 'Preview: restore companions'
+      : 'Preview: zero companions defined (paid-toggle skips the prompt)';
+  }
+
+  function budgetItem911HTML(){
+    return '' +
+      '<div style="padding:16px;">' +
+        '<div class="panel-head"><h3 class="panel-title" style="font-size:1.05rem">All expenses</h3><button class="btn btn-primary btn-sm" onclick="openAdd911()"><svg aria-hidden="true"><use href="#i-plus"/></svg> Add expense</button></div>' +
+        '<form class="add-form card" id="expense911Form" onsubmit="return submitExpense911(event, this)">' +
+          '<div class="add-form-head"><h4 class="js-heading">Add expense</h4></div>' +
+          '<div class="add-form-grid">' +
+            '<div><label for="e911-cat">Category</label><select id="e911-cat" data-f="cat"><option>Accommodation</option><option>Transport</option><option>Food</option><option>Attractions</option><option>Shopping</option><option>Other</option></select></div>' +
+            '<div><label for="e911-amt">Amount</label><div class="amount-currency-field"><select aria-label="Currency" data-f="currency"><option value="CNY">CNY &yen;</option><option value="AUD">AUD A$</option><option value="SGD">SGD S$</option><option value="USD">USD US$</option></select><input class="num-input" type="number" id="e911-amt" data-f="amt" min="0" step="any" placeholder="0"></div></div>' +
+            '<div class="full"><label for="e911-label">Label</label><input class="text-input" type="text" id="e911-label" data-f="label" placeholder="e.g. Xi\'an noodles"></div>' +
+            '<div class="full"><label for="e911-attach">Attach to <span style="text-transform:none;font-weight:500;color:var(--ink-faint);">&middot; item 9 &mdash; was a free-text day field, now a city select</span></label><select id="e911-attach" data-f="attach"></select></div>' +
+            '<div class="full"><label>Covers <span style="text-transform:none;font-weight:500;color:var(--ink-faint);">&middot; item 10</span></label><div class="covers-slot"></div></div>' +
+            '<div><label for="e911-paidby">Paid by</label><select id="e911-paidby" data-f="paidby"></select></div>' +
+            '<div style="display:flex; align-items:flex-end; padding-bottom:8px;"><label style="display:flex; align-items:center; gap:6px; text-transform:none; font-weight:600; color:var(--ink); margin:0;"><input type="checkbox" data-f="alreadypaid" style="margin:0;"> Already paid <span style="font-weight:400; color:var(--ink-faint);">&middot; item 11</span></label></div>' +
+          '</div>' +
+          '<div style="display:flex; gap:8px;">' +
+            '<button type="submit" class="btn btn-primary btn-sm"><span class="js-submit-label">Add expense</span></button>' +
+            '<button type="button" class="btn btn-ghost btn-sm" onclick="closeForm911()">Cancel</button>' +
+          '</div>' +
+        '</form>' +
+        '<div class="expense-list" id="expense911List"></div>' +
+        '<div id="payerPromptMount"></div>' +
+      '</div>';
+  }
+  mount('mount-item911', budgetItem911HTML());
+  document.getElementById('e911-attach') && (document.getElementById('e911-attach').innerHTML = attachSelectHTML(''));
+  renderExpenses();
+</script>
+</body>
+</html>

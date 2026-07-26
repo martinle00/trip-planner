@@ -33,3 +33,9 @@ Return a structured verdict:
 - Rank most-severe first. Be specific and actionable — the designer must be able to act on each point without guessing.
 
 Only return `APPROVED` when there are genuinely no remaining comments. Do not rubber-stamp; do not invent trivial blockers to prolong the loop. When it's good, approve it.
+
+## Managing your context window
+Work within your context budget deliberately, so long or looping tasks stay efficient:
+- Pull in only what the task needs — prefer targeted Grep/Glob and partial Reads over loading whole large files, and don't re-read what you've already seen.
+- Once a sub-step is done (a search, a review round), carry forward a short summary of its result, not the raw dump.
+- As you finish a review, compact: distil your verdict into a concise, high-signal report and drop the detailed scratch reasoning. Keep the hand-back small.

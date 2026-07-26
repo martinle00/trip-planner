@@ -17,6 +17,7 @@ import type {
   ItineraryItem,
   Place,
   Trip,
+  TripMember,
 } from '../data/schema';
 import type { DayPlan } from '../lib/autoplan';
 import { ACTIVE_TRIP_ID } from '../data/tripRepository';
@@ -204,9 +205,49 @@ export interface TripState {
   reorderItinerary: (dayId: ID, orderedIds: ID[]) => Promise<void>;
 
   // ---- expenses ----
+  /** `note`/`paidBy` flow through like every other `Expense` field — no
+   *  special handling needed, they're just optional properties on the input. */
   addExpense: (input: Omit<Expense, 'id' | 'tripId'>) => Promise<Expense>;
   updateExpense: (expense: Expense) => Promise<void>;
   removeExpense: (id: ID) => Promise<void>;
+
+  // ---- trip members (Phase 5) ----
+  // Members are embedded on the Trip (`Trip.members`, like `cities`/`rates`),
+  // not a separate table — so all three actions persist via `saveTrip`, the
+  // same path `setHomeCurrency` already uses, rather than a new repository
+  // method. Each is queued on its own `runMembersExclusive` (see below) so
+  // two rapid calls (e.g. a double-click "Add") can't both read the same
+  // stale `trip.members` and race-drop one another's write.
+  /** Add a new member with a generated id; no-ops (throws) if there is no
+   *  trip loaded yet, or if `name` is empty/whitespace-only after trimming. */
+  addMember: (name: string) => Promise<TripMember>;
+  /** Rename an existing member in place (same id). No-ops if the trip isn't
+   *  loaded, `id` doesn't match any member, or the trimmed `name` is empty. */
+  renameMember: (id: ID, name: string) => Promise<void>;
+  /**
+   * Remove a member. Deliberately ORPHAN-TOLERANT: this does NOT cascade-
+   * delete or rewrite any `Expense` whose `paidBy` OR `coversMemberIds`
+   * references `id` (Phase 6 adds the second reference site) — those
+   * expenses are left exactly as they are, with a now-dangling reference
+   * that no longer resolves to a member. Downstream renderers must treat
+   * that as simply "unset"/"drop this id from the set" (e.g. show "—" for a
+   * dangling `paidBy`, silently skip a dangling id in `coversMemberIds` when
+   * rendering who an expense covers), never throw or crash on it. No-ops if
+   * the trip isn't loaded or `id` doesn't match any member.
+   */
+  removeMember: (id: ID) => Promise<void>;
+  /**
+   * Set (or clear, with `undefined`) a member's avatar-ring/chip colour
+   * (Phase 6, item 8) — one of the fixed `--m-*` swatch family names from
+   * `mockup/DESIGN-SYSTEM.md`'s "Member colour palette" section, stored bare
+   * (no leading `--`, e.g. `'m-denim'`) — see `TripMember.color`'s doc
+   * comment in schema.ts. Same read-modify-write shape as `renameMember`,
+   * queued on the same `runMembersExclusive` queue for the same reason (two
+   * rapid picks can't race and drop one another's write). No-ops if the
+   * trip isn't loaded or `id` doesn't match any member.
+   */
+  setMemberColor: (id: ID, color: string | undefined) => Promise<void>;
+
   /**
    * Change the trip's home currency. Re-bases the existing `rates` map onto
    * the new home currency using its own stored cross-rate (a pure local
@@ -393,6 +434,16 @@ const runDraftExclusive = makeExclusiveQueue();
 // be waiting on `queue` while `queue` was simultaneously waiting on it to
 // finish -- a self-deadlock. Two independent queue instances nest safely.
 const runSaveExclusive = makeExclusiveQueue();
+
+// Dedicated queue for addMember/renameMember/removeMember: each of these is a
+// read-`trip`-then-`saveTrip` sequence (same shape as setHomeCurrency, which
+// has no such guard today — but member CRUD is driven by a management UI
+// where a rapid double-click on "Add"/"Remove" is plausible in a way a
+// currency switch isn't). Without this, two overlapping calls could both
+// read the same stale `trip.members` and the second write would silently
+// clobber the first's. Its own queue instance — unrelated to, and must not
+// nest inside, `runExclusive`/`runSaveExclusive`.
+const runMembersExclusive = makeExclusiveQueue();
 
 /** True when the browser (or a test) reports no network connectivity.
  *  Mirrors `syncedTripRepository.ts`'s private `isOffline()` -- kept as its
@@ -1124,6 +1175,59 @@ export const useTripStore = create<TripState>((set, get) => ({
     mutationVersion++;
     set((s) => ({ expenses: s.expenses.filter((e) => e.id !== id) }));
   },
+
+  addMember: (name) =>
+    runMembersExclusive(async () => {
+      const trip = get().trip;
+      if (!trip) throw new Error('addMember: no trip loaded yet');
+      const trimmed = name.trim();
+      if (!trimmed) throw new Error('addMember: name must not be empty');
+      const member: TripMember = { id: newId('member'), name: trimmed };
+      const updated: Trip = { ...trip, members: [...(trip.members ?? []), member] };
+      await tripRepository.saveTrip(updated);
+      set({ trip: updated });
+      return member;
+    }),
+
+  renameMember: (id, name) =>
+    runMembersExclusive(async () => {
+      const trip = get().trip;
+      if (!trip) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      if (!(trip.members ?? []).some((m) => m.id === id)) return;
+      const members = (trip.members ?? []).map((m) => (m.id === id ? { ...m, name: trimmed } : m));
+      const updated: Trip = { ...trip, members };
+      await tripRepository.saveTrip(updated);
+      set({ trip: updated });
+    }),
+
+  // Orphan-tolerant by design (see the TripState doc comment above): expenses
+  // referencing this member's id (via `paidBy` OR, since Phase 6,
+  // `coversMemberIds`) are deliberately left untouched — a dangling
+  // reference renders as unset/skipped downstream, never cascade-deleted or
+  // rewritten here.
+  removeMember: (id) =>
+    runMembersExclusive(async () => {
+      const trip = get().trip;
+      if (!trip) return;
+      if (!(trip.members ?? []).some((m) => m.id === id)) return;
+      const members = (trip.members ?? []).filter((m) => m.id !== id);
+      const updated: Trip = { ...trip, members };
+      await tripRepository.saveTrip(updated);
+      set({ trip: updated });
+    }),
+
+  setMemberColor: (id, color) =>
+    runMembersExclusive(async () => {
+      const trip = get().trip;
+      if (!trip) return;
+      if (!(trip.members ?? []).some((m) => m.id === id)) return;
+      const members = (trip.members ?? []).map((m) => (m.id === id ? { ...m, color } : m));
+      const updated: Trip = { ...trip, members };
+      await tripRepository.saveTrip(updated);
+      set({ trip: updated });
+    }),
 
   // Re-bases the stored `rates` map (home-relative, see schema.ts's Trip
   // doc comment) onto a new home currency using the OLD map's own cross-rate

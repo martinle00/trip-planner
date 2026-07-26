@@ -39,6 +39,15 @@ export function fmtDayMonth(iso: string): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
+/** "9/11", "10/11" — bare numeric day/month, no leading zeros. Phase 6 item 3:
+ *  the map day quick-nav's mobile-only short form of the full `dayLabel`
+ *  ("Day 2 · Mon 9 Nov"), which elongates and breaks the chip row at narrow
+ *  widths. Same parse-as-local-date convention as every other formatter here. */
+export function fmtShortNumeric(iso: string): string {
+  const d = parseISODate(iso);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+}
+
 /** "Sat 7 – Mon 9 Nov" — city arrival/departure range, mockup style. */
 export function fmtRange(startIso: string, endIso: string): string {
   return `${fmtWeekdayDay(startIso)} – ${fmtWeekdayDayMonth(endIso)}`;

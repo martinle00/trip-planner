@@ -465,6 +465,179 @@ describe('setHomeCurrency', () => {
   });
 });
 
+describe('addMember / renameMember / removeMember (Phase 5 — trip members)', () => {
+  it('addMember adds a member with a generated id and persists it (survives a simulated reload)', async () => {
+    expect(useTripStore.getState().trip!.members ?? []).toEqual([]);
+
+    const member = await useTripStore.getState().addMember('Alex');
+
+    expect(member.name).toBe('Alex');
+    expect(member.id).toBeTruthy();
+    expect(useTripStore.getState().trip!.members).toEqual([member]);
+
+    await useTripStore.getState().init(); // re-load from IndexedDB
+    expect(useTripStore.getState().trip!.members).toEqual([member]);
+  });
+
+  it('addMember trims whitespace and rejects an empty/whitespace-only name', async () => {
+    const member = await useTripStore.getState().addMember('  Sam  ');
+    expect(member.name).toBe('Sam');
+
+    await expect(useTripStore.getState().addMember('   ')).rejects.toThrow(
+      'addMember: name must not be empty',
+    );
+    // The rejected call didn't add anything.
+    expect(useTripStore.getState().trip!.members).toEqual([member]);
+  });
+
+  it('renameMember renames the matching member in place, preserving its id', async () => {
+    const member = await useTripStore.getState().addMember('Alex');
+
+    await useTripStore.getState().renameMember(member.id, 'Alexandra');
+
+    expect(useTripStore.getState().trip!.members).toEqual([{ id: member.id, name: 'Alexandra' }]);
+  });
+
+  it('renameMember no-ops for an unknown id', async () => {
+    const member = await useTripStore.getState().addMember('Alex');
+    await useTripStore.getState().renameMember('no-such-id', 'Whoever');
+    expect(useTripStore.getState().trip!.members).toEqual([member]);
+  });
+
+  it('renameMember no-ops (does not throw, does not change the name) for an empty/whitespace-only name', async () => {
+    const member = await useTripStore.getState().addMember('Alex');
+    await useTripStore.getState().renameMember(member.id, '   ');
+    expect(useTripStore.getState().trip!.members).toEqual([member]);
+  });
+
+  it('addMember allows duplicate names — ids, not names, are the identity', async () => {
+    const first = await useTripStore.getState().addMember('Alex');
+    const second = await useTripStore.getState().addMember('Alex');
+
+    expect(first.id).not.toBe(second.id);
+    const members = useTripStore.getState().trip!.members ?? [];
+    expect(members.map((m) => m.name)).toEqual(['Alex', 'Alex']);
+    expect(members.map((m) => m.id)).toEqual([first.id, second.id]);
+  });
+
+  it('addMember rejects when no trip is loaded yet', async () => {
+    resetTripStoreForSignOut();
+    expect(useTripStore.getState().trip).toBeUndefined();
+    await expect(useTripStore.getState().addMember('Alex')).rejects.toThrow(
+      'addMember: no trip loaded yet',
+    );
+  });
+
+  it('renameMember/removeMember no-op (do not throw) when no trip is loaded yet', async () => {
+    resetTripStoreForSignOut();
+    await expect(useTripStore.getState().renameMember('any-id', 'Whoever')).resolves.toBeUndefined();
+    await expect(useTripStore.getState().removeMember('any-id')).resolves.toBeUndefined();
+  });
+
+  it('removeMember removes the member from Trip.members', async () => {
+    const alex = await useTripStore.getState().addMember('Alex');
+    const sam = await useTripStore.getState().addMember('Sam');
+
+    await useTripStore.getState().removeMember(alex.id);
+
+    expect(useTripStore.getState().trip!.members).toEqual([sam]);
+  });
+
+  it('removeMember no-ops for an unknown id (trip loaded, id just does not match)', async () => {
+    const member = await useTripStore.getState().addMember('Alex');
+    await useTripStore.getState().removeMember('no-such-id');
+    expect(useTripStore.getState().trip!.members).toEqual([member]);
+  });
+
+  it('removeMember is orphan-tolerant: an expense whose paidBy references the removed member survives untouched (dangling paidBy)', async () => {
+    const alex = await useTripStore.getState().addMember('Alex');
+    const expense = await useTripStore.getState().addExpense({
+      category: 'Food',
+      label: 'Noodles',
+      amount: 38,
+      currency: 'CNY',
+      paid: true,
+      paidBy: alex.id,
+    });
+
+    await useTripStore.getState().removeMember(alex.id);
+
+    expect(useTripStore.getState().trip!.members).toEqual([]);
+    const stillThere = useTripStore.getState().expenses.find((e) => e.id === expense.id);
+    expect(stillThere).toBeDefined();
+    // The reference is left dangling, not rewritten/cleared — the doc
+    // contract is that a downstream renderer treats this as "unset".
+    expect(stillThere?.paidBy).toBe(alex.id);
+  });
+
+  it('removeMember is orphan-tolerant for coversMemberIds too: a dangling id survives untouched', async () => {
+    const alex = await useTripStore.getState().addMember('Alex');
+    const sam = await useTripStore.getState().addMember('Sam');
+    const expense = await useTripStore.getState().addExpense({
+      category: 'Food',
+      label: 'Noodles',
+      amount: 38,
+      currency: 'CNY',
+      paid: true,
+      coversMemberIds: [alex.id, sam.id],
+    });
+
+    await useTripStore.getState().removeMember(alex.id);
+
+    expect(useTripStore.getState().trip!.members).toEqual([sam]);
+    const stillThere = useTripStore.getState().expenses.find((e) => e.id === expense.id);
+    expect(stillThere).toBeDefined();
+    // Left exactly as-is -- not cascade-rewritten to drop the now-dangling id.
+    expect(stillThere?.coversMemberIds).toEqual([alex.id, sam.id]);
+  });
+
+  it('setMemberColor sets a colour on the matching member, preserving id/name', async () => {
+    const alex = await useTripStore.getState().addMember('Alex');
+
+    await useTripStore.getState().setMemberColor(alex.id, 'm-denim');
+
+    expect(useTripStore.getState().trip!.members).toEqual([{ ...alex, color: 'm-denim' }]);
+  });
+
+  it('setMemberColor clears a colour when passed undefined', async () => {
+    const alex = await useTripStore.getState().addMember('Alex');
+    await useTripStore.getState().setMemberColor(alex.id, 'm-denim');
+
+    await useTripStore.getState().setMemberColor(alex.id, undefined);
+
+    expect(useTripStore.getState().trip!.members).toEqual([alex]);
+  });
+
+  it('setMemberColor no-ops for an unknown id', async () => {
+    const member = await useTripStore.getState().addMember('Alex');
+    await useTripStore.getState().setMemberColor('no-such-id', 'm-denim');
+    expect(useTripStore.getState().trip!.members).toEqual([member]);
+  });
+
+  it('setMemberColor no-ops (does not throw) when no trip is loaded yet', async () => {
+    resetTripStoreForSignOut();
+    await expect(useTripStore.getState().setMemberColor('any-id', 'm-denim')).resolves.toBeUndefined();
+  });
+
+  it('two truly overlapping addMember calls both land in trip.members (no lost update)', async () => {
+    // Fired together, not sequentially awaited — this is what a rapid
+    // double-click on "Add" in the companions form produces. Each addMember
+    // call is a read-`trip`-then-`saveTrip` sequence; without
+    // runMembersExclusive serializing them, both overlapping calls could
+    // read the same starting `trip.members` and the second write would
+    // silently clobber the first's, leaving only one member instead of two.
+    const [alex, sam] = await Promise.all([
+      useTripStore.getState().addMember('Alex'),
+      useTripStore.getState().addMember('Sam'),
+    ]);
+
+    expect(alex.name).toBe('Alex');
+    expect(sam.name).toBe('Sam');
+    const names = (useTripStore.getState().trip!.members ?? []).map((m) => m.name).sort();
+    expect(names).toEqual(['Alex', 'Sam']);
+  });
+});
+
 describe('refreshRates', () => {
   it('fetches, stores rates/ratesBase/ratesUpdatedAt on the trip, and persists them', async () => {
     fetchRatesMock.mockResolvedValue({

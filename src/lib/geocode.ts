@@ -1,23 +1,28 @@
 // ============================================================================
 // Place-search / geocoding service. Provider-agnostic by design: callers only
 // ever import `searchPlaces` (or the `GeocodeProvider` interface) from this
-// module. The Nominatim implementation below can be swapped for a Mapbox/
-// MapTiler provider later — via `setGeocodeProvider()` — without touching any
-// caller. Owned by the Backend/data specialist.
+// module. The active implementation can be swapped — via `setGeocodeProvider()`
+// — without touching any caller. Owned by the Backend/data specialist.
 //
-// Provider decision: OpenStreetMap Nominatim. It returns WGS-84 coordinates,
-// which match our Leaflet + OSM tiles exactly (no GCJ-02/BD-09 conversion
-// needed, unlike Google/Baidu/Amap). Noted fallback if Nominatim coverage or
-// rate limits prove inadequate: Mapbox/MapTiler (also WGS-84, keyed).
+// Provider decision: **Photon** (Komoot's free OSM-based geocoder) is the
+// default the app installs at startup; **Nominatim** remains as a fallback and
+// the module-load default. Both return WGS-84 coordinates, which match our
+// Leaflet + OSM tiles exactly — no GCJ-02/BD-09 conversion (unlike Google/
+// Baidu/Amap, which were rejected for that offset plus key/registration/proxy
+// friction). Photon was chosen over Nominatim because it's built for
+// search-as-you-type: it tolerates partial names and typos, which cuts down the
+// "not found → add manually" misses. Both draw on the same OpenStreetMap data,
+// so a place genuinely absent from OSM still won't appear — that ceiling is why
+// the `GeocodeProvider` seam is kept, in case a China-native provider (behind a
+// proxy) is ever needed. Photon's public endpoint needs no API key or account.
 //
-// Nominatim usage-policy notes (https://operations.osmfoundation.org/policies/nominatim/):
-//  - max ~1 request/sec, no heavy parallel querying — this module makes one
-//    request per `searchPlaces()` call and does no internal retry/polling;
-//    callers doing typeahead search MUST debounce keystrokes (~300ms) and
-//    pass an `AbortSignal` so a superseded request is cancelled rather than
-//    piling up. That combination is what keeps real request volume low.
-//  - results should be attributed to OpenStreetMap contributors in the UI.
-//  - `accept-language` is sent so results come back in a consistent language.
+// Shared usage discipline (Photon's public endpoint and Nominatim both ask for
+// light, non-parallel use): this module makes one request per `searchPlaces()`
+// call and does no internal retry/polling; callers doing typeahead search MUST
+// debounce keystrokes (~300ms) and pass an `AbortSignal` so a superseded
+// request is cancelled rather than piling up. Results derive from OpenStreetMap
+// and should be attributed to its contributors in the UI, and a language hint
+// is sent so results come back in a consistent language.
 // ============================================================================
 
 /** A single geocoded / place-search result, provider-agnostic. */
@@ -208,6 +213,160 @@ export class NominatimGeocodeProvider implements GeocodeProvider {
     }
     return results;
   }
+}
+
+// ============================================================================
+// Photon provider (Komoot). Nominatim is an *address geocoder* whose exact,
+// address-first matching misses a lot of real queries — a partial POI name or a
+// small typo returns nothing, which is a big share of the "not found → add
+// manually" friction. Photon indexes the same OpenStreetMap data but is built
+// for search-as-you-type, so it tolerates partial names and typos far better.
+//
+// It returns **WGS-84** coordinates (GeoJSON `[lng, lat]`) — the same datum as
+// our Leaflet + OSM tiles and stored `Place.lat`/`Place.lng` — so results drop
+// in with no conversion. The public endpoint needs no API key or account.
+//
+// Photon has no `countrycodes`-style restrict parameter; instead it takes a
+// `lat`/`lon` location bias, so we bias toward the trip city's centre and (like
+// the Nominatim path) fold the city/country hints into the query text.
+// ============================================================================
+
+const PHOTON_ENDPOINT = 'https://photon.komoot.io/api/';
+
+/** Per-city bias centres (WGS-84), used to steer Photon results toward the city
+ *  the user is adding a place to. Mirrors `CITY_FALLBACK_CENTER` in
+ *  `lib/tripView.ts` — kept here to avoid a lib→lib import cycle and so this
+ *  provider module stays self-contained. */
+const CITY_PROXIMITY: Record<string, { lat: number; lng: number }> = {
+  singapore: { lat: 1.2899, lng: 103.8519 },
+  shanghai: { lat: 31.2304, lng: 121.4737 },
+  suzhou: { lat: 31.2989, lng: 120.5853 },
+  changsha: { lat: 28.2282, lng: 112.9388 },
+  zhangjiajie: { lat: 29.1274, lng: 110.4795 },
+  chongqing: { lat: 29.563, lng: 106.5516 },
+  wulong: { lat: 29.3226, lng: 107.759 },
+  chengdu: { lat: 30.5728, lng: 104.0668 },
+  guangzhou: { lat: 23.1291, lng: 113.2644 },
+  shenzhen: { lat: 22.5431, lng: 114.0579 },
+};
+
+/** Raw shape of one Photon GeoJSON feature (fields we use only). Coordinates
+ *  are `[lng, lat]` per the GeoJSON spec. Photon returns no single formatted
+ *  address string, so we compose one from the component fields below. */
+interface PhotonFeature {
+  geometry?: { coordinates?: [number, number] };
+  properties?: {
+    name?: string;
+    street?: string;
+    housenumber?: string;
+    district?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    osm_id?: number;
+    osm_type?: string; // 'N' | 'W' | 'R'
+    osm_key?: string;
+    osm_value?: string;
+  };
+}
+
+const PHOTON_OSM_TYPE: Record<string, string> = { N: 'node', W: 'way', R: 'relation' };
+
+/** Compose a human-readable address from Photon's component fields, coarse →
+ *  fine, e.g. "Panda Ave 1375, Chenghua, Chengdu, Sichuan, China". Kept
+ *  city/state/country-inclusive so `inferCityFromAddress` (lib/tripView.ts) can
+ *  still prefill the Add-Place city field from it. */
+function composePhotonAddress(props: NonNullable<PhotonFeature['properties']>): string {
+  const street =
+    props.street && props.housenumber
+      ? `${props.street} ${props.housenumber}`
+      : props.street || undefined;
+  const parts = [street, props.district, props.city, props.state, props.country];
+  return parts.filter((p): p is string => Boolean(p && p.trim())).join(', ');
+}
+
+function mapPhotonFeature(feature: PhotonFeature): GeocodeResult | undefined {
+  const coords = feature.geometry?.coordinates;
+  const props = feature.properties;
+  if (!coords || !props) return undefined;
+  const [lng, lat] = coords;
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return undefined;
+  const name = (props.name || props.street || '').trim();
+  if (!name) return undefined;
+  const address = composePhotonAddress(props) || name;
+  const osmType = props.osm_type ? PHOTON_OSM_TYPE[props.osm_type] : undefined;
+  const sourceId =
+    osmType && props.osm_id != null ? `osm:${osmType}/${props.osm_id}` : undefined;
+  return {
+    name,
+    address,
+    lat,
+    lng,
+    category: props.osm_value || props.osm_key || undefined,
+    sourceId,
+  };
+}
+
+function buildPhotonUrl(query: string, opts: GeocodeSearchOptions): string {
+  const url = new URL(PHOTON_ENDPOINT);
+  url.searchParams.set('q', buildQueryText(query, opts));
+  url.searchParams.set('limit', String(clampLimit(opts.limit)));
+  url.searchParams.set('lang', 'en');
+  // Bias (not restrict) toward the trip city's centre so "panda base" near
+  // Chengdu ranks above an identically-named place elsewhere.
+  if (opts.cityHint) {
+    const centre = CITY_PROXIMITY[opts.cityHint.trim().toLowerCase()];
+    if (centre) {
+      url.searchParams.set('lat', String(centre.lat));
+      url.searchParams.set('lon', String(centre.lng));
+    }
+  }
+  return url.toString();
+}
+
+/** Photon-backed `GeocodeProvider` — the default the app installs at startup. */
+export class PhotonGeocodeProvider implements GeocodeProvider {
+  async searchPlaces(query: string, opts: GeocodeSearchOptions = {}): Promise<GeocodeResult[]> {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    const url = buildPhotonUrl(trimmed, opts);
+
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: opts.signal });
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      throw new GeocodeError('Network error while searching for places', { cause: err });
+    }
+
+    if (!response.ok) {
+      throw new GeocodeError(`Photon search failed with status ${response.status}`);
+    }
+
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch (err) {
+      throw new GeocodeError('Photon returned an unparseable response', { cause: err });
+    }
+    const features = (data as { features?: unknown })?.features;
+    if (!Array.isArray(features)) return [];
+
+    const results: GeocodeResult[] = [];
+    for (const feature of features as PhotonFeature[]) {
+      const mapped = mapPhotonFeature(feature);
+      if (mapped) results.push(mapped);
+    }
+    return results;
+  }
+}
+
+/** The provider the app runs with by default: Photon (free, keyless, better
+ *  fuzzy/typeahead matching than Nominatim). Called once at startup (see
+ *  `main.tsx`); tests can still swap providers via `setGeocodeProvider`. */
+export function createDefaultGeocodeProvider(): GeocodeProvider {
+  return new PhotonGeocodeProvider();
 }
 
 let activeProvider: GeocodeProvider = new NominatimGeocodeProvider();

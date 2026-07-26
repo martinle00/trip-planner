@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  createDefaultGeocodeProvider,
   GeocodeError,
   NominatimGeocodeProvider,
+  PhotonGeocodeProvider,
   resetGeocodeProvider,
   searchPlaces,
   setGeocodeProvider,
@@ -239,6 +241,199 @@ describe('setGeocodeProvider', () => {
 
     expect(results).toEqual([fakeResult]);
     expect(fakeProvider.searchPlaces).toHaveBeenCalledWith('anything', { cityHint: 'Chengdu' });
+  });
+});
+
+const PHOTON_RAW_FEATURE = {
+  geometry: { type: 'Point', coordinates: [104.0442, 30.5921] },
+  properties: {
+    name: 'Chengdu Research Base of Giant Panda Breeding',
+    street: 'Panda Ave',
+    housenumber: '1375',
+    district: 'Chenghua',
+    city: 'Chengdu',
+    state: 'Sichuan',
+    country: 'China',
+    osm_id: 987654,
+    osm_type: 'W',
+    osm_key: 'tourism',
+    osm_value: 'zoo',
+  },
+};
+
+function photonResponse(features: unknown[], ok = true, status = 200): Response {
+  return {
+    ok,
+    status,
+    json: () => Promise.resolve({ type: 'FeatureCollection', features }),
+  } as unknown as Response;
+}
+
+describe('PhotonGeocodeProvider', () => {
+  function usePhoton() {
+    const provider = new PhotonGeocodeProvider();
+    setGeocodeProvider(provider);
+    return provider;
+  }
+
+  it('returns [] without calling fetch for a blank query', async () => {
+    usePhoton();
+    const fetchMock = mockFetch(() => Promise.resolve(photonResponse([])));
+    expect(await searchPlaces('   ')).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('builds the Photon URL with q/limit/lang', async () => {
+    usePhoton();
+    const fetchMock = mockFetch(() => Promise.resolve(photonResponse([PHOTON_RAW_FEATURE])));
+    await searchPlaces('panda base');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = new URL((fetchMock.mock.calls[0] as [string])[0]);
+    expect(url.origin + url.pathname).toBe('https://photon.komoot.io/api/');
+    expect(url.searchParams.get('q')).toBe('panda base');
+    expect(url.searchParams.get('limit')).toBe('5');
+    expect(url.searchParams.get('lang')).toBe('en');
+  });
+
+  it('folds cityHint/countryHint into the query text', async () => {
+    usePhoton();
+    const fetchMock = mockFetch(() => Promise.resolve(photonResponse([])));
+    await searchPlaces('panda base', { cityHint: 'Chengdu', countryHint: 'China' });
+    const url = new URL((fetchMock.mock.calls[0] as [string])[0]);
+    expect(url.searchParams.get('q')).toBe('panda base, Chengdu, China');
+  });
+
+  it('biases toward a recognized trip city via lat/lon', async () => {
+    usePhoton();
+    const fetchMock = mockFetch(() => Promise.resolve(photonResponse([])));
+    await searchPlaces('panda base', { cityHint: 'Chengdu' });
+    const url = new URL((fetchMock.mock.calls[0] as [string])[0]);
+    expect(url.searchParams.get('lat')).toBe('30.5728');
+    expect(url.searchParams.get('lon')).toBe('104.0668');
+  });
+
+  it('omits lat/lon bias for an unrecognized city', async () => {
+    usePhoton();
+    const fetchMock = mockFetch(() => Promise.resolve(photonResponse([])));
+    await searchPlaces('museum', { cityHint: 'Sydney' });
+    const url = new URL((fetchMock.mock.calls[0] as [string])[0]);
+    expect(url.searchParams.has('lat')).toBe(false);
+    expect(url.searchParams.has('lon')).toBe(false);
+  });
+
+  it('clamps limit into [1, 10] and defaults to 5', async () => {
+    usePhoton();
+    const fetchMock = mockFetch(() => Promise.resolve(photonResponse([])));
+    await searchPlaces('temple', { limit: 999 });
+    expect(new URL((fetchMock.mock.calls[0] as [string])[0]).searchParams.get('limit')).toBe('10');
+    await searchPlaces('temple', { limit: 0 });
+    expect(new URL((fetchMock.mock.calls[1] as [string])[0]).searchParams.get('limit')).toBe('1');
+    await searchPlaces('temple');
+    expect(new URL((fetchMock.mock.calls[2] as [string])[0]).searchParams.get('limit')).toBe('5');
+  });
+
+  it('maps a Photon feature into a GeocodeResult (WGS-84 lng,lat → lat,lng)', async () => {
+    usePhoton();
+    mockFetch(() => Promise.resolve(photonResponse([PHOTON_RAW_FEATURE])));
+    const results = await searchPlaces('panda base', { cityHint: 'Chengdu' });
+    expect(results).toEqual<GeocodeResult[]>([
+      {
+        name: 'Chengdu Research Base of Giant Panda Breeding',
+        address: 'Panda Ave 1375, Chenghua, Chengdu, Sichuan, China',
+        lat: 30.5921,
+        lng: 104.0442,
+        category: 'zoo',
+        sourceId: 'osm:way/987654',
+      },
+    ]);
+  });
+
+  it('composes an address without a street from the coarser fields, and falls back category to osm_key', async () => {
+    usePhoton();
+    mockFetch(() =>
+      Promise.resolve(
+        photonResponse([
+          {
+            geometry: { coordinates: [121.4737, 31.2304] },
+            properties: { name: 'The Bund', city: 'Shanghai', country: 'China', osm_key: 'tourism' },
+          },
+        ]),
+      ),
+    );
+    const [result] = await searchPlaces('bund', { cityHint: 'Shanghai' });
+    expect(result.address).toBe('Shanghai, China');
+    expect(result.category).toBe('tourism');
+    expect(result.sourceId).toBeUndefined();
+  });
+
+  it('falls back name to street when name is missing', async () => {
+    usePhoton();
+    mockFetch(() =>
+      Promise.resolve(
+        photonResponse([
+          { geometry: { coordinates: [2.2, 1.1] }, properties: { street: 'Nanjing Rd', city: 'X' } },
+        ]),
+      ),
+    );
+    const [result] = await searchPlaces('nanjing');
+    expect(result.name).toBe('Nanjing Rd');
+  });
+
+  it('drops features with missing coordinates or no name/street', async () => {
+    usePhoton();
+    mockFetch(() =>
+      Promise.resolve(
+        photonResponse([
+          { properties: { name: 'No geometry' } },
+          { geometry: { coordinates: [2.2, 1.1] }, properties: { city: 'Only a city, no name' } },
+          PHOTON_RAW_FEATURE,
+        ]),
+      ),
+    );
+    const results = await searchPlaces('mixed');
+    expect(results).toHaveLength(1);
+    expect(results[0].sourceId).toBe('osm:way/987654');
+  });
+
+  it('returns [] when the response has no features array (defensive)', async () => {
+    usePhoton();
+    mockFetch(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) } as unknown as Response));
+    expect(await searchPlaces('weird')).toEqual([]);
+  });
+
+  it('throws GeocodeError on a non-OK HTTP response', async () => {
+    usePhoton();
+    mockFetch(() => Promise.resolve(photonResponse([], false, 503)));
+    await expect(searchPlaces('temple')).rejects.toBeInstanceOf(GeocodeError);
+  });
+
+  it('throws GeocodeError on a network failure', async () => {
+    usePhoton();
+    mockFetch(() => Promise.reject(new TypeError('Failed to fetch')));
+    await expect(searchPlaces('temple')).rejects.toBeInstanceOf(GeocodeError);
+  });
+
+  it('rethrows an AbortError as-is rather than wrapping it', async () => {
+    usePhoton();
+    const abortError = new DOMException('The operation was aborted', 'AbortError');
+    mockFetch(() => Promise.reject(abortError));
+    await expect(searchPlaces('temple')).rejects.toBe(abortError);
+  });
+
+  it('passes the caller-supplied AbortSignal through to fetch', async () => {
+    usePhoton();
+    const fetchMock = mockFetch(() => Promise.resolve(photonResponse([])));
+    const controller = new AbortController();
+    await searchPlaces('temple', { signal: controller.signal });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
+  });
+});
+
+describe('createDefaultGeocodeProvider', () => {
+  it('returns a Photon provider (the app default)', () => {
+    expect(createDefaultGeocodeProvider()).toBeInstanceOf(PhotonGeocodeProvider);
   });
 });
 

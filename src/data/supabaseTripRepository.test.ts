@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { SupabaseTripRepository } from './supabaseTripRepository';
-import type { Day, Expense, ItineraryItem, Place, Trip } from './schema';
+import type { Day, Expense, ItineraryItem, Place, Trip, TripMember } from './schema';
 
 type Row = Record<string, unknown>;
 
@@ -136,6 +136,51 @@ describe('SupabaseTripRepository', () => {
     expect(trip).toEqual(baseTrip);
   });
 
+  // Phase 5 trap #1 — `Trip.members`/`Expense.note`/`Expense.paidBy` must
+  // move through the Supabase row<->domain mappers in lockstep with every
+  // other layer (Dexie, exportImport). Neither field appears in `baseTrip`
+  // above, so the existing round-trip tests never actually exercised
+  // `tripFromRow`/`tripToRow`'s `members` handling or `expenseFromRow`/
+  // `expenseToRow`'s `note`/`paid_by` handling — added explicitly here.
+  it('saveTrip then getTrip round-trips Trip.members (Phase 5)', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const members: TripMember[] = [
+      { id: 'member-1', name: 'Alex' },
+      { id: 'member-2', name: 'Priya' },
+    ];
+    await repo.saveTrip({ ...baseTrip, members });
+    const trip = await repo.getTrip();
+    expect(trip?.members).toEqual(members);
+  });
+
+  it('a trip with no members maps back to `members: undefined`, not an empty-array lie (Phase 5)', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    await repo.saveTrip(baseTrip);
+    const trip = await repo.getTrip();
+    expect(trip?.members).toBeUndefined();
+  });
+
+  it('upsertExpense/listExpenses round-trips Expense.note and Expense.paidBy (Phase 5)', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const expense: Expense = {
+      id: 'expense-notes',
+      tripId: baseTrip.id,
+      category: 'Food',
+      label: 'Dinner',
+      amount: 120,
+      currency: 'CNY',
+      paid: true,
+      note: 'Split three ways',
+      paidBy: 'member-1',
+    };
+    await repo.upsertExpense(expense);
+    const expenses = await repo.listExpenses(baseTrip.id);
+    expect(expenses).toEqual([expense]);
+  });
+
   it('upsertPlace/listPlaces round-trips a place including optional fields', async () => {
     const { client } = makeFakeClient();
     const repo = new SupabaseTripRepository(client, USER_ID);
@@ -208,6 +253,40 @@ describe('SupabaseTripRepository', () => {
     expect(expenses).toEqual([expense]);
   });
 
+  // Phase 6 — `Expense.city` (replaces `dayId`) and `Expense.coversMemberIds`
+  // must move through the row<->domain mappers the same lockstep way Phase
+  // 5's note/paidBy did (see the trap #1 comment above).
+  it('upsertExpense/listExpenses round-trips Expense.city and Expense.coversMemberIds (Phase 6)', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const expense: Expense = {
+      id: 'expense-city-covers',
+      tripId: baseTrip.id,
+      category: 'Food',
+      label: 'Dinner',
+      amount: 120,
+      currency: 'CNY',
+      paid: true,
+      city: 'Shanghai',
+      coversMemberIds: ['member-1', 'member-2'],
+    };
+    await repo.upsertExpense(expense);
+    const expenses = await repo.listExpenses(baseTrip.id);
+    expect(expenses).toEqual([expense]);
+  });
+
+  it('saveTrip/getTrip round-trips TripMember.color (Phase 6)', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const tripWithColouredMember: Trip = {
+      ...baseTrip,
+      members: [{ id: 'member-1', name: 'Alex', color: 'm-denim' }],
+    };
+    await repo.saveTrip(tripWithColouredMember);
+    const trip = await repo.getTrip();
+    expect(trip?.members).toEqual([{ id: 'member-1', name: 'Alex', color: 'm-denim' }]);
+  });
+
   it('importSnapshot calls the import_trip_snapshot RPC with the raw snapshot payload', async () => {
     const rpcCalls: unknown[] = [];
     const client = {
@@ -218,7 +297,7 @@ describe('SupabaseTripRepository', () => {
       },
     } as unknown as import('@supabase/supabase-js').SupabaseClient;
     const repo = new SupabaseTripRepository(client, USER_ID);
-    const snapshot = { version: 3 as const, trip: baseTrip, days: [], places: [], itinerary: [], expenses: [] };
+    const snapshot = { version: 5 as const, trip: baseTrip, days: [], places: [], itinerary: [], expenses: [] };
     await repo.importSnapshot(snapshot);
     expect(rpcCalls).toEqual([{ fn: 'import_trip_snapshot', args: { snapshot } }]);
   });

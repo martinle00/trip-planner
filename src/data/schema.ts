@@ -23,6 +23,33 @@ export interface City {
   parentCity?: string;
 }
 
+/**
+ * A travel companion, referenced by id from `Expense.paidBy`. Deliberately an
+ * `{id,name}` object rather than a bare name string — a rename shouldn't
+ * strand `paidBy` references, and stable ids make reliable per-person
+ * rollups possible (Phase 5). Embedded on `Trip.members`, exactly like
+ * `cities`/`rates` — never a separate table.
+ */
+export interface TripMember {
+  id: ID;
+  name: string;
+  /**
+   * Avatar ring / member chip colour (Phase 6, item 8) — one of a small
+   * FIXED set of `--m-*` design tokens (see `mockup/DESIGN-SYSTEM.md`'s
+   * "Member colour palette" section), never a free/arbitrary colour value —
+   * only a constrained swatch set can be pre-verified for `-soft-ink`
+   * contrast in both themes. Stored as the BARE token family name, without
+   * the leading `--` (e.g. `'m-denim'`, `'m-chartreuse'`), so a consumer
+   * builds the actual CSS custom properties itself (`var(--${color})`,
+   * `var(--${color}-soft)`, `var(--${color}-soft-ink)`) without having to
+   * strip a prefix first. `undefined` means "no colour assigned" — render
+   * with the neutral default ring, never a guessed/random swatch. The
+   * By-person budget bar itself stays jade regardless of this field (see
+   * PHASE6.md item 8) — this only colours the avatar/chip, never the bar fill.
+   */
+  color?: string;
+}
+
 export interface Trip {
   id: ID;
   name: string;
@@ -74,6 +101,12 @@ export interface Trip {
    */
   ratesBase?: string;
   cities: City[];
+  /**
+   * Trip members/travel companions, managed from the Budget tab (Phase 5).
+   * Optional/absent means "no members defined yet" — treat the same as an
+   * empty array, never throw. Referenced by id from `Expense.paidBy`.
+   */
+  members?: TripMember[];
 }
 
 /**
@@ -148,14 +181,20 @@ export interface ItineraryItem {
   order: number;
 }
 
-/** A trip expense, tracked in whatever currency it was actually paid in. */
+/**
+ * A trip expense, tracked in whatever currency it was actually paid in.
+ *
+ * v4 -> v5 (Phase 6 — expense sharing + attach-to-city): `dayId` and `itemId`
+ * are REMOVED (a deliberate non-additive break, decided by the user — see
+ * PHASE6.md's Decisions and trap #5's full enumerated blast radius) and
+ * replaced by the coarser `city`. Nothing in the app ever queried expenses by
+ * day (`DexieTripRepository` only ever filters `where('tripId')`) and nothing
+ * has ever read/written `itemId` at all, so both are dropped in the same
+ * sweep rather than kept as a dead/deprecated field.
+ */
 export interface Expense {
   id: ID;
   tripId: ID;
-  /** Optionally attached to a day. */
-  dayId?: ID;
-  /** Optionally attached to a specific itinerary item. */
-  itemId?: ID;
   category: string;
   label: string;
   /** Amount in `currency` (not necessarily the trip's home currency). */
@@ -163,6 +202,44 @@ export interface Expense {
   /** ISO 4217 currency code the amount was logged in, e.g. 'CNY', 'SGD', 'AUD'. */
   currency: string;
   paid: boolean;
+  /** Free-text note on the expense (Phase 5), e.g. what it was for. */
+  note?: string;
+  /**
+   * The `TripMember.id` who paid, if tracked (Phase 5). Deliberately
+   * orphan-tolerant: if the referenced member is later removed from
+   * `Trip.members`, this id is left dangling rather than cascade-deleted or
+   * rewritten — callers must treat a `paidBy` that no longer resolves to a
+   * member as simply "unset" and render it as such (e.g. "—"), never throw.
+   */
+  paidBy?: ID;
+  /**
+   * City name this expense is attached to (Phase 6) — matches a `City.name`,
+   * exactly like `Place.city`. `undefined`/absent means "Whole trip" — the
+   * coarse "attach to" replacement for the removed per-day `dayId`. Same
+   * orphan tolerance as `Place.city`/`paidBy`: a `city` that no longer
+   * matches any current `Trip.cities` entry (e.g. the city was renamed/
+   * removed) is never a hard error, just an unresolvable label.
+   */
+  city?: string;
+  /**
+   * The `TripMember.id`s this expense is shared across (Phase 6).
+   * `undefined`/absent means "everyone" — so every pre-Phase-6 (v4) row is
+   * already valid v5 data with this field simply absent; this is NOT the
+   * same as an explicit empty array. An explicit `coversMemberIds: []` is a
+   * degenerate "covers nobody" that the UI can't itself produce (deselecting
+   * the last person snaps back to "everyone"), but a hand-edited or
+   * externally-produced JSON import could still carry one — `parseSnapshot`
+   * (exportImport.ts) normalises any such `[]` to `undefined` on import, the
+   * single choke point for this rule, so no downstream reader (the By-person
+   * rollup, an expense row, a future split calculation) has to defend
+   * against the degenerate case independently.
+   *
+   * Orphan-tolerant exactly like `paidBy`: an id in this array that no
+   * longer resolves to a current `Trip.members` entry is simply ignored by
+   * readers, never throws, never cascade-deletes the expense or rewrites the
+   * array. Removing a member must leave this field exactly as it was.
+   */
+  coversMemberIds?: ID[];
 }
 
 /**
@@ -175,12 +252,30 @@ export interface Expense {
  * v2 -> v3: `Place.note` was removed in favor of `description` + `selfReview`,
  * and `Place.updatedAt` became required (see `Place`'s doc comment above).
  *
- * `parseSnapshot` (exportImport.ts) accepts and migrates v1 and v2
- * snapshots on import (chaining v1 -> v2 -> v3 for a very old export);
- * exports always write v3.
+ * v3 -> v4 (Phase 5 — richer expenses): purely additive, no per-record
+ * transform needed. Adds `Expense.note`, `Expense.paidBy`, and `Trip.members`
+ * (`TripMember[]`) — all optional, so a v3 record is already valid v4 data
+ * with those fields simply absent.
+ *
+ * v4 -> v5 (Phase 6 — expense sharing + attach-to-city): adds
+ * `TripMember.color` (purely additive) and `Expense.coversMemberIds` (purely
+ * additive — absent means "everyone", so a v4 expense is already valid v5
+ * data). NOT purely additive: `Expense.dayId`/`Expense.itemId` are REMOVED
+ * and replaced by `Expense.city`, which the per-record transform
+ * (`migrateExpenseV4ToV5` in exportImport.ts) derives from `dayId` by
+ * looking it up against the snapshot's own `days` array — a `dayId` that
+ * doesn't resolve to any day in the snapshot degrades to `city: undefined`
+ * ("Whole trip"), never throws.
+ *
+ * `parseSnapshot` (exportImport.ts) accepts and migrates v1, v2, v3 and v4
+ * snapshots on import (chaining v1 -> v2 -> v3 -> v4 -> v5 for a very old
+ * export); exports always write v5. `parseSnapshot` also normalises an
+ * explicit `Expense.coversMemberIds: []` to `undefined` on every import,
+ * regardless of the snapshot's original version — see `Expense`'s doc
+ * comment above.
  */
 export interface TripSnapshot {
-  version: 3;
+  version: 5;
   trip: Trip;
   days: Day[];
   places: Place[];

@@ -32,7 +32,7 @@ import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { AddPlaceMode, AddPlacePoint } from '../places/AddPlaceModal';
 import type { Day, ID, Place } from '../../data/schema';
 import { buildDayColorMap, dayColor, dayLabel, daysForCity } from '../../lib/tripView';
-import { fmtCompactRange, parseISODate } from '../../lib/dates';
+import { fmtCompactRange, fmtShortNumeric, parseISODate } from '../../lib/dates';
 import { buildPinIcon } from './markerIcon';
 import { MapSaveBar, MAP_SAVE_BAR_ID } from './MapSaveBar';
 import { crossCityHint, isPlacePending } from './mapStaging';
@@ -119,6 +119,17 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
 
   return (
     <section className="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
+      {/* PHASE 6 item 1 — no-new-chrome a11y mitigation for the panel-head
+          Add-place button below. Once the panel head scrolls out of view, a
+          keyboard-only/screen-reader user has no way back to Add-place
+          without scrolling all the way up — see the button's own comment for
+          why that gap is an accepted trade-off, not an oversight. This is the
+          standard "skip to content" idiom: clipped off-screen at rest
+          (`.skip-to-add`), reachable only via Tab, invisible to a sighted
+          mouse user. First Tab stop in the whole panel. */}
+      <a className="skip-to-add" href="#map-add-place-btn">
+        Skip to Add place
+      </a>
       <div className="panel-head">
         <div>
           <h2 className="panel-title" ref={panelTitleRef} tabIndex={-1}>
@@ -126,7 +137,12 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
           </h2>
           <span className="panel-hint">Your home screen &middot; tap a city in the timeline above to change what&rsquo;s shown</span>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={() => onOpenAddPlace('search')}>
+        <button
+          type="button"
+          id="map-add-place-btn"
+          className="btn btn-primary btn-sm"
+          onClick={() => onOpenAddPlace('search')}
+        >
           <Icon name="plus" /> Add place
         </button>
       </div>
@@ -137,24 +153,45 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
         {cityMeta && <span className="range">&middot; {fmtCompactRange(cityMeta.arrive, cityMeta.depart)}</span>}
       </div>
 
+      {/* Promotes the day-filter chips into their own sticky sub-bar under the
+          (also sticky) tabbar — same pattern as the Itinerary tab's existing
+          #itQuickNav/.it-quicknav (index.css ~L649), just applied to Map.
+          Map-tab-only (this lives in MapPanel, not App's shared chrome), so
+          the global header's height stays tab-independent regardless of
+          which tab is active — see mockup/header-nav-hierarchy.html
+          #v3-condense. Chips only — the trailing Add-place affordance this
+          sub-bar briefly carried in Phase 5 is gone; Add-place now lives
+          solely in `.panel-head` above (PHASE6 item 1). */}
       {cityDays.length > 0 && (
-        <div className="chiprow" id="dayChips">
-          <button
-            className={`chip day-all${selectedDayId === null ? ' active' : ''}`}
-            onClick={() => handleSelectDay(null)}
-          >
-            All days
-          </button>
-          {cityDays.map((d) => (
+        <div className="map-day-quicknav" id="mapDayQuicknav" aria-label="Filter pins by day">
+          <div className="map-day-quicknav-chips">
             <button
-              key={d.id}
-              className={`chip${selectedDayId === d.id ? ' active' : ''}`}
-              onClick={() => handleSelectDay(d.id)}
+              className={`chip day-all${selectedDayId === null ? ' active' : ''}`}
+              onClick={() => handleSelectDay(null)}
             >
-              <span className="chip-dot" style={{ background: dayColor(d.id, dayColorMap) }} />
-              {dayLabel(d, cityDays)}
+              All days
             </button>
-          ))}
+            {cityDays.map((d) => (
+              <button
+                key={d.id}
+                className={`chip${selectedDayId === d.id ? ' active' : ''}`}
+                onClick={() => handleSelectDay(d.id)}
+              >
+                <span className="chip-dot" style={{ background: dayColor(d.id, dayColorMap) }} />
+                {/* PHASE6 item 3 — mobile shows only the short numeric date
+                    ("9/11"); the full `dayLabel` text stays in the DOM,
+                    clipped (never display:none'd), because today it's the
+                    chip's ENTIRE accessible name (only the wrapping group
+                    carries an aria-label). Desktop shows the full label and
+                    hides the short one — pure decorative duplicate there, so
+                    display:none is fine for everyone on that viewport. */}
+                <span className="chip-date-full">{dayLabel(d, cityDays)}</span>
+                <span className="chip-date-short" aria-hidden="true">
+                  {fmtShortNumeric(d.date)}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -176,9 +213,6 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
                   onSelectPlace={handleSelectPlace}
                   onMapClick={handleMapTap}
                 />
-                <div className="map-badge map-add-hint" aria-hidden="true">
-                  <Icon name="plus" /> Tap map to add
-                </div>
                 <button
                   type="button"
                   className="btn btn-sm autoplan-cta map-fab"
@@ -231,6 +265,21 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
           onJumpToSaveBar={handleJumpToSaveBar}
         />
       </div>
+
+      {/* Second identically-hidden skip link, after the map/legend/pin-detail
+          content and before the Save bar — closes the "already tabbed deep
+          into the panel" half of the gap the first skip link (top of panel)
+          can't reach on its own. Same clip/reveal-on-focus treatment as the
+          one above, so it costs zero additional visible chrome and is NOT a
+          second Add-place *control* (PHASE6.md trap #3 forbids a second
+          visible affordance — a hidden skip-link isn't one). The mockup's
+          version of this sits after a scrollable list of pin cards; this
+          panel has no equivalent list (pins live on the Leaflet map, not as
+          a DOM list), so the nearest analogous "end of this panel's real
+          content" position is here, right before the Save bar. */}
+      <a className="skip-to-add" href="#map-add-place-btn">
+        Back to Add place
+      </a>
 
       <MapSaveBar
         pendingTotal={totalPending}

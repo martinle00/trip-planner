@@ -76,6 +76,12 @@ export function RouteStrip({ cities, selectedCity, onSelect, pendingCities }: Ro
             className={`route-node${active ? ' active' : ''}${hasPending ? ' has-pending' : ''}`}
             data-city={citySlug(city.name)}
             aria-current={active ? 'true' : undefined}
+            // A no-op at full width; recovers the name for a sighted mouse
+            // user once the desktop condensing header (App.tsx's
+            // useCondenseHeader) shrinks nodes to 60px and the city name
+            // truncates with an ellipsis (see index.css's
+            // `.topbar.is-condensed .route-city`).
+            title={`${city.name} · ${fmtCompactRange(city.arrive, city.depart)}`}
             onClick={() => onSelect(city.name)}
           >
             <span className="line" />

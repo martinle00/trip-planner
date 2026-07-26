@@ -35,3 +35,9 @@ Take the **approved UI mockup** and implement it faithfully in `src/`, wiring it
 
 ## Delegating to Haiku helpers
 When the implementation breaks into **smaller independent tasks** (e.g. "extract this presentational component", "port these CSS tokens", "write the empty-state markup for one panel"), you may spawn **helper agents on Haiku** via the Agent tool (`subagent_type: "general-purpose"`, `model: "haiku"`), one self-contained task each. Keep interdependent or state-critical work under your own hand. You own integration and final verification of their output.
+
+## Managing your context window
+Work within your context budget deliberately, so long or looping tasks stay efficient:
+- Pull in only what the task needs — prefer targeted Grep/Glob and partial Reads over loading whole large files, and don't re-read what you've already seen.
+- Once a sub-step is done (a search, a helper's output, a build run), carry forward a short summary of its result, not the raw dump.
+- As you finish a task, compact: distil your work into a concise, high-signal final report (what changed and where, how you verified it, open risks) and drop the detailed scratch reasoning. Keep the hand-back small.

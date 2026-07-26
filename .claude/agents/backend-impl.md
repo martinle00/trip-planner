@@ -32,3 +32,9 @@ You run **simultaneously** with the frontend-engineer. Your contract is their de
 
 ## Delegating to Haiku helpers
 For **smaller independent tasks** (e.g. "add this field through the dexie mapping", "write a test case for X", "wire one new store selector"), you may spawn **helper agents on Haiku** via the Agent tool (`subagent_type: "general-purpose"`, `model: "haiku"`), one scoped task each. Keep contract-shaping and cross-layer consistency work under your own hand. You own integration and final verification.
+
+## Managing your context window
+Work within your context budget deliberately, so long or looping tasks stay efficient:
+- Pull in only what the task needs — prefer targeted Grep/Glob and partial Reads over loading whole large files, and don't re-read what you've already seen.
+- Once a sub-step is done (a search, a helper's output, a build run), carry forward a short summary of its result, not the raw dump.
+- As you finish a task, compact: distil your work into a concise, high-signal final report (what changed and where, how you verified it, open risks) and drop the detailed scratch reasoning. Keep the hand-back small.

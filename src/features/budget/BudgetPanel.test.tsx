@@ -14,11 +14,11 @@
 // fields.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { BudgetPanel } from './BudgetPanel';
 import { useTripStore } from '../../store/useTripStore';
 import type { TripState } from '../../store/useTripStore';
-import type { Day, Expense, Trip } from '../../data/schema';
+import type { Day, Expense, Trip, TripMember } from '../../data/schema';
 
 let onlineMock = true;
 vi.mock('../../hooks/useOnlineStatus', () => ({
@@ -59,6 +59,9 @@ function resetStore(overrides: Partial<TripState> = {}) {
     removeExpense: vi.fn<TripState['removeExpense']>().mockResolvedValue(undefined),
     setHomeCurrency: vi.fn<TripState['setHomeCurrency']>().mockResolvedValue(undefined),
     refreshRates: vi.fn<TripState['refreshRates']>().mockResolvedValue(undefined),
+    addMember: vi.fn<TripState['addMember']>().mockResolvedValue({} as TripMember),
+    renameMember: vi.fn<TripState['renameMember']>().mockResolvedValue(undefined),
+    removeMember: vi.fn<TripState['removeMember']>().mockResolvedValue(undefined),
     ...overrides,
   });
 }
@@ -137,10 +140,16 @@ describe('BudgetPanel — no-rate exclusion and converted-amount sort', () => {
   });
 
   it('sorts expenses by CONVERTED home-currency amount, not raw amount, with no-rate rows at the end', () => {
-    render(<BudgetPanel />);
+    const { container } = render(<BudgetPanel />);
     // Converted: USD 100*1.5=150, AUD 50*1=50, CNY 120*0.21=25.2, THB = no rate.
     // Raw amount order would wrongly put THB (10000) and CNY (120) ahead of USD (100).
-    const labels = screen.getAllByText(/one/).map((el) => el.textContent);
+    // Scoped to the expense list itself — a bare `/one/` regex over the whole
+    // document also matches unrelated Phase 5 companions-card copy ("pick
+    // one as…", "anyone else…", "— none —").
+    const expenseList = container.querySelector('.expense-list') as HTMLElement;
+    const labels = within(expenseList)
+      .getAllByText(/one/)
+      .map((el) => el.textContent);
     expect(labels).toEqual([
       'USD one',
       'AUD one (home)',
@@ -308,5 +317,277 @@ describe('BudgetPanel — post-refresh "totals flash" pulse', () => {
     rerender(<BudgetPanel />);
 
     expect(container.querySelector('.summary-card.flash-confirm')).toBeNull();
+  });
+});
+
+// ============================================================================
+// Phase 5 item 4 — expense edit + free-text notes.
+// ============================================================================
+describe('BudgetPanel — expense edit + notes (Phase 5 item 4)', () => {
+  const EXPENSE: Expense = {
+    id: 'e-edit',
+    tripId: 'trip-test',
+    category: 'Food',
+    label: 'Noodles',
+    amount: 100,
+    currency: 'CNY',
+    paid: false,
+    note: 'Original note',
+  };
+
+  it('opens pre-filled in edit mode from the row\'s pencil icon, swapping the heading/submit label', () => {
+    resetStore({ expenses: [EXPENSE] });
+    render(<BudgetPanel />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Noodles' }));
+
+    expect(screen.getByRole('heading', { name: 'Editing expense' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
+    expect((screen.getByLabelText('Label') as HTMLInputElement).value).toBe('Noodles');
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('100');
+    expect((screen.getByLabelText(/^Note/) as HTMLTextAreaElement).value).toBe('Original note');
+  });
+
+  it('saves an edit via updateExpense, preserving fields the form does not touch (id, tripId, paid)', async () => {
+    const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
+    resetStore({ expenses: [EXPENSE], updateExpense });
+    render(<BudgetPanel />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Noodles' }));
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Noodles (updated)' } });
+    fireEvent.change(screen.getByLabelText(/^Note/), { target: { value: 'Updated note' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await vi.waitFor(() => expect(updateExpense).toHaveBeenCalledTimes(1));
+    expect(updateExpense).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'e-edit',
+        tripId: 'trip-test',
+        paid: false,
+        label: 'Noodles (updated)',
+        note: 'Updated note',
+      }),
+    );
+  });
+
+  it('surfaces the note on the expense row', () => {
+    resetStore({ expenses: [EXPENSE] });
+    render(<BudgetPanel />);
+    expect(screen.getByText('Original note')).toBeInTheDocument();
+  });
+
+  it('clearing the note field on save persists it as unset, not an empty string', async () => {
+    const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
+    resetStore({ expenses: [EXPENSE], updateExpense });
+    render(<BudgetPanel />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Noodles' }));
+    fireEvent.change(screen.getByLabelText(/^Note/), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await vi.waitFor(() => expect(updateExpense).toHaveBeenCalledTimes(1));
+    expect(updateExpense.mock.calls[0][0].note).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Phase 5 item 5 — trip companions (members) + Paid by, including the
+// orphan-tolerance trap (#3).
+// ============================================================================
+describe('BudgetPanel — trip companions + Paid by (Phase 5 item 5)', () => {
+  const MEMBERS: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+
+  it('shows the empty-companions state when the trip has no members yet', () => {
+    resetStore();
+    render(<BudgetPanel />);
+    expect(screen.getByText('No companions yet')).toBeInTheDocument();
+  });
+
+  it('adds a member via the companions form and clears the input', async () => {
+    const addMember = vi.fn<TripState['addMember']>().mockResolvedValue({ id: 'm-new', name: 'Sam' });
+    resetStore({ addMember });
+    render(<BudgetPanel />);
+
+    const input = screen.getByLabelText('New companion name');
+    fireEvent.change(input, { target: { value: '  Sam  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    // Wait on the actual side effect (input clears) rather than racing the
+    // mocked promise's own microtask against the assertion below.
+    await vi.waitFor(() => expect((input as HTMLInputElement).value).toBe(''));
+    expect(addMember).toHaveBeenCalledWith('Sam');
+  });
+
+  it('renames a member on Enter and removes a member via its icon buttons', async () => {
+    const renameMember = vi.fn<TripState['renameMember']>().mockResolvedValue(undefined);
+    const removeMember = vi.fn<TripState['removeMember']>().mockResolvedValue(undefined);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, renameMember, removeMember });
+    render(<BudgetPanel />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename Alex' }));
+    const renameInput = screen.getByLabelText('Rename companion');
+    fireEvent.change(renameInput, { target: { value: 'Alexandra' } });
+    fireEvent.keyDown(renameInput, { key: 'Enter' });
+    await vi.waitFor(() => expect(renameMember).toHaveBeenCalledWith('m-alex', 'Alexandra'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Priya' }));
+    await vi.waitFor(() => expect(removeMember).toHaveBeenCalledWith('m-priya'));
+  });
+
+  it('Escape cancels a rename without calling renameMember, even when the resulting unmount fires a blur (code-review regression)', () => {
+    // jsdom does not reproduce a real browser's "removing a focused element
+    // fires blur/focusout synchronously" behaviour, so this test drives that
+    // exact sequence by hand: Escape first (which unmounts the input via
+    // `renamingId` flipping to null), THEN an explicit blur on the
+    // now-detached input — standing in for what a real browser would fire
+    // on its own. Without the `renameCancelingRef` guard, that blur would
+    // still call commitRename and silently persist the half-typed value.
+    const renameMember = vi.fn<TripState['renameMember']>().mockResolvedValue(undefined);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, renameMember });
+    const { container } = render(<BudgetPanel />);
+    // Scoped query, not screen.getByText('Alex') — "Alex" also appears as a
+    // <option> inside the (CSS-hidden but still DOM-present) expense form's
+    // "Paid by" select, which getByText doesn't filter out.
+    const memberName = () => container.querySelector('.member-chip .member-name')?.textContent;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename Alex' }));
+    const renameInput = screen.getByLabelText('Rename companion');
+    fireEvent.change(renameInput, { target: { value: 'Unwanted edit' } });
+    fireEvent.keyDown(renameInput, { key: 'Escape' });
+
+    // The chip reverted to display mode (Escape's own, non-blur effect).
+    expect(screen.queryByLabelText('Rename companion')).not.toBeInTheDocument();
+    expect(memberName()).toBe('Alex');
+
+    // Simulate the real-browser blur a DOM removal would trigger.
+    fireEvent.blur(renameInput);
+
+    expect(renameMember).not.toHaveBeenCalled();
+    expect(memberName()).toBe('Alex');
+  });
+
+  it('lets the expense form pick a "Paid by" member, and surfaces the payer on the saved row', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, addExpense });
+    render(<BudgetPanel />);
+
+    // Two "Add expense"-named buttons exist once the form is open (the
+    // header button, and the form's own submit button) — [0]/[1] picks each
+    // deliberately rather than relying on `getByRole` staying unambiguous.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[0]);
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Dumplings' } });
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Paid by'), { target: { value: 'm-priya' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add expense' })[1]);
+
+    await vi.waitFor(() =>
+      expect(addExpense).toHaveBeenCalledWith(expect.objectContaining({ paidBy: 'm-priya' })),
+    );
+  });
+
+  it('PHASE5 trap #3 — an expense whose paidBy no longer resolves to a member renders "Paid by —", never crashes', () => {
+    const orphanExpense: Expense = {
+      id: 'e-orphan',
+      tripId: 'trip-test',
+      category: 'Food',
+      label: 'Hotpot',
+      amount: 80,
+      currency: 'CNY',
+      paid: false,
+      paidBy: 'm-deleted',
+    };
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, expenses: [orphanExpense] });
+    expect(() => render(<BudgetPanel />)).not.toThrow();
+    // A tight regex (not a bare /Paid by/) — the companions card's own
+    // panel-hint copy also contains the literal words "Paid by" (in
+    // quotes), so a looser match would be ambiguous.
+    expect(screen.getByText(/Paid by\s*—/)).toBeInTheDocument();
+  });
+
+  it('an expense with no paidBy at all renders no payer meta (not an error state)', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [{ id: 'e-plain', tripId: 'trip-test', category: 'Food', label: 'Snack', amount: 10, currency: 'AUD', paid: true }],
+    });
+    const { container } = render(<BudgetPanel />);
+    expect(container.querySelector('.expense-payer')).toBeNull();
+  });
+
+  it('PHASE5 trap #3 — opening the edit form for an expense with a dangling paidBy opens the "Paid by" select on "— none —", not the orphaned id', async () => {
+    const orphanExpense: Expense = {
+      id: 'e-orphan-edit',
+      tripId: 'trip-test',
+      category: 'Food',
+      label: 'Hotpot',
+      amount: 80,
+      currency: 'CNY',
+      paid: false,
+      paidBy: 'm-deleted',
+    };
+    const updateExpense = vi.fn<TripState['updateExpense']>().mockResolvedValue(undefined);
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, expenses: [orphanExpense], updateExpense });
+    render(<BudgetPanel />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Hotpot' }));
+
+    const paidBySelect = screen.getByLabelText('Paid by') as HTMLSelectElement;
+    expect(paidBySelect.value).toBe('');
+    // The dangling id is genuinely absent from the option list, not merely
+    // unselected — confirms there's nothing selectable that maps to it.
+    expect(within(paidBySelect).queryByRole('option', { name: /m-deleted/ })).not.toBeInTheDocument();
+
+    // Re-saving without touching "Paid by" clears the dangling reference
+    // (documented behaviour — see the openEdit doc comment) rather than
+    // silently preserving the orphaned id server-side.
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await vi.waitFor(() => expect(updateExpense).toHaveBeenCalledTimes(1));
+    expect(updateExpense.mock.calls[0][0].paidBy).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Phase 5 item 6 — per-person totals, including the live-convert trap (#4).
+// ============================================================================
+describe('BudgetPanel — By-person totals (Phase 5 item 6)', () => {
+  const MEMBERS: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+
+  it('shows a pointer back to the companions card when there are no members yet', () => {
+    resetStore();
+    render(<BudgetPanel />);
+    expect(screen.getByText(/No companions yet — add one above/)).toBeInTheDocument();
+  });
+
+  it('sums each member\'s CONVERTED total (never raw amounts across currencies), excludes a no-rate expense from the bar with a note, and separately flags an orphaned-payer expense', () => {
+    const expenses: Expense[] = [
+      // Alex: CNY 100 (converts to 21) + USD 10 (converts to 15) = 36.
+      { id: 'e1', tripId: 'trip-test', category: 'Food', label: 'A', amount: 100, currency: 'CNY', paid: true, paidBy: 'm-alex' },
+      { id: 'e2', tripId: 'trip-test', category: 'Food', label: 'B', amount: 10, currency: 'USD', paid: true, paidBy: 'm-alex' },
+      // Alex also has a no-rate (THB) expense — excluded from the bar, flagged.
+      { id: 'e3', tripId: 'trip-test', category: 'Food', label: 'C', amount: 500, currency: 'THB', paid: false, paidBy: 'm-alex' },
+      // Priya paid nothing.
+      // An expense paid by a member who no longer exists — must not be
+      // silently dropped nor crash; surfaced as its own separate note.
+      { id: 'e4', tripId: 'trip-test', category: 'Food', label: 'D', amount: 999, currency: 'CNY', paid: true, paidBy: 'm-ghost' },
+    ];
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, expenses });
+    const { container } = render(<BudgetPanel />);
+
+    const byPersonCard = container.querySelector('.by-person-card') as HTMLElement;
+    const alexRow = within(byPersonCard).getByText('Alex').closest('.cat-row') as HTMLElement;
+    expect(within(alexRow).getByText('A$36')).toBeInTheDocument();
+    expect(within(alexRow).getByText('1 excl. (no rate)')).toBeInTheDocument();
+
+    const priyaRow = within(byPersonCard).getByText('Priya').closest('.cat-row') as HTMLElement;
+    expect(within(priyaRow).getByText('A$0')).toBeInTheDocument();
+
+    expect(
+      within(byPersonCard).getByText(/1 expense excluded — payer no longer in your companions list/),
+    ).toBeInTheDocument();
   });
 });

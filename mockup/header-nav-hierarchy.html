@@ -1,0 +1,1225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Header/nav hierarchy — 3 variants</title>
+<style>
+  /* ============================= TOKENS (ported from mockup/mockup.html — do not hand-edit values here, port again if the source changes) ============================= */
+  :root{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350;
+    --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-full: 999px;
+    --shadow-sm: 0 1px 2px rgba(60,40,20,.08), 0 1px 1px rgba(60,40,20,.05);
+    --shadow-md: 0 8px 24px -8px rgba(60,40,20,.22), 0 2px 6px rgba(60,40,20,.08);
+    --shadow-lg: 0 24px 60px -16px rgba(30,20,10,.35);
+    --font-display: 'Songti SC','STSong','Noto Serif SC', Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Consolas', 'Roboto Mono', monospace;
+    --tab-active-bg: var(--ink); --tab-active-ink: var(--paper);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+      --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+      --line: #362E24; --line-strong: #453A2C;
+      --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+      --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B;
+      --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+      --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+      --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+      --tab-active-bg: var(--accent); --tab-active-ink: var(--accent-ink);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+    --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+    --line: #362E24; --line-strong: #453A2C;
+    --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+    --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+    --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+    --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+    --tab-active-bg: var(--accent); --tab-active-ink: var(--accent-ink);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --tab-active-bg: var(--ink); --tab-active-ink: var(--paper);
+    color-scheme: light;
+  }
+
+  /* ============================= RESET ============================= */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,p{ margin:0; }
+  button{ font:inherit; color:inherit; }
+  button, .tab, .bottom-tab, .route-node, .chip{ cursor:pointer; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  svg{ display:block; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
+  .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+  /* ============================= SCAFFOLDING (review tooling — not shipped UI) ============================= */
+  .spec-bar{
+    position:sticky; top:0; z-index:200; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    flex-wrap:wrap; background:var(--ink); color:var(--paper); padding:12px 18px; font-size:13px;
+  }
+  .spec-bar strong{ font-size:14px; }
+  .spec-bar span.sub{ color:#cabfae; }
+  .spec-bar-tools{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .spec-bar-tools a{
+    font-size:11px; font-weight:700; color:#cabfae; text-decoration:none; padding:5px 10px;
+    border:1px dashed rgba(255,255,255,.3); border-radius:var(--radius-full);
+  }
+  .spec-bar-tools a:hover{ color:var(--paper); border-color:rgba(255,255,255,.6); }
+  .debug-toggle{
+    font-size:10.5px; font-weight:600; color:#cabfae; background:transparent;
+    border:1px dashed rgba(255,255,255,.35); border-radius:var(--radius-full); padding:5px 12px;
+  }
+  .debug-toggle:hover{ color:var(--paper); border-color:rgba(255,255,255,.6); }
+  .debug-toggle.is-on{ color:var(--gold); border-color:var(--gold); border-style:solid; }
+  .spec-bar .btn-icon{ background:transparent; border:1px solid rgba(255,255,255,.3); color:var(--paper); width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .spec-bar .btn-icon:hover{ background:rgba(255,255,255,.12); }
+  .spec-bar .btn-icon svg{ width:15px; height:15px; }
+
+  .intro{ max-width:900px; margin:26px auto 6px; padding:0 18px; font-size:13.5px; color:var(--ink-soft); line-height:1.6; }
+  .intro h2{ font-family:var(--font-display); font-size:1.3rem; font-weight:600; color:var(--ink); margin-bottom:8px; }
+  .intro p{ margin:0 0 10px; }
+  .intro code{ font-family:var(--font-mono); font-size:12.5px; background:var(--paper-sunk); padding:1px 5px; border-radius:4px; }
+
+  .frame-label{ max-width:1180px; margin:30px auto 4px; padding:0 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); }
+  /* neutral by default ("for reference" etc. — informational, not a call to
+     action or a recommendation, so it stays out of the accent/jade
+     vocabulary entirely); .frame-badge-rec below is the one exception,
+     reserved specifically for "recommended" (jade = positive/confirmed,
+     same pairing as the compare-table's .rec-pill). */
+  .frame-label .frame-badge{
+    display:inline-flex; align-items:center; font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:none;
+    background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line); border-radius:var(--radius-full); padding:2px 9px; margin-left:8px;
+  }
+  .frame-label .frame-badge-rec{
+    background:var(--jade-soft); color:var(--jade-soft-ink); border-color:transparent;
+  }
+  .frame-hint{ display:block; max-width:900px; margin:0 auto 12px; padding:0 18px; font-size:12.5px; color:var(--ink-soft); font-weight:400; text-transform:none; letter-spacing:0; line-height:1.6; }
+  .frame-wrap{ max-width:1180px; margin:0 auto 8px; padding:0 18px; display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .frame-col{ flex:1 1 320px; min-width:0; }
+  .frame-col-title{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); margin-bottom:8px; }
+
+  .demo-viewport{
+    position:relative; max-height:640px; overflow-y:auto; overflow-x:hidden;
+    border:1px solid var(--line-strong); border-radius:var(--radius-lg); background:var(--paper);
+    box-shadow:var(--shadow-sm);
+  }
+  .phone-frame{
+    position:relative; width:390px; max-width:100%; margin:0; padding:12px;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:34px; box-shadow:var(--shadow-md);
+  }
+  .phone-screen{ position:relative; background:var(--paper); border-radius:22px; overflow-y:auto; overflow-x:hidden; max-height:600px; }
+  .frame-inner{ position:relative; }
+
+  .decision-note{
+    display:flex; gap:9px; align-items:flex-start; background:var(--accent-soft); color:var(--accent-soft-ink);
+    border-radius:var(--radius-md); padding:11px 14px; margin:0 0 14px; font-size:12.5px; line-height:1.55;
+    max-width:900px; margin-left:auto; margin-right:auto;
+  }
+  .decision-note svg{ width:15px; height:15px; flex:none; margin-top:2px; }
+  .decision-note strong{ display:block; color:var(--accent-soft-ink); font-size:12.5px; margin-bottom:2px; }
+  /* gold variant — for flagging an open risk/question rather than explaining
+     a decision already made (gold = "needs attention", not accent). */
+  .decision-note.is-warn{ background:var(--gold-soft); color:var(--gold-soft-ink); }
+  .decision-note.is-warn strong{ color:var(--gold-soft-ink); }
+
+  .fold-marker{ position:absolute; left:0; right:0; top:560px; border-top:2px dashed var(--gold); z-index:5; pointer-events:none; }
+  .fold-marker-label{
+    position:absolute; top:-10px; right:6px; background:var(--gold-soft); color:var(--gold-soft-ink);
+    font-size:9px; font-weight:700; letter-spacing:.02em; padding:2px 7px; border-radius:var(--radius-full); white-space:nowrap;
+  }
+
+  .compare-wrap{ max-width:1180px; margin:0 auto 60px; padding:0 18px; overflow-x:auto; }
+  table.compare-table{ border-collapse:collapse; width:100%; min-width:760px; font-size:12.5px; }
+  table.compare-table th, table.compare-table td{ text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.compare-table th{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); font-weight:700; }
+  table.compare-table td strong{ color:var(--ink); }
+  table.compare-table tr:last-child td{ border-bottom:none; }
+  .rec-pill{ display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:700; background:var(--jade-soft); color:var(--jade-soft-ink); border-radius:var(--radius-full); padding:2px 9px; margin-left:6px; }
+
+  /* ============================= BUTTONS ============================= */
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; border-radius:var(--radius-full);
+    padding:9px 16px; font-size:13.5px; font-weight:600; background:var(--paper-raised); border-color:var(--line-strong); color:var(--ink);
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease, width .15s ease, padding .15s ease; white-space:nowrap;
+  }
+  .btn:hover{ box-shadow:var(--shadow-sm); }
+  .btn:active{ transform:scale(.97); }
+  .btn svg{ width:15px; height:15px; flex:none; }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-ghost{ background:transparent; border-color:var(--line-strong); }
+  .btn-ghost:hover{ background:var(--paper-sunk); }
+  .btn-sm{ padding:6px 12px; font-size:12.5px; }
+  .btn[disabled]{ opacity:.5; pointer-events:none; }
+  .btn-icon{ width:38px; height:38px; padding:0; justify-content:center; border-radius:50%; flex:none; }
+  .btn-icon svg{ width:17px; height:17px; }
+  .autoplan-cta{ background:linear-gradient(135deg, var(--accent), var(--d-terra)); color:var(--accent-ink); border:none; box-shadow:var(--shadow-sm); }
+
+  /* ============================= OFFLINE BANNER (mirrors App.tsx / index.css:1119) ============================= */
+  /* Hidden by default; every frame renders one (see offlineBannerHTML below)
+     and the spec-bar's "simulate offline" toggle flips a single body-level
+     class that shows all of them at once, added after ux-review flagged
+     this file as under-covering states: the offline banner sits ABOVE
+     .topbar in the real app (App.tsx ~L240), non-sticky, adding real height
+     to exactly the stack this file stress-tests — the "worst case" rigor
+     already applied to the sync pill needs to apply here too. */
+  .offline-banner{
+    display:none; align-items:center; gap:8px; padding:9px 16px; font-size:12.5px; font-weight:600;
+    background:var(--gold-soft); color:var(--gold-soft-ink); border-bottom:1px solid var(--line);
+  }
+  .offline-banner svg{ width:15px; height:15px; flex:none; }
+  body.simulate-offline .offline-banner{ display:flex; }
+
+  /* ============================= TOPBAR / IDENTITY ============================= */
+  .topbar{
+    position:sticky; top:0; z-index:30; background:var(--paper); border-bottom:1px solid var(--line); padding:18px 16px 0;
+  }
+  .topbar-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .trip-id{ display:flex; flex-direction:column; gap:3px; }
+  .trip-eyebrow{ font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
+  .trip-title{ font-family:var(--font-display); font-weight:600; font-size:1.5rem; letter-spacing:.01em; }
+  .trip-sub{ font-size:12.5px; color:var(--ink-soft); }
+  /* ported EXACTLY from src/index.css:184 — no flex-wrap, no justify-content.
+     That matters here: without wrap, an overflowing row doesn't neatly break
+     to a second line, it just overflows past the container's right edge.
+     Combined with body{overflow-x:hidden} (also ported, on .demo-viewport /
+     .phone-screen below), the real production behaviour at 390px is that
+     the trailing buttons get CLIPPED OFF-SCREEN, not wrapped — worse than
+     this file's first draft assumed. Fixed after ux-reviewer flagged the
+     baseline frame as quietly nicer than production actually is. */
+  .topbar-actions{ display:flex; align-items:center; gap:8px; }
+
+  /* icon-only collapse for Export/Import/Sign out — SAME pattern as the sync
+     pill's existing <380px collapse (index.css ~L1180): label stays in the
+     DOM, just visually hidden, so it's still the button's accessible name. */
+  .btn-collapsible .btn-label{ display:inline; }
+  .is-collapsed .btn-collapsible{ width:38px; height:38px; padding:0; justify-content:center; border-radius:50%; }
+  .is-collapsed .btn-collapsible .btn-label{
+    position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+  }
+
+  /* sync indicator — static "Synced" state only (its own animated lifecycle
+     is out of scope here; shown solid so it counts toward the row's width
+     budget, which is the worst case this exercise needs to fit). */
+  .sync-indicator{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    padding:6px 11px; border-radius:var(--radius-full); white-space:nowrap;
+    color:var(--jade-soft-ink); background:var(--jade-soft);
+  }
+  .sync-dot{ display:none; }
+  .sync-check{ width:13px; height:13px; flex:none; }
+  /* Variant 2 extends its collapse set to the sync pill too, at the SAME
+     640px breakpoint as Export/Import/Sign out — reusing production's exact
+     <380px rule (index.css ~L1180-1186) but firing it earlier. Added after
+     review: measuring the row's real content width showed Export/Import/
+     Sign out alone (114px collapsed) plus the untouched sync pill (~80px),
+     theme toggle (38px) and Auto-plan (~115px) still doesn't reliably fit
+     390px's ~334px available width — collapsing only 3 of the 6 elements
+     wasn't enough to honestly claim "one line". This still isn't guaranteed
+     to fit on every device/zoom level; see the frame hint below for the
+     honest version of that claim. */
+  .is-collapsed .sync-indicator{ padding:6px; gap:0; }
+  .is-collapsed .sync-indicator-label{
+    position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+  }
+
+  /* ============================= ROUTE STRIP ============================= */
+  .route-strip{ display:flex; gap:0; margin:16px 0 0; padding:2px 2px 18px; overflow-x:auto; scrollbar-width:thin; }
+  .route-node{
+    flex:none; display:flex; flex-direction:column; align-items:center; gap:6px; width:98px; text-align:center;
+    background:none; border:none; padding:4px 2px 0; position:relative;
+  }
+  .route-node .line{ position:absolute; top:11px; left:-49px; width:98px; height:2px; background:var(--line-strong); z-index:0; }
+  .route-node:first-child .line{ display:none; }
+  .route-dot{
+    width:10px; height:10px; border-radius:50%; background:var(--ink-soft); border:2px solid var(--paper);
+    box-shadow:0 0 0 1.5px var(--line-strong); position:relative; z-index:1;
+  }
+  .route-city{ font-size:12px; font-weight:700; }
+  .route-date{ font-size:10.5px; color:var(--ink-soft); }
+  .route-node.active .route-dot{ width:13px; height:13px; background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+  .route-node.active .route-city{ color:var(--accent); font-weight:800; }
+  .route-node.active .route-date{ color:var(--accent-soft-ink); }
+
+  /* ============================= TOP TABS ============================= */
+  .tabbar{
+    position:sticky; top:var(--topbar-h,0px); z-index:29; display:flex; gap:4px; padding:8px 16px;
+    background:var(--paper); border-bottom:1px solid var(--line); overflow-x:auto;
+  }
+  .tab{
+    flex:none; display:flex; align-items:center; gap:7px; padding:9px 14px; border-radius:var(--radius-full);
+    background:transparent; border:1px solid transparent; font-size:13.5px; font-weight:600; color:var(--ink-soft);
+  }
+  .tab svg{ width:16px; height:16px; }
+  .tab:hover{ background:var(--paper-sunk); color:var(--ink); }
+  .tab.active{ background:var(--tab-active-bg); color:var(--tab-active-ink); }
+
+  /* variant 1 — tabs + route-strip fused into one sticky "primary nav" block,
+     positioned right under the (now title-only) topbar. The tabbar nested
+     inside no longer needs its own stickiness — it inherits the block's. */
+  .primary-nav-block{ position:sticky; top:var(--topbar-h,0px); z-index:29; background:var(--paper); border-bottom:1px solid var(--line); }
+  .primary-nav-block .tabbar{ position:static; border-bottom:none; }
+  .primary-nav-block .route-strip{ margin-top:0; padding-top:0; }
+  .topbar--slim{ padding-bottom:14px; }
+  .utility-row{ display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--paper); }
+
+  /* ============================= BOTTOM TABS (variant 3, mobile) ============================= */
+  /* position:sticky (not fixed) is a MOCKUP STAND-IN: this preview box has
+     its own scroll container (.phone-screen), and fixed-position elements
+     nested inside a demo box like this would pin to the real browser
+     viewport, not the phone illustration — same reasoning as
+     map-save-changes.html's Save bar. The real implementation uses
+     position:fixed; bottom:0 relative to the actual device viewport. */
+  .bottom-tabbar{
+    display:flex; flex-wrap:wrap; position:sticky; bottom:0; z-index:40;
+    background:var(--paper-raised); border-top:1px solid var(--line); box-shadow:0 -6px 18px -10px rgba(60,40,20,.22);
+  }
+  .bottom-tab{
+    flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:3px; padding:9px 4px 7px; font-size:10.5px; font-weight:700; color:var(--ink-soft); background:transparent; border:none;
+  }
+  .bottom-tab svg{ width:20px; height:20px; }
+  .bottom-tab:hover{ background:var(--paper-sunk); }
+  .bottom-tab.active{ color:var(--accent); }
+  /* real min-height for the safe-area sliver even where env() resolves to 0
+     (most non-iOS browsers, incl. this preview) — a real device with a home
+     indicator gets the larger of the two, so the bar never reads as
+     "too tight to the edge" on either platform. */
+  .bottom-tabbar-safearea{ flex:0 0 100%; height:max(10px, env(safe-area-inset-bottom, 10px)); background:var(--paper-raised); }
+  main.main--has-bottom-nav{ padding-bottom:calc(64px + max(10px, env(safe-area-inset-bottom, 10px))); }
+
+  /* ============================= PANEL FILLER (not the subject of this mockup — exists to give frames enough scroll length to prove sticky/fold behaviour honestly) ============================= */
+  main{ padding:16px; padding-bottom:56px; }
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .panel-title{ font-family:var(--font-display); font-size:1.2rem; font-weight:600; }
+  .panel-hint{ font-size:12.5px; color:var(--ink-soft); }
+  .map-showing{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink-soft); margin:0 0 14px; }
+  .map-showing-dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none; }
+  .map-showing strong{ color:var(--ink); font-weight:700; }
+  .map-showing .range{ color:var(--ink-faint); }
+  .chip{
+    padding:7px 13px; border-radius:var(--radius-full); border:1px solid var(--line-strong);
+    background:var(--paper-raised); font-size:12.5px; font-weight:600; color:var(--ink-soft);
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .chip.active{ background:var(--ink); border-color:var(--ink); color:var(--paper); }
+  .chip-dot{ width:7px; height:7px; border-radius:50%; flex:none; }
+  .filler-chiprow{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .filler-card{
+    height:220px; border-radius:var(--radius-lg); border:1px solid var(--line); background:var(--paper-sunk);
+    display:flex; align-items:center; justify-content:center; color:var(--ink-faint); font-size:12.5px; margin-bottom:16px;
+  }
+  .filler-list{ display:flex; flex-direction:column; gap:8px; }
+  .filler-row{
+    display:flex; align-items:center; gap:10px; padding:11px 13px; border:1px solid var(--line); border-radius:var(--radius-md);
+    background:var(--paper-raised); box-shadow:var(--shadow-sm);
+  }
+  .filler-dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .filler-row strong{ display:block; font-size:13.5px; }
+  .filler-row span{ font-size:11.5px; color:var(--ink-soft); }
+
+  /* ============================= MAP TAB — DAY QUICKNAV (Variant 3 desktop refinement) ============================= */
+  /* Promotes the day-filter chips into their own sticky sub-bar, directly
+     mirroring the REAL app's existing Itinerary quick-nav (src/index.css
+     .it-quicknav, ~L649: same `position:sticky; top:calc(--topbar-h +
+     --tabbar-h)` stacking, same --paper-sunk pill-card treatment). Reusing
+     that established pattern rather than inventing a new one — the app
+     already has a precedent for "per-tab sticky sub-nav under the global
+     tabbar", this just applies it to Map instead of Itinerary. */
+  .map-day-quicknav{
+    position:sticky; top:calc(var(--topbar-h,0px) + var(--tabbar-h,0px)); z-index:27;
+    display:flex; align-items:center; gap:10px; background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-md);
+    padding:8px 10px; margin:0 0 16px; overflow-x:auto;
+  }
+
+  /* ============================= DESKTOP CONDENSING HEADER (Variant 3 refinement) ============================= */
+  /* .can-condense marks a .topbar as eligible for the shrink-on-scroll
+     treatment (desktop-only refinement — mobile keeps the already-approved
+     bottom tab dock and is untouched by any of this). Transitions live here,
+     state (.is-condensed / .is-collapsed) is toggled by JS below in response
+     to real scroll position, with hysteresis so it can't flap at the
+     threshold — see wireCondenseHeader(). The reduced-motion flattening
+     already declared at the top of this file (the global
+     `@media (prefers-reduced-motion: reduce)` rule) applies to these
+     transitions for free, same as everywhere else in this mockup — no extra
+     work needed to make this respect that preference. */
+  .topbar.can-condense{ transition: padding .22s ease; }
+  .topbar.can-condense .trip-title{ transition: font-size .22s ease; }
+  .topbar.can-condense .route-strip{ transition: padding .22s ease, margin .22s ease; }
+  .topbar.can-condense .route-node{ transition: width .22s ease; }
+  .topbar.can-condense .route-node .line{ transition: width .22s ease, left .22s ease; }
+
+  .topbar.is-condensed{ padding:10px 16px 0; }
+  .topbar.is-condensed .topbar-row{ align-items:center; }
+  /* Eyebrow/subtitle go away entirely in the condensed state — display:none,
+     NOT the .visually-hidden clip technique used elsewhere in this file.
+     Those two are different problems: .visually-hidden keeps text as the
+     ACCESSIBLE NAME of a still-visible icon-only control (the whole point is
+     that AT users still get it even though sighted users don't see it). Here
+     the eyebrow/subtitle aren't labelling anything still on screen — they're
+     independent descriptive text that's genuinely not part of this condensed
+     view for anyone, sighted or not. Keeping it in the AT tree while hiding
+     it visually would be the actual mismatch. */
+  .topbar.is-condensed .trip-eyebrow,
+  .topbar.is-condensed .trip-sub{ display:none; }
+  .topbar.is-condensed .trip-title{ font-size:1.02rem; }
+  .topbar.is-condensed .route-strip{ margin-top:8px; padding-bottom:8px; }
+  .topbar.is-condensed .route-node{ width:60px; }
+  /* the connecting .line between dots is a fixed-width absolutely-positioned
+     asset calibrated to the node's own width (see the base .route-node .line
+     rule: width:98px, left:-49px — exactly half on each side); shrinking the
+     node without also shrinking its line would leave the line overshooting
+     into neighbouring nodes. */
+  .topbar.is-condensed .route-node .line{ width:60px; left:-30px; }
+  /* title="" added on every route-node in routeStripHTML() below (both
+     states, harmless when not condensed) so a sighted mouse user can still
+     recover a name this ellipsis clips (e.g. "Zhangjiajie" at 60px). */
+  .topbar.is-condensed .route-city{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  /* .route-date is hidden the SAME way as the eyebrow/subtitle above
+     (display:none) and for the same reason — deliberately, not left as an
+     inconsistent opacity/max-height fade like an earlier draft had. That
+     earlier version hid it visually via opacity+max-height while leaving its
+     text in the DOM, which — unlike display:none — does NOT remove it from
+     the accessible name of the still-interactive .route-node button (whose
+     only accessible name source is its own text content: city + date). The
+     practical effect would have been a screen-reader user hearing dates that
+     sighted users can no longer see, with no stated reason for that
+     asymmetry. There's no argument here that AT users specifically benefit
+     from keeping it, so it goes fully, for everyone, matching the
+     eyebrow/subtitle precedent instead of quietly diverging from it. */
+  .topbar.is-condensed .route-date{ display:none; }
+
+  /* ---- review-tooling only: live scroll/state readout, not shipped UI ----
+     Deliberately placed ABOVE each demo frame as an ordinary block element,
+     not overlaid on top of it — an earlier draft tried a sticky corner badge
+     inside the scrolling content itself and it landed right on top of the
+     real header's own top-right icon buttons in the condensed state, which
+     is exactly the kind of "scaffolding pretending to be real UI" confusion
+     the rest of this file goes out of its way to avoid (see .resizable-demo,
+     .debug-toggle). Styled to visually read as tooling (dashed border,
+     --paper-sunk fill), matching that same convention. */
+  .scroll-readout{
+    display:inline-flex; font-family:var(--font-mono); font-size:10.5px; font-weight:700; letter-spacing:.02em;
+    /* --ink-soft, not --ink-faint: this label exists specifically so the
+       hysteresis claim in the text above is checkable at a glance, not
+       asserted — --ink-faint on --paper-sunk measures well under AA
+       (~2.6:1), which works against the one thing this element is for. */
+    color:var(--ink-soft); background:var(--paper-sunk); border:1px dashed var(--line-strong);
+    border-radius:var(--radius-full); padding:3px 10px; margin:0 0 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="spec-bar">
+  <div><strong>Header/nav hierarchy &mdash; 3 variants</strong> <span class="sub">&middot; Variant 3 chosen &middot; desktop condensing-header refinement added</span></div>
+  <div class="spec-bar-tools">
+    <a href="#baseline">Baseline</a>
+    <a href="#v1">Variant 1</a>
+    <a href="#v2">Variant 2</a>
+    <a href="#v3">Variant 3</a>
+    <a href="#v3-condense">Desktop refinement</a>
+    <a href="#compare">Compare</a>
+    <button type="button" class="debug-toggle" id="offlineToggleBtn" onclick="toggleOffline()" title="Design-review helper — not part of the real app">
+      <span id="offlineToggleLabel">Preview: simulate offline (all frames)</span>
+    </button>
+    <button type="button" class="btn-icon" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Toggle light / dark">
+      <svg id="themeIcon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+  </div>
+</div>
+
+<svg class="visually-hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0112 2a7 7 0 017 7.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.5 8.5 0 1110 3.3 6.7 6.7 0 0020 14.2z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <!-- new icons for this mockup: Export / Import / Sign out are in App.tsx's
+         topbar-actions but were never added to mockup/mockup.html's sprite —
+         adding them here rather than leaving those three buttons unlabelled. -->
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9M7 14l5-5 5 5"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4H6a1 1 0 00-1 1v14a1 1 0 001 1h9"/><path d="M10 12h11M17 8l4 4-4 4"/></symbol>
+  </defs>
+</svg>
+
+<div class="intro">
+  <h2>The problem, in one sentence</h2>
+  <p>
+    Today the primary section tabs (Map / Places / Itinerary / Budget) sit <strong>fourth</strong> in the header
+    stack &mdash; below trip identity, a row of six utility buttons (Export, Import, sync pill, theme toggle,
+    Auto-plan, Sign out), and the city-timeline route-strip. On the design system's stated primary device size
+    (390px phone), that's enough chrome to push the tabs below the fold before any content loads. All three
+    variants below try to raise the tabs' position without crowding them into an already-full row. Each has a
+    <span style="color:var(--gold-soft-ink); font-weight:600;">dashed gold line</span> in its mobile frame marking
+    roughly where the fold sits on a compact phone with browser chrome visible (&sim;560px tall viewport,
+    e.g. iPhone SE) &mdash; scroll position 0, nothing scrolled yet. If the tabs are below that line, the reorder
+    hasn't actually solved the problem for that class of device.
+  </p>
+  <p>
+    Every frame is interactive within its own scope: tap a route-strip city or a tab to see the active state move.
+    Tap <code>Toggle light / dark</code> in the bar above to check both themes (this mockup only has one theme
+    switch, shared by every frame on the page, to keep comparisons apples-to-apples). The
+    <code>Preview: simulate offline</code> toggle up there does the same for the offline banner (App.tsx renders it
+    above the topbar, non-sticky, whenever the device has no connection) &mdash; it's a real state that adds height
+    to exactly the stack being stress-tested here, so it's included as a worst-case check across every frame rather
+    than assumed away.
+  </p>
+  <p>
+    <strong>Status:</strong> Variant 3 (bottom tab bar on mobile, top tabs on desktop) was reviewed, approved, and
+    picked. The three-way comparison below is kept as-is for the record. A follow-up request came back specifically
+    about its <em>desktop</em> side &mdash; the Map panel's day-filter chips and "Add place" button scroll out of
+    view well before the map itself gets much room, since the header above them doesn't give any space back as you
+    scroll. That's addressed in a new section, <a href="#v3-condense" style="color:var(--accent); font-weight:700;">&ldquo;Variant 3 refinement &mdash; condensing header (desktop)&rdquo;</a>,
+    right after Variant 3 below. Mobile is untouched by that follow-up.
+  </p>
+</div>
+
+<!-- ============================= BASELINE (TODAY) ============================= -->
+<h2 class="frame-label" id="baseline">Baseline &mdash; current app<span class="frame-badge">for reference</span></h2>
+<span class="frame-hint">The shipped order: identity + 6 utility actions share one row, route-strip below that, tabs last. Route-strip lives inside <code>.topbar</code> alongside identity &mdash; it's sticky, but so is everything above the tabs. <code>.topbar-actions</code> is ported byte-for-byte from <code>src/index.css</code> (no wrap, no forced line-break) &mdash; at 390px with all 6 actions present, the row can genuinely run past the right edge rather than neatly wrapping to a second line; this frame shows that as it actually behaves today, not a tidied-up version of it.</span>
+<div class="frame-wrap">
+  <div class="frame-col">
+    <div class="frame-col-title">Desktop / tablet</div>
+    <div class="demo-viewport" id="mount-baseline-desktop"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile &mdash; 390px</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-baseline-mobile"></div></div>
+  </div>
+</div>
+
+<!-- ============================= VARIANT 1 ============================= -->
+<h2 class="frame-label" id="v1">Variant 1 &mdash; reorder the stack<span class="frame-badge frame-badge-rec"><svg aria-hidden="true" style="width:9px;height:9px;display:inline;vertical-align:-1px;margin-right:3px;"><use href="#i-check"/></svg>recommended</span></h2>
+<span class="frame-hint">Title row &rarr; Tabs &rarr; route-strip &rarr; utility actions row. Nothing is merged or hidden &mdash; the DOM order changes so the primary nav becomes the second thing on the page instead of the fourth, and the utility row (used far less often) drops into normal flow below it.</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%; margin-bottom:0;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Route-strip placement: fused with the primary-nav layer, not identity.</strong>
+      The route-strip is described in code as the primary city selector &mdash; a second, orthogonal nav
+      (which leg of the trip), not trip metadata. Once tabs are promoted to their own sticky layer, the strip
+      reads more naturally grouped with them ("choose a section, then choose a leg") than orphaned under a
+      now-title-only topbar. So it moves into the <code>.primary-nav-block</code> sticky unit directly under the
+      tabs, and stays sticky &mdash; the city switcher doesn't lose its always-on-screen availability while
+      scrolled, only the (rarely used) utility row does. An alternative considered &mdash; making the strip
+      non-sticky too, to save even more vertical space &mdash; was rejected: that would regress a working
+      always-visible city switcher for a marginal space gain, trading a frequently-used control for a rarely-used
+      one's convenience.
+    </div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">Desktop / tablet</div>
+    <div class="demo-viewport" id="mount-v1-desktop"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile &mdash; 390px</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-v1-mobile"></div></div>
+  </div>
+</div>
+
+<!-- ============================= VARIANT 2 ============================= -->
+<h2 class="frame-label" id="v2">Variant 2 &mdash; slim the utility row on mobile</h2>
+<span class="frame-hint">Same DOM order as today. Below ~640px, Export / Import / Sign out <em>and</em> the sync pill collapse to icon-only (label kept in the DOM, visually hidden &mdash; the exact technique the sync pill already uses on its own under 380px; this variant just fires it at 640px instead, for every collapsible item at once). <strong>Measured, not assumed:</strong> collapsing only Export/Import/Sign out and leaving the sync pill and Auto-plan CTA full-size still doesn't reliably fit one line at 390px &mdash; those two alone are close to half the row's width budget. Collapsing the sync pill too gets it close, but still isn't a guaranteed single line on every device/zoom level (see the fold marker on the mobile frame below for the honest outcome, not an assertion). Either way the order doesn't change &mdash; tabs stay 4th &mdash; so this variant reduces the chrome's height/width, it doesn't reposition the tabs the way Variant 1 does.</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%; margin-bottom:0;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Route-strip placement: unchanged &mdash; stays attached to identity.</strong>
+      This variant doesn't touch the stack's order or grouping, only the utility row's density, so there's no new
+      relationship to decide: the strip stays exactly where it is today, inside <code>.topbar</code> alongside
+      trip identity.
+    </div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">Desktop / tablet &mdash; row stays full-text (well above 640px)</div>
+    <div class="demo-viewport" id="mount-v2-desktop"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile &mdash; 390px &mdash; icon-only collapse active</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-v2-mobile"></div></div>
+  </div>
+</div>
+<span class="frame-hint" style="margin-top:4px;">Bonus, optional &mdash; live breakpoint demo (needs a browser with CSS container-query support; degrades harmlessly to always-expanded if not). Drag the handle in the bottom-right corner to resize the frame and watch Export/Import/Sign out <em>and</em> the sync pill collapse together right at 640px, the same breakpoint used above &mdash; useful for seeing exactly how much width the row still needs afterward (Auto-plan's full label is the one thing left uncollapsed).</span>
+<div class="frame-wrap">
+  <div class="frame-col" style="flex:0 0 auto; max-width:100%;">
+    <div class="resizable-demo" id="mount-v2-resizable" style="container-type:inline-size; resize:horizontal; overflow:auto; min-width:340px; max-width:900px; width:680px; border:1px dashed var(--line-strong); border-radius:var(--radius-lg); padding:14px; background:var(--paper);"></div>
+  </div>
+</div>
+<style>
+  @container (max-width: 640px){
+    .resizable-demo .btn-collapsible{ width:38px; height:38px; padding:0; justify-content:center; border-radius:50%; }
+    .resizable-demo .btn-collapsible .btn-label{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    .resizable-demo .sync-indicator{ padding:6px; gap:0; }
+    .resizable-demo .sync-indicator-label{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  }
+</style>
+
+<!-- ============================= VARIANT 3 ============================= -->
+<h2 class="frame-label" id="v3">Variant 3 &mdash; bottom tab bar on mobile, top tabs on desktop<span class="frame-badge frame-badge-rec"><svg aria-hidden="true" style="width:9px;height:9px;display:inline;vertical-align:-1px;margin-right:3px;"><use href="#i-check"/></svg>chosen</span></h2>
+<span class="frame-hint">Standard installed-PWA pattern: on small screens the primary nav relocates to a thumb-reach dock fixed to the bottom of the viewport (position:fixed in the real app; env(safe-area-inset-bottom) reserved so it clears the iOS home indicator, and &lt;main&gt; gets matching bottom padding so content never sits behind it). Desktop tabs stay at the top &mdash; unchanged from here. <strong>Desktop header chrome itself is no longer left as-is</strong> though: see the <a href="#v3-condense" style="color:var(--accent); font-weight:700;">condensing-header refinement</a> just below, added after this variant was picked, to answer "the day chips and Add place button disappear on desktop too."</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%; margin-bottom:0;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Route-strip placement: stays with identity at the top (forced, not a free choice).</strong>
+      On mobile the primary nav physically relocates to the bottom of the screen &mdash; it's no longer adjacent
+      to anything at the top, so "attach the strip to primary nav" isn't an available option here the way it was
+      in Variant 1. The strip stays in <code>.topbar</code> next to identity, sticky at the top, functioning as a
+      second top-of-screen nav layer independent from the bottom tab dock. Desktop keeps the current relationship
+      (strip under identity, tabs below that) unchanged, since desktop nav never moves in this variant.
+    </div>
+  </div>
+  <div class="frame-col">
+    <div class="frame-col-title">Desktop / tablet &mdash; unchanged (top tabs)</div>
+    <div class="demo-viewport" id="mount-v3-desktop"></div>
+  </div>
+  <div class="frame-col" style="flex:0 0 auto;">
+    <div class="frame-col-title">Mobile &mdash; 390px &mdash; bottom tab dock</div>
+    <div class="phone-frame"><div class="phone-screen" id="mount-v3-mobile"></div></div>
+  </div>
+  <div class="decision-note is-warn" style="flex-basis:100%; margin:14px 0 0;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Open risk, not yet resolved: keyboard focus order skips past the whole panel first.</strong>
+      In <code>buildV3Mobile</code> the bottom tab dock is the LAST thing in DOM order &mdash; after every filler
+      row in <code>&lt;main&gt;</code>. A mouse or touch user reaches it instantly (it's pinned to the bottom of
+      the screen), but a keyboard-only user tabbing through the page must pass every focusable element in the
+      panel above before Tab reaches primary navigation at all. The real Map/Places/Itinerary/Budget panels have
+      far more focusable content than this mockup's filler list, so the real gap would be worse than what's shown
+      here. A production implementation would need to either move the nav earlier in DOM order while keeping it
+      visually docked at the bottom (e.g. via CSS order/flex, not full reflow), or add a skip-link. Not solved in
+      this mockup &mdash; flagged here so it isn't lost if Variant 3 is picked up later.
+    </div>
+  </div>
+</div>
+
+<!-- ============================= VARIANT 3 REFINEMENT — DESKTOP CONDENSING HEADER ============================= -->
+<h2 class="frame-label" id="v3-condense">Variant 3 refinement &mdash; condensing header (desktop)</h2>
+<span class="frame-hint">
+  Follow-up after Variant 3 was picked: on desktop, leaving the top header exactly as the baseline (as the original
+  comparison did) means the sticky identity block + full utility row + route-strip + tabbar together still occupy a
+  large, fixed share of the viewport &mdash; and unlike the header itself, the Map panel's own day-filter chips and
+  "Add place" button are ordinary scrolling content, so they scroll away as soon as you move down toward the map,
+  leaving very little room to both see them and see the map. This section keeps the header sticky but makes it
+  <strong>shrink once you've actually started scrolling</strong>, giving that space back. Mobile is unaffected &mdash;
+  the bottom tab dock from the approved Variant 3 stays exactly as it was; this is a desktop-only addition.
+</span>
+<div class="frame-wrap">
+  <div class="decision-note" style="flex-basis:100%; margin-bottom:0;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>What condenses, and to what.</strong>
+      Three things shrink together, all reusing patterns already established elsewhere in this file rather than
+      inventing new ones: (1) the identity block drops its eyebrow and subtitle entirely (<code>display:none</code>,
+      not the visually-hidden technique &mdash; there's no longer a control on screen for that text to label) and
+      the title's font-size shrinks, going from a 3-line stack to a single compact line; (2) the utility row
+      collapses to icon-only by reusing Variant 2's exact <code>.is-collapsed</code> treatment verbatim (Export /
+      Import / Sign out / sync pill), extended here to <strong>also</strong> cover the Auto-plan CTA (which V2
+      deliberately left full-size &mdash; different context: V2 was optimising a crowded mobile row against a hard
+      640px width budget, this is a desktop row with plenty of width to spare, so collapsing Auto-plan here is about
+      reclaiming height, not fitting a line); (3) the route-strip's nodes shrink to city-name-only pills, dropping
+      the date sub-line, rather than disappearing (it's still the primary city selector &mdash; per Variant 3's own
+      decision-note above, desktop keeps the original identity+route-strip+tabbar relationship, so the strip
+      condensing in place rather than vanishing keeps that relationship coherent instead of quietly breaking it).
+      The tabs themselves <strong>never</strong> shrink or move &mdash; they're the one thing this whole exercise
+      exists to keep prominent.
+    </div>
+  </div>
+  <div class="decision-note" style="flex-basis:100%; margin:10px 0 0;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Day chips get promoted to their own sticky layer; Add place doesn't.</strong>
+      The day-filter chips and the Add place button are both Map-tab-specific &mdash; they live inside
+      <code>MapPanel.tsx</code>, not the global chrome in <code>App.tsx</code>. That rules out putting them
+      <em>inside</em> the always-sticky topbar/tabbar (which is shared across all 4 tabs): a sticky slot that's
+      sometimes full of day chips and sometimes empty, depending on which tab happens to be active, would make the
+      header's height change on tab-switch as well as on scroll &mdash; two independent sources of layout shift
+      stacked on top of each other. Instead, the day chips get <strong>their own sticky sub-bar</strong>,
+      <code>.map-day-quicknav</code>, positioned right under the (already-sticky) tabbar &mdash; this is exactly the
+      same architecture the real app already uses for the Itinerary tab's quick-nav (<code>--itnav-h</code>,
+      <code>src/index.css</code>'s <code>.it-quicknav</code>), just applied to Map. It only exists while viewing the
+      Map tab, so the global header's height stays tab-independent; only the Map panel gains a second sticky layer
+      of its own. <strong>Add place is deliberately left in normal scrolling flow</strong>, not promoted &mdash; the
+      map surface already has its own persistent "Tap map to add" affordance (<code>.map-add-hint</code>, floating
+      over the map box itself, <code>position:absolute</code> within <code>.map-stage-wrap</code>) that stays
+      visible for as long as the map is in view, which is most of the scrolled experience once you're actually
+      looking at pins. Promoting the toolbar button too would be solving a problem that's already solved a different
+      way, at the cost of more sticky chrome. <strong>This is a visual-parity argument only</strong> &mdash; see the
+      flagged gap immediately below, it does not extend to keyboard/AT users.
+    </div>
+  </div>
+  <div class="decision-note is-warn" style="flex-basis:100%; margin:10px 0 0;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Open gap, not resolved: "Add place" has no keyboard/AT equivalent once scrolled past.</strong>
+      The <code>.map-add-hint</code> reasoning above only holds for sighted mouse/touch users. In
+      <code>MapPanel.tsx</code> (~L179) that element is rendered <code>aria-hidden="true"</code>, and
+      <code>src/index.css</code>'s <code>.map-badge</code> rule (~L340) sets <code>pointer-events:none</code> on
+      it &mdash; it's a purely decorative visual cue, not an interactive control, and tapping the map to add a place
+      is a Leaflet click handler, not keyboard-operable either. So once the panel-head scrolls out of view, a
+      keyboard-only or screen-reader user genuinely loses their only route to "add a place" until they scroll all
+      the way back up &mdash; there's no equivalent affordance for them the way there is for a sighted mouse user.
+      Same class of problem as the keyboard focus-order gap already flagged under Variant 3's mobile frame above,
+      and not solved here either. A real fix would need an actual keyboard-operable control that stays reachable
+      (e.g. promoting a small icon-only "Add place" button into the condensed utility row, or into
+      <code>.map-day-quicknav</code> alongside the chips) rather than relying on the decorative map hint.
+    </div>
+  </div>
+  <div class="frame-col" style="flex:1 1 420px;">
+    <div class="frame-col-title">Expanded &mdash; starts at the top (scrollY&nbsp;0)</div>
+    <span class="frame-hint" style="padding:0; margin:0 0 8px;">Live &mdash; scroll down inside this frame to watch it condense for real, including the hysteresis band (try hovering right around the threshold; it won't flicker).</span>
+    <div class="scroll-readout" id="readout-v3-condense-expanded">scrollY 0px &middot; expanded</div>
+    <div class="demo-viewport" id="mount-v3-condense-expanded" style="max-height:560px;"></div>
+  </div>
+  <div class="frame-col" style="flex:1 1 420px;">
+    <div class="frame-col-title">Condensed &mdash; starts pre-scrolled</div>
+    <span class="frame-hint" style="padding:0; margin:0 0 8px;">Live too &mdash; scroll back up to watch it re-expand. Independent scroll state from the frame on the left.</span>
+    <div class="scroll-readout" id="readout-v3-condense-condensed">scrollY 0px &middot; expanded</div>
+    <div class="demo-viewport" id="mount-v3-condense-condensed" style="max-height:560px;"></div>
+  </div>
+  <div class="decision-note is-warn" style="flex-basis:100%; margin:14px 0 0;">
+    <svg aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <strong>Engineering implications, flagged for whoever implements this.</strong>
+      <ul style="margin:8px 0 0; padding-left:18px; line-height:1.6;">
+        <li><strong>Trigger mechanism:</strong> this mockup's live demo drives the condense/expand toggle off a
+          <code>scroll</code> listener (rAF-throttled, two-threshold hysteresis &mdash; condense past 88px,
+          re-expand only below 32px, so hovering right at one number can't flap it) because that's the simplest
+          thing to hand-wire reliably against an arbitrary scroll container for a demo. <strong>The real
+          implementation should prefer an <code>IntersectionObserver</code></strong> against a thin sentinel element
+          placed just below the identity block, instead of a scroll listener: cheaper (no per-frame scroll-event
+          handling at all), and the sentinel's own height can BE the hysteresis band (condense when it's fully
+          scrolled past, re-expand only once it's fully back in view) rather than needing two hand-tuned pixel
+          constants.</li>
+        <li><strong>Composes with <code>useStickyOffsets</code> for free:</strong> that hook already measures
+          <code>.topbar</code>'s real <code>offsetHeight</code> via <code>ResizeObserver</code> and writes it to
+          <code>--topbar-h</code> (see <code>src/hooks/useStickyOffsets.ts</code>) &mdash; since the condense
+          transition changes <code>.topbar</code>'s actual rendered height, the existing observer picks that up
+          automatically and <code>.tabbar</code> / the new <code>.map-day-quicknav</code> (both positioned off
+          <code>--topbar-h</code>) reflow to match with no new plumbing. The real cost: the observer fires on every
+          intermediate layout during the ~220ms CSS transition, so the dependent elements' <code>top</code> offset
+          is recomputed continuously while it animates &mdash; desirable (it should track smoothly), but worth an
+          actual perf profile on lower-end hardware before shipping, since it's repeated layout work on every scroll
+          transition rather than a one-off.</li>
+        <li><strong>Must be gated to the same desktop/mobile breakpoint Variant 3 already uses:</strong> nothing in
+          <code>.topbar.can-condense</code>/<code>.is-condensed</code> is itself scoped to a min-width media query
+          &mdash; in this mockup "desktop-only" holds only because <code>buildV3CondenseDesktop()</code> is never
+          mounted inside a <code>.phone-frame</code> and <code>wireCondenseHeader()</code> is never called there.
+          The real implementation needs to gate initialisation (attaching the observer, adding
+          <code>.can-condense</code> in the first place) behind the exact same breakpoint that already switches
+          Variant 3 between top-tabs-desktop and bottom-dock-mobile &mdash; otherwise a resize or tablet rotation
+          near that boundary could leave the condensing header active at the same time as the mobile bottom dock,
+          which was never designed to coexist with it.</li>
+        <li><strong>Not modelled here:</strong> what happens when the trip title is long enough to wrap even in the
+          condensed single-line state (i18n / a very long custom trip name), and whether the condense transition
+          should be skipped entirely below a certain viewport height where the expanded state barely fits anyway.
+          Both are open questions, not resolved by this mockup.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= COMPARISON ============================= -->
+<h2 class="frame-label" id="compare">Compare at a glance</h2>
+<span class="frame-hint">A concise summary to sit alongside the live frames above &mdash; see this file's mockup for the full interactive versions, and the accompanying design-track report for the full recommendation writeup.</span>
+<div class="compare-wrap">
+  <table class="compare-table">
+    <thead>
+      <tr><th>Variant</th><th>Tabs position at 390px, no scroll</th><th>Still sticky after scrolling</th><th>Route-strip attaches to&hellip;</th><th>Implementation risk</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Baseline</strong></td>
+        <td>4th &mdash; below identity, 6 utility buttons, route-strip</td>
+        <td>Everything (topbar + tabbar)</td>
+        <td>Identity</td>
+        <td>&mdash;</td>
+      </tr>
+      <tr>
+        <td><strong>1 &middot; Reorder</strong> <span class="rec-pill"><svg aria-hidden="true" style="width:9px;height:9px"><use href="#i-check"/></svg>recommended</span></td>
+        <td>2nd &mdash; directly below identity</td>
+        <td>Identity, then tabs+route-strip together (utility row scrolls away)</td>
+        <td>Primary-nav layer</td>
+        <td>Low &mdash; pure reorder + CSS, no new breakpoints or platform APIs</td>
+      </tr>
+      <tr>
+        <td><strong>2 &middot; Slim utility row</strong></td>
+        <td>4th still &mdash; order unchanged, just shorter chrome above it</td>
+        <td>Everything, same as baseline</td>
+        <td>Identity (unchanged)</td>
+        <td>Low &mdash; reuses the sync pill's existing collapse pattern</td>
+      </tr>
+      <tr>
+        <td><strong>3 &middot; Bottom dock</strong></td>
+        <td>N/A on mobile &mdash; tabs aren't in the top stack at all</td>
+        <td>Identity + route-strip at top; tabs fixed at bottom independently</td>
+        <td>Identity (forced &mdash; no primary-nav layer left at top)</td>
+        <td>Higher &mdash; safe-area handling, two nav paradigms to keep in sync, more a11y/focus-order surface to re-verify</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var CITIES = [
+    {id:'singapore', name:'Singapore', date:'7–9 Nov'},
+    {id:'shanghai', name:'Shanghai', date:'9–15 Nov'},
+    {id:'suzhou', name:'Suzhou', date:'15–17 Nov'},
+    {id:'changsha', name:'Changsha', date:'17–19 Nov'},
+    {id:'zhangjiajie', name:'Zhangjiajie', date:'19–20 Nov'},
+    {id:'chongqing', name:'Chongqing', date:'20–23 Nov'},
+    {id:'chengdu', name:'Chengdu', date:'23–25 Nov'},
+    {id:'guangzhou', name:'Guangzhou', date:'25–30 Nov'}
+  ];
+  var TABS = [
+    {id:'map', label:'Map', icon:'map'},
+    {id:'places', label:'Places', icon:'pin'},
+    {id:'itinerary', label:'Itinerary', icon:'calendar'},
+    {id:'budget', label:'Budget', icon:'wallet'}
+  ];
+
+  function tripIdHTML(){
+    return '' +
+      '<div class="trip-id">' +
+        '<span class="trip-eyebrow">Personal trip &middot; from Sydney</span>' +
+        '<h1 class="trip-title">China, November 2026</h1>' +
+        '<span class="trip-sub">7&ndash;30 Nov &middot; 8 legs &middot; AUD home currency</span>' +
+      '</div>';
+  }
+
+  function collapsibleBtn(icon, label, title){
+    return '<button type="button" class="btn btn-ghost btn-sm btn-collapsible" title="' + title + '">' +
+      '<svg aria-hidden="true"><use href="#i-' + icon + '"/></svg><span class="btn-label">' + label + '</span></button>';
+  }
+
+  // collapseAutoplan is a SEPARATE flag from collapse (not folded into it):
+  // Variant 2 deliberately leaves Auto-plan full-size even when the row is
+  // collapsed (documented there — it was fighting a hard 640px width budget,
+  // and the resizable demo's hint text specifically calls out Auto-plan as
+  // "the one thing left uncollapsed"). The desktop condensing-header section
+  // below reuses this same function but DOES want Auto-plan to collapse too
+  // (different goal there — reclaiming height on a wide desktop row, not
+  // fitting a narrow one) — hence a second flag rather than changing what
+  // collapse already means for the two call sites that rely on the old
+  // behaviour (baseline/V1/V2/V3-mobile).
+  function utilityActionsHTML(collapse, collapseAutoplan){
+    var cls = 'topbar-actions' + (collapse ? ' is-collapsed' : '');
+    var autoplanHtml = collapseAutoplan
+      ? '<button type="button" class="btn autoplan-cta btn-collapsible" disabled title="Not part of this focused mockup"><svg aria-hidden="true"><use href="#i-sparkle"/></svg><span class="btn-label">Auto-plan</span></button>'
+      : '<button type="button" class="btn autoplan-cta" disabled title="Not part of this focused mockup"><svg aria-hidden="true"><use href="#i-sparkle"/></svg> Auto-plan</button>';
+    return '' +
+      '<div class="' + cls + '">' +
+        collapsibleBtn('download', 'Export', 'Export trip.json') +
+        collapsibleBtn('upload', 'Import', 'Import trip.json') +
+        '<span class="sync-indicator" role="status" aria-live="polite">' +
+          '<svg class="sync-check" aria-hidden="true"><use href="#i-check"/></svg>' +
+          '<span class="sync-indicator-label">Synced</span>' +
+        '</span>' +
+        '<button type="button" class="btn btn-ghost btn-icon" aria-label="Toggle light and dark theme" title="Toggle light / dark"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>' +
+        autoplanHtml +
+        collapsibleBtn('logout', 'Sign out', 'Sign out') +
+      '</div>';
+  }
+
+  // ARIA here matches src/components/RouteStrip.tsx exactly (no role="group"
+  // wrapper — the real component doesn't have one; aria-current="true" only
+  // on the active node, attribute absent — not "false" — otherwise) since
+  // this file only proposes moving the strip, not changing its semantics.
+  // ONE addition beyond that exact match: a `title` attribute (production
+  // has none). It exists purely for the desktop condensing-header section
+  // further down, where condensed nodes truncate the city name with
+  // text-overflow:ellipsis at 60px — the title gives a sighted mouse user a
+  // way to recover a clipped name (e.g. "Zhangjiajie"). It's a no-op at full
+  // width/uncondensed, so it's left on unconditionally rather than
+  // parameterising this function further.
+  function routeStripHTML(activeId){
+    var html = '<div class="route-strip" aria-label="Trip legs &middot; tap a city to show it on the map">';
+    CITIES.forEach(function(c){
+      var active = c.id === activeId;
+      html += '<button type="button" class="route-node' + (active ? ' active' : '') + '" data-city="' + c.id + '" title="' + c.name + ' &middot; ' + c.date + '"' + (active ? ' aria-current="true"' : '') + ' onclick="selectRouteNode(this)">' +
+        '<span class="line" aria-hidden="true"></span><span class="route-dot" aria-hidden="true"></span>' +
+        '<span class="route-city">' + c.name + '</span><span class="route-date">' + c.date + '</span></button>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function tabbarHTML(activeId){
+    var html = '<nav class="tabbar" role="tablist" aria-label="Trip planner sections">';
+    TABS.forEach(function(t){
+      var active = t.id === activeId;
+      html += '<button type="button" class="tab' + (active ? ' active' : '') + '" role="tab" aria-selected="' + active + '" onclick="selectTab(this)">' +
+        '<svg aria-hidden="true"><use href="#i-' + t.icon + '"/></svg> ' + t.label + '</button>';
+    });
+    html += '</nav>';
+    return html;
+  }
+
+  function bottomTabbarHTML(activeId){
+    var html = '<nav class="bottom-tabbar" role="tablist" aria-label="Trip planner sections">';
+    TABS.forEach(function(t){
+      var active = t.id === activeId;
+      html += '<button type="button" class="bottom-tab' + (active ? ' active' : '') + '" role="tab" aria-selected="' + active + '" onclick="selectTab(this)">' +
+        '<svg aria-hidden="true"><use href="#i-' + t.icon + '"/></svg><span>' + t.label + '</span></button>';
+    });
+    html += '<span class="bottom-tabbar-safearea" aria-hidden="true"></span>';
+    html += '</nav>';
+    return html;
+  }
+
+  function fillerMainHTML(mainClass){
+    return '' +
+      '<main' + (mainClass ? ' class="' + mainClass + '"' : '') + '>' +
+        '<div class="panel-head">' +
+          '<div><h2 class="panel-title">Map</h2><span class="panel-hint">Your home screen &middot; tap a city in the timeline to change what&rsquo;s shown</span></div>' +
+          '<button type="button" class="btn btn-primary btn-sm" disabled title="Not part of this focused mockup"><svg aria-hidden="true"><use href="#i-plus"/></svg> Add place</button>' +
+        '</div>' +
+        '<div class="map-showing"><span class="map-showing-dot" aria-hidden="true"></span> Showing <strong>Shanghai</strong><span class="range"> &middot; 9&ndash;15 Nov</span></div>' +
+        '<div class="filler-chiprow"><span class="chip active">All days</span><span class="chip">Day 2 &middot; Mon</span><span class="chip">Day 3 &middot; Tue</span><span class="chip">Unassigned</span></div>' +
+        '<div class="filler-card">Map area (placeholder &mdash; not the focus of this mockup)</div>' +
+        '<div class="filler-list">' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-blue)"></span><div><strong>The Bund</strong><span>Landmark &middot; Day 2</span></div></div>' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-blue)"></span><div><strong>Nanjing Road</strong><span>Market &middot; Day 2</span></div></div>' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-amber)"></span><div><strong>Yu Garden</strong><span>Garden &middot; Day 3</span></div></div>' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-amber)"></span><div><strong>Shanghai Museum</strong><span>Museum &middot; Day 3</span></div></div>' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-grey)"></span><div><strong>Tianzifang</strong><span>Neighbourhood &middot; Unassigned</span></div></div>' +
+        '</div>' +
+      '</main>';
+  }
+
+  // Mirrors App.tsx's `{!online && <div className="offline-banner">...}` —
+  // rendered as the very first thing in the shell, above .topbar, non-sticky.
+  // Visibility is driven entirely by the body-level "simulate offline" toggle
+  // (see toggleOffline below), not per-call, so every frame stays in sync.
+  function offlineBannerHTML(){
+    return '' +
+      '<div class="offline-banner" role="status" aria-live="polite">' +
+        '<svg aria-hidden="true"><use href="#i-target"/></svg>' +
+        'You&rsquo;re offline &mdash; showing data saved on this device. The live map needs a connection.' +
+      '</div>';
+  }
+
+  function buildBaseline(collapse){
+    return '' +
+      '<div class="frame-inner">' +
+        offlineBannerHTML() +
+        '<header class="topbar">' +
+          '<div class="topbar-row">' + tripIdHTML() + utilityActionsHTML(collapse) + '</div>' +
+          routeStripHTML('shanghai') +
+        '</header>' +
+        tabbarHTML('map') +
+        fillerMainHTML() +
+      '</div>';
+  }
+
+  function buildV1(){
+    return '' +
+      '<div class="frame-inner">' +
+        offlineBannerHTML() +
+        '<header class="topbar topbar--slim">' +
+          '<div class="topbar-row">' + tripIdHTML() + '</div>' +
+        '</header>' +
+        '<div class="primary-nav-block">' +
+          tabbarHTML('map') +
+          routeStripHTML('shanghai') +
+        '</div>' +
+        '<div class="utility-row">' + utilityActionsHTML(false) + '</div>' +
+        fillerMainHTML() +
+      '</div>';
+  }
+
+  function buildV3Mobile(){
+    return '' +
+      '<div class="frame-inner">' +
+        offlineBannerHTML() +
+        '<header class="topbar">' +
+          '<div class="topbar-row">' + tripIdHTML() + utilityActionsHTML(false) + '</div>' +
+          routeStripHTML('shanghai') +
+        '</header>' +
+        fillerMainHTML('main--has-bottom-nav') +
+        bottomTabbarHTML('map') +
+      '</div>';
+  }
+
+  // ---------- Variant 3 desktop refinement: condensing header ----------
+  // Reuses .chip/.chip-dot verbatim (same classes as the real Map panel's
+  // day filter, see MapPanel.tsx ~L142-157). The wrapping div's
+  // aria-label="Filter pins by day" is NEW, not ported — today's real
+  // .chiprow#dayChips in MapPanel.tsx has no aria-label of its own. Adding
+  // one here is reasonable (same bare-div + aria-label pattern already used
+  // by RouteStrip.tsx, cited above) but flagged so an implementer doesn't
+  // assume it already exists in production today.
+  function mapDayQuicknavHTML(){
+    return '' +
+      '<div class="map-day-quicknav" aria-label="Filter pins by day">' +
+        '<button type="button" class="chip active" onclick="selectChip(this)">All days</button>' +
+        '<button type="button" class="chip" onclick="selectChip(this)"><span class="chip-dot" style="background:var(--d-blue)" aria-hidden="true"></span>Day 2 &middot; Mon 10 Nov</button>' +
+        '<button type="button" class="chip" onclick="selectChip(this)"><span class="chip-dot" style="background:var(--d-amber)" aria-hidden="true"></span>Day 3 &middot; Tue 11 Nov</button>' +
+        '<button type="button" class="chip" onclick="selectChip(this)"><span class="chip-dot" style="background:var(--d-grey)" aria-hidden="true"></span>Unassigned</button>' +
+      '</div>';
+  }
+
+  // Real Map-panel content order (panel-head w/ Add place -> map-showing ->
+  // day chips -> map/list), NOT the generic fillerMainHTML() used by the
+  // other sections — this one exists specifically to demonstrate the day
+  // chips staying reachable via their own sticky layer while Add place (not
+  // promoted — see the decision-note above) scrolls away normally with the
+  // panel head around it.
+  function mapPanelFillerHTML(){
+    return '' +
+      '<main>' +
+        '<div class="panel-head">' +
+          '<div><h2 class="panel-title">Map</h2><span class="panel-hint">Your home screen &middot; tap a city in the timeline above to change what&rsquo;s shown</span></div>' +
+          '<button type="button" class="btn btn-primary btn-sm" disabled title="Not part of this focused mockup"><svg aria-hidden="true"><use href="#i-plus"/></svg> Add place</button>' +
+        '</div>' +
+        '<div class="map-showing"><span class="map-showing-dot" aria-hidden="true"></span> Showing <strong>Shanghai</strong><span class="range"> &middot; 9&ndash;15 Nov</span></div>' +
+        mapDayQuicknavHTML() +
+        '<div class="filler-card" style="height:340px;">Map area (placeholder &mdash; not the focus of this mockup)</div>' +
+        '<div class="filler-list">' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-blue)"></span><div><strong>The Bund</strong><span>Landmark &middot; Day 2</span></div></div>' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-blue)"></span><div><strong>Nanjing Road</strong><span>Market &middot; Day 2</span></div></div>' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-amber)"></span><div><strong>Yu Garden</strong><span>Garden &middot; Day 3</span></div></div>' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-amber)"></span><div><strong>Shanghai Museum</strong><span>Museum &middot; Day 3</span></div></div>' +
+          '<div class="filler-row"><span class="filler-dot" style="background:var(--d-grey)"></span><div><strong>Tianzifang</strong><span>Neighbourhood &middot; Unassigned</span></div></div>' +
+        '</div>' +
+      '</main>';
+  }
+
+  // Renders with .can-condense present but neither .is-condensed nor
+  // .is-collapsed set — the two live frames start in different SCROLL
+  // states (wired below, wireCondenseHeader), not different markup.
+  function buildV3CondenseDesktop(){
+    return '' +
+      '<div class="frame-inner">' +
+        offlineBannerHTML() +
+        '<header class="topbar can-condense">' +
+          '<div class="topbar-row">' + tripIdHTML() + utilityActionsHTML(false, true) + '</div>' +
+          routeStripHTML('shanghai') +
+        '</header>' +
+        tabbarHTML('map') +
+        mapPanelFillerHTML() +
+      '</div>';
+  }
+
+  function mount(id, html){
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  }
+
+  mount('mount-baseline-desktop', buildBaseline(false));
+  mount('mount-baseline-mobile', buildBaseline(false));
+  mount('mount-v1-desktop', buildV1());
+  mount('mount-v1-mobile', buildV1());
+  mount('mount-v2-desktop', buildBaseline(false));
+  mount('mount-v2-mobile', buildBaseline(true));
+  mount('mount-v2-resizable', buildBaseline(false));
+  mount('mount-v3-desktop', buildBaseline(false));
+  mount('mount-v3-mobile', buildV3Mobile());
+  mount('mount-v3-condense-expanded', buildV3CondenseDesktop());
+  mount('mount-v3-condense-condensed', buildV3CondenseDesktop());
+
+  // ---------- fold marker (mobile frames only — this is the whole point of
+  // the exercise, so make it checkable at a glance rather than asserted).
+  // Originally left off variant 2's frame on the theory its outcome would
+  // just restate the baseline's — ux-review correctly called that an
+  // assertion standing in for a check, exactly what this marker exists to
+  // avoid (and see the row-width note above: v2's fit at 390px turned out to
+  // need verifying, not assuming). Added to all four mobile frames now. ----------
+  ['mount-baseline-mobile', 'mount-v1-mobile', 'mount-v2-mobile', 'mount-v3-mobile'].forEach(function(id){
+    var root = document.getElementById(id);
+    var inner = root && root.querySelector('.frame-inner');
+    if (!inner) return;
+    var marker = document.createElement('div');
+    marker.className = 'fold-marker';
+    marker.innerHTML = '<span class="fold-marker-label">&asymp; fold on a compact phone (&sim;560px viewport)</span>';
+    inner.appendChild(marker);
+  });
+
+  // ---------- per-frame sticky offset measurement, mirrors
+  // src/hooks/useStickyOffsets.ts but scoped to each frame's own .frame-inner
+  // instead of :root, since this page has 9 independent frames on screen at
+  // once and they must not clobber each other's --topbar-h/--tabbar-h.
+  // --tabbar-h is measured (parity with the real hook) but deliberately
+  // unread by any CSS rule in this file — nothing here stacks a third sticky
+  // layer under the tabs (that's what the real app's Itinerary quick-nav
+  // does, via --itnav-h, and it's out of scope for a header/nav-hierarchy
+  // mockup). Left in so a reader diffing against the real hook doesn't go
+  // looking for a missing measurement. ----------
+  function wireStickyOffsets(mountId){
+    var root = document.getElementById(mountId);
+    var inner = root && root.querySelector('.frame-inner');
+    if (!inner) return;
+    function update(){
+      var topbar = inner.querySelector('.topbar');
+      var secondLayer = inner.querySelector('.primary-nav-block') || inner.querySelector('.tabbar');
+      if (topbar) inner.style.setProperty('--topbar-h', topbar.offsetHeight + 'px');
+      if (secondLayer) inner.style.setProperty('--tabbar-h', secondLayer.offsetHeight + 'px');
+    }
+    update();
+    window.addEventListener('resize', update);
+    if (typeof ResizeObserver !== 'undefined') {
+      var ro = new ResizeObserver(update);
+      var topbar = inner.querySelector('.topbar');
+      var secondLayer = inner.querySelector('.primary-nav-block') || inner.querySelector('.tabbar');
+      if (topbar) ro.observe(topbar);
+      if (secondLayer) ro.observe(secondLayer);
+    }
+  }
+  [
+    'mount-baseline-desktop', 'mount-baseline-mobile',
+    'mount-v1-desktop', 'mount-v1-mobile',
+    'mount-v2-desktop', 'mount-v2-mobile', 'mount-v2-resizable',
+    'mount-v3-desktop', 'mount-v3-mobile',
+    'mount-v3-condense-expanded', 'mount-v3-condense-condensed'
+  ].forEach(wireStickyOffsets);
+
+  // ---------- interactions ----------
+  window.selectRouteNode = function(btn){
+    var strip = btn.closest('.route-strip');
+    if (!strip) return;
+    strip.querySelectorAll('.route-node').forEach(function(n){
+      var active = n === btn;
+      n.classList.toggle('active', active);
+      // aria-current REMOVED (not "false") when inactive — matches
+      // RouteStrip.tsx's `aria-current={active ? 'true' : undefined}`.
+      if (active) n.setAttribute('aria-current', 'true');
+      else n.removeAttribute('aria-current');
+    });
+  };
+  window.selectTab = function(btn){
+    var list = btn.closest('[role="tablist"]');
+    if (!list) return;
+    list.querySelectorAll('[role="tab"]').forEach(function(t){
+      var active = t === btn;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+  };
+  window.selectChip = function(btn){
+    var row = btn.closest('.map-day-quicknav');
+    if (!row) return;
+    row.querySelectorAll('.chip').forEach(function(c){ c.classList.toggle('active', c === btn); });
+  };
+
+  // ---------- Variant 3 desktop refinement: condensing header ----------
+  // Scroll-driven state machine with hysteresis, per the engineering note in
+  // the page above. This is a MOCKUP STAND-IN for a scroll listener — the
+  // real implementation should prefer IntersectionObserver against a
+  // sentinel (also explained there); a scroll listener is simply the more
+  // reliable thing to hand-wire against an arbitrary, independently-scrolled
+  // .demo-viewport for a comparison page like this one.
+  function wireCondenseHeader(mountId, startCondensed){
+    var root = document.getElementById(mountId);
+    var inner = root && root.querySelector('.frame-inner');
+    var topbar = inner && inner.querySelector('.topbar.can-condense');
+    var actions = inner && inner.querySelector('.topbar-actions');
+    var readout = document.getElementById('readout-' + mountId.replace(/^mount-/, ''));
+    if (!root || !topbar || !actions) return;
+
+    var CONDENSE_ON = 88;   // px scrolled before it condenses
+    var CONDENSE_OFF = 32;  // px scrolled below which it re-expands
+    // The gap between the two (not one shared threshold) IS the hysteresis —
+    // scroll position sitting anywhere between 32 and 88 leaves the current
+    // state alone, so hovering near "a" threshold can't cause flapping the
+    // way a single toggle point would.
+    var condensed = false;
+    var ticking = false;
+
+    function updateReadout(){
+      if (readout) readout.textContent = 'scrollY ' + Math.round(root.scrollTop) + 'px · ' + (condensed ? 'condensed' : 'expanded');
+    }
+    function setCondensed(next){
+      if (next === condensed) return;
+      condensed = next;
+      topbar.classList.toggle('is-condensed', condensed);
+      actions.classList.toggle('is-collapsed', condensed);
+    }
+    function onScroll(){
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function(){
+        var y = root.scrollTop;
+        if (!condensed && y > CONDENSE_ON) setCondensed(true);
+        else if (condensed && y < CONDENSE_OFF) setCondensed(false);
+        updateReadout();
+        ticking = false;
+      });
+    }
+    root.addEventListener('scroll', onScroll, { passive: true });
+
+    if (startCondensed) {
+      root.scrollTop = 260;
+      setCondensed(true);
+    }
+    updateReadout();
+  }
+  wireCondenseHeader('mount-v3-condense-expanded', false);
+  wireCondenseHeader('mount-v3-condense-condensed', true);
+
+  // ---------- offline preview (shared across every frame on the page) ----------
+  // Toggles ALL frames at once (a body-level class, not per-frame state) —
+  // the point is to stress-test every variant's fold-marker conclusion
+  // under the worst realistic case, not to model per-frame offline state.
+  window.toggleOffline = function(){
+    var on = document.body.classList.toggle('simulate-offline');
+    document.getElementById('offlineToggleBtn').classList.toggle('is-on', on);
+    document.getElementById('offlineToggleLabel').textContent =
+      on ? 'Offline banner: ON (all frames) — click to hide' : 'Preview: simulate offline (all frames)';
+  };
+
+  // ---------- theme toggle (shared across every frame on the page) ----------
+  function systemTheme(){
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function effectiveTheme(){
+    return document.documentElement.getAttribute('data-theme') || systemTheme();
+  }
+  function applyThemeIcon(){
+    var eff = effectiveTheme();
+    document.getElementById('themeIcon').innerHTML = '<use href="#i-' + (eff === 'dark' ? 'sun' : 'moon') + '"/>';
+    document.getElementById('themeToggle').setAttribute('aria-pressed', eff === 'dark');
+  }
+  window.toggleTheme = function(){
+    document.documentElement.setAttribute('data-theme', effectiveTheme() === 'dark' ? 'light' : 'dark');
+    applyThemeIcon();
+  };
+  applyThemeIcon();
+})();
+</script>
+</body>
+</html>

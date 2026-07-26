@@ -55,6 +55,23 @@
   --map-water: #A9D6EC;
   --map-land: #F1EEE5;
 
+  /* Member colour palette (Phase 6, item 8) — a THIRD categorical pool,
+     narrower in scope than the day/city palettes above: colours ONLY the
+     member avatar ring and member chip (never the By-person budget bar,
+     which stays --jade — see DESIGN-SYSTEM.md's "Member colour palette"
+     section for the hue-selection method and measured contrast table).
+     Fixed pick-one-of-6 set, not a free picker — an arbitrary user hue can't
+     be pre-verified against the -soft-ink rule below. */
+  --m-chartreuse: #8FAE47; --m-chartreuse-soft: #EAF1DA; --m-chartreuse-soft-ink: #506321;
+  --m-denim: #4768AE; --m-denim-soft: #DAE1F1; --m-denim-soft-ink: #213663;
+  --m-periwinkle: #5D47AE; --m-periwinkle-soft: #DFDAF1; --m-periwinkle-soft-ink: #302163;
+  --m-orchid: #9B47AE; --m-orchid-soft: #EDDAF1; --m-orchid-soft-ink: #572163;
+  --m-berry: #AE4781; --m-berry-soft: #F1DAE7; --m-berry-soft-ink: #632147;
+  /* deliberate exception: hue 40° sits inside the excluded --gold band, but
+     at this low a saturation (~14%) it reads as neutral taupe, not amber —
+     see DESIGN-SYSTEM.md for the full reasoning. */
+  --m-sand: #847E71; --m-sand-soft: #E8E6E3; --m-sand-soft-ink: #403B30;
+
   --tab-active-bg: var(--ink);
   --tab-active-ink: var(--paper);
 
@@ -85,6 +102,12 @@
     --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-grey:#776E60;
     --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6;
     --map-water:#1E2F42; --map-land:#221F19;
+    --m-chartreuse:#AFCA72; --m-chartreuse-soft:#293215; --m-chartreuse-soft-ink:#AFCA72;
+    --m-denim:#728ECA; --m-denim-soft:#151E32; --m-denim-soft-ink:#728ECA;
+    --m-periwinkle:#9281CF; --m-periwinkle-soft:#1C1532; --m-periwinkle-soft-ink:#9281CF;
+    --m-orchid:#BD7ACC; --m-orchid-soft:#2D1532; --m-orchid-soft-ink:#BD7ACC;
+    --m-berry:#CA72A4; --m-berry-soft:#321526; --m-berry-soft-ink:#CA72A4;
+    --m-sand:#A8A194; --m-sand-soft:#272520; --m-sand-soft-ink:#A8A194;
     --tab-active-bg: var(--accent); --tab-active-ink: var(--accent-ink);
     color-scheme: dark;
   }
@@ -99,6 +122,12 @@
   --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-grey:#776E60;
   --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6;
   --map-water:#1E2F42; --map-land:#221F19;
+  --m-chartreuse:#AFCA72; --m-chartreuse-soft:#293215; --m-chartreuse-soft-ink:#AFCA72;
+  --m-denim:#728ECA; --m-denim-soft:#151E32; --m-denim-soft-ink:#728ECA;
+  --m-periwinkle:#9281CF; --m-periwinkle-soft:#1C1532; --m-periwinkle-soft-ink:#9281CF;
+  --m-orchid:#BD7ACC; --m-orchid-soft:#2D1532; --m-orchid-soft-ink:#BD7ACC;
+  --m-berry:#CA72A4; --m-berry-soft:#321526; --m-berry-soft-ink:#CA72A4;
+  --m-sand:#A8A194; --m-sand-soft:#272520; --m-sand-soft-ink:#A8A194;
   --tab-active-bg: var(--accent); --tab-active-ink: var(--accent-ink);
   color-scheme: dark;
 }
@@ -112,6 +141,12 @@
   --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-grey:#9C9488;
   --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0;
   --map-water:#A9D6EC; --map-land:#F1EEE5;
+  --m-chartreuse:#8FAE47; --m-chartreuse-soft:#EAF1DA; --m-chartreuse-soft-ink:#506321;
+  --m-denim:#4768AE; --m-denim-soft:#DAE1F1; --m-denim-soft-ink:#213663;
+  --m-periwinkle:#5D47AE; --m-periwinkle-soft:#DFDAF1; --m-periwinkle-soft-ink:#302163;
+  --m-orchid:#9B47AE; --m-orchid-soft:#EDDAF1; --m-orchid-soft-ink:#572163;
+  --m-berry:#AE4781; --m-berry-soft:#F1DAE7; --m-berry-soft-ink:#632147;
+  --m-sand:#847E71; --m-sand-soft:#E8E6E3; --m-sand-soft-ink:#403B30;
   --tab-active-bg: var(--ink); --tab-active-ink: var(--paper);
   color-scheme: light;
 }
@@ -183,6 +218,30 @@ svg{ display:block; }
 .btn-icon svg{ width:17px; height:17px; }
 .topbar-actions{ display:flex; align-items:center; gap:8px; }
 
+/* Icon-only collapse for Export/Import/Auto-plan/Sign out — used by the
+   desktop condensing header (see the DESKTOP CONDENSING HEADER section
+   below, and src/hooks/useCondenseHeader.ts). Same clip-not-display-none
+   technique already established for the sync pill's own narrow-viewport
+   fallback further down this file: the label stays in the DOM, just
+   visually hidden, so it's still each button's accessible name. */
+.btn-collapsible .btn-label{ display:inline; }
+.topbar-actions.is-collapsed .btn-collapsible{
+  width:38px; height:38px; padding:0; justify-content:center; border-radius:50%;
+}
+.topbar-actions.is-collapsed .btn-collapsible .btn-label{
+  position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+}
+/* Same treatment for the sync pill, reusing its existing <380px fallback
+   rules' exact values (see `@media (max-width:380px)` further down) — this
+   is the SAME class name the mockup's own V2 comparison used for an
+   unrelated narrow-viewport collapse, deliberately reused here for a
+   different trigger (condensed-on-scroll, not narrow viewport) rather than
+   inventing a second pattern for the same visual outcome. */
+.topbar-actions.is-collapsed .sync-indicator{ padding:6px; gap:0; }
+.topbar-actions.is-collapsed .sync-indicator-label{
+  position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+}
+
 .autoplan-cta{
   background:linear-gradient(135deg, var(--accent), var(--d-terra));
   color:var(--accent-ink); border:none; box-shadow:var(--shadow-sm);
@@ -202,8 +261,19 @@ svg{ display:block; }
   flex:none; display:flex; flex-direction:column; align-items:center; gap:6px;
   width:104px; text-align:center; background:none; border:none; padding:4px 2px 0; position:relative;
 }
+/* z-index:-1, NOT 0 — PHASE 6 ITEM 4 fix, applied at the BASE rule (not just
+   a mobile override) as defence in depth. Root cause was CSS2.1 painting
+   order: in-flow inline text (step 5) paints BEFORE a positioned descendant
+   at z-index:0 (step 6), so this line always painted OVER `.route-city`
+   regardless of DOM order. Desktop never showed it because `top:11px` keeps
+   the line at dot height, spatially clear of the text below — but Phase 5's
+   mobile override put it at `top:50%` in a row layout, dead centre through
+   the letters. Moving to z-index:-1 pushes the line into CSS2.1's step 2
+   (negative stacking contexts, painted before ANY in-flow content), so it
+   can no longer paint over text by construction, regardless of what future
+   layout change might reposition it. */
 .route-node .line{
-  position:absolute; top:11px; left:-52px; width:104px; height:2px; background:var(--line-strong); z-index:0;
+  position:absolute; top:11px; left:-52px; width:104px; height:2px; background:var(--line-strong); z-index:-1;
 }
 .route-node:first-child .line{ display:none; }
 .route-dot{
@@ -239,6 +309,49 @@ svg{ display:block; }
   background:var(--gold); border:2px solid var(--paper); display:none;
 }
 .route-node.has-pending .route-pending-dot{ display:block; }
+
+/* ============================= PHASE 5 ITEM 3 — mobile-succinct route strip =============================
+   Below 719px (DESIGN-SYSTEM.md's "Mobile-succinct" rule, §5), route-nodes
+   drop to a single-line, city-name-only pill — full "city + date range" is a
+   desktop-only luxury (approved via mockup/phase5-mobile-and-expenses.html
+   item 3). Deliberately NOT the desktop `.topbar.is-condensed .route-date{
+   display:none }` treatment further down this file: that state is
+   scroll-triggered and transient (scroll up, the date's back, for everyone),
+   while mobile's succinct form is the PERMANENT default at that viewport
+   width — a screen-reader user has no scroll-triggered "escape hatch" back
+   to the fuller announcement, and there's no touchscreen equivalent of the
+   desktop's mouse-hover `title` recovery either. So `.route-date` stays in
+   the DOM, clipped with the same `.visually-hidden` technique used
+   everywhere else in this codebase, not display:none'd — it's still the
+   only source of the route-node button's accessible name beyond the city
+   name (its name is its own text content: city + date). A screen reader
+   still hears "Shanghai, 9 to 15 November"; a sighted user just sees
+   "Shanghai". Unconditional (no JS class) — this is the permanent mobile
+   default, not a toggled state. */
+@media (max-width:719px){
+  /* PHASE 6 ITEM 4 — reverted to the SAME stacked layout as desktop (dot
+     above, label below), not Phase 5's `flex-direction:row`. That row layout
+     is what put the connecting `.line` at label height in the first place
+     (`top:50%` through a horizontally-arranged dot+text pair); stacked keeps
+     the line at dot height, spatially clear of the text, same as desktop.
+     Width widened 74px -> 92px (PHASE6.md's 88-96px range) — 74px left only
+     ~59px for the label after the dot and gap, which is why long names like
+     "Zhangjiajie" clipped hard; 92px gives real room. */
+  .route-node{ width:92px; flex-direction:column; align-items:center; gap:6px; padding:4px 2px 0; }
+  /* recalibrated to the 92px node width — the connecting .line is a
+     fixed-width absolutely-positioned asset sized to exactly half on each
+     side of its own node (same relationship the base 104px/-52px and the
+     desktop is-condensed 60px/-30px pairings each keep for their own node
+     width); leaving it at the base pairing here would overshoot into
+     neighbouring nodes. top:11px (not 50%) matches the base/desktop rule —
+     dot height, not label height. */
+  .route-node .line{ top:11px; width:92px; left:-46px; }
+  /* 11.5px — matches this file's own mobile route-city size exactly (see
+     PHASE6.md's item-4 note on validating against the real value, not a more
+     generous stand-in). */
+  .route-city{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; font-size:11.5px; }
+  .route-date{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+}
 
 /* ============================= TABS ============================= */
 .tabbar{
@@ -317,6 +430,13 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
 .map-container-outer{
   position:relative; width:100%; height:min(70vh, 560px); min-height:340px; border-radius:var(--radius-lg);
   overflow:hidden; border:1px solid var(--line); box-shadow:var(--shadow-sm); background:var(--map-land);
+  /* Trap Leaflet's internal z-indexes (panes/controls climb to ~1000) and our
+     own badge/FAB overlays (z-index 401) inside a stacking context. Without
+     this they share the root context and, as the map scrolls up under the
+     sticky tabbar (z-index 29), paint OVER it — leaving the tabs unclickable
+     until you scroll back to the top. isolation keeps them contained so the
+     whole map box (z-index:auto) stays below the pinned tabbar. */
+  isolation:isolate;
 }
 .leaflet-container{ width:100%; height:100%; background:var(--map-land); font-family:var(--font-body); }
 @media (prefers-color-scheme: dark){ .leaflet-tile{ filter: brightness(.8) invert(1) contrast(.9) hue-rotate(180deg) saturate(.7); } }
@@ -391,9 +511,34 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
 .map-empty span{ font-size:12.5px; max-width:26ch; }
 
 .map-fab{ position:absolute; right:12px; bottom:12px; z-index:401; }
-/* also combined with .map-badge (as a non-interactive instructional badge
-   near the bottom-left of the map) — reset `top` so `bottom` positions it. */
-.map-add-hint{ position:absolute; left:12px; bottom:12px; top:auto; z-index:401; }
+
+/* ============================= PHASE 6 ITEM 1 — Add-place back in .panel-head =============================
+   Phase 5's single sticky FAB (`.map-add-fab-wrap`, removed) read wrong at
+   the map's REAL size (`min(70vh,560px)`, vs. the mockup's old 280px demo
+   box) — bulky, and sitting awkwardly near/over the map. Per the user's
+   decision (over the reviewer's recommendation to promote it into the
+   sticky day quick-nav instead), Add-place now lives solely in
+   `.panel-head`, exactly where it sat before Phase 5 and exactly where
+   `mockup/header-nav-hierarchy.html`'s `#v3-condense` frames show it — no
+   dedicated CSS needed, it's a plain `.btn.btn-primary.btn-sm` like every
+   other panel-head action.
+
+   This KNOWINGLY re-opens the keyboard/AT reachability gap Phase 5's FAB
+   briefly closed: once `.panel-head` scrolls out of view, a keyboard-only or
+   screen-reader user has no way back to Add-place without scrolling all the
+   way up. Accepted trade-off, not an oversight — see PHASE6.md's Decisions
+   section and trap #3. Do NOT "fix" this by adding a second Add-place
+   control; that recreates the exact redundancy Phase 5 item 2 existed to
+   remove. The mitigation is the two `.skip-to-add` links below (rendered by
+   MapPanel.tsx), not a second visible affordance. */
+.skip-to-add{
+  position:absolute; left:8px; top:8px; z-index:100; transform:translateY(-160%);
+  background:var(--accent); color:var(--accent-ink); padding:10px 16px; border-radius:var(--radius-full);
+  font-size:13px; font-weight:700; text-decoration:none; box-shadow:var(--shadow-md);
+  transition:transform .15s ease;
+}
+.skip-to-add:focus-visible{ transform:translateY(0); outline:2px solid var(--paper); outline-offset:2px; }
+@media (prefers-reduced-motion:reduce){ .skip-to-add{ transition:none; } }
 
 .legend{ display:flex; flex-wrap:wrap; gap:8px 16px; padding:12px 4px 0; }
 .legend-item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); }
@@ -514,18 +659,37 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .map-save-bar-confirm-actions{ display:flex; justify-content:flex-end; gap:10px; }
 
 /* ============================= PLACES TAB ============================= */
-.add-card{
-  border:1.5px dashed var(--line-strong); border-radius:var(--radius-md); padding:14px 16px;
-  display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:18px;
-  background:var(--paper-sunk); flex-wrap:wrap;
+/* PHASE 6 ITEM 2 — Add-place promoted to its own sticky sub-bar, replacing
+   the old in-flow `.add-card` that scrolled away with everything else.
+   Architecturally identical to `.it-quicknav`/`.map-day-quicknav` (~L798/
+   ~L1446): same `top:calc(--topbar-h + --tabbar-h)` composition, fed by
+   `useStickyOffsets`, so it sits flush under the real sticky topbar+tabbar
+   instead of the literal viewport top. `.places-filter-bar` deliberately
+   stays OUT of this sticky bar and in normal flow directly beneath it —
+   making both sticky in the same pass would stack a two-select row under a
+   new sticky button, recreating the "too much fixed chrome" complaint that
+   started this phase (PHASE6.md item 2). */
+.places-add-quicknav{
+  position:sticky; top:calc(var(--topbar-h, 0px) + var(--tabbar-h, 0px)); z-index:27;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-md);
+  padding:10px 10px 10px 14px; margin:0 0 16px;
 }
-.add-card strong{ font-size:13.5px; }
+.places-add-quicknav-hint{ font-size:12.5px; font-weight:600; color:var(--ink-soft); }
 .add-form{ display:none; margin-bottom:18px; padding:16px; }
 .add-form.open{ display:block; }
 .add-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
 .add-form-grid .full{ grid-column:1/-1; }
 .add-form label{ display:block; font-size:11.5px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
-.add-form input, .add-form select{ width:100%; }
+.add-form input, .add-form select, .add-form textarea{ width:100%; }
+.add-form textarea.text-input{ resize:vertical; min-height:56px; line-height:1.45; font-family:inherit; }
+/* Add/edit is ONE form, two modes (Phase 5 item 4) — the heading/submit
+   label swap to "Editing … / Save changes" when a row's pencil icon opens it
+   pre-filled; see BudgetPanel.tsx's openEdit / DESIGN-SYSTEM.md §4's
+   `.add-form` entry. */
+.add-form-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:2px; }
+.add-form-head h4{ font-family:var(--font-display); font-size:1rem; font-weight:600; }
+.add-form-head .tag{ background:var(--accent-soft); color:var(--accent-soft-ink); border-color:transparent; }
 
 /* each city gets its own card + accent colour (set via --city-accent inline)
    so the list reads as distinct chunks instead of one long undifferentiated
@@ -600,7 +764,10 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    because the stakes changed (Phase 4 item 6) — this can now destroy
    written prose, not just a pin, and it needs to be reachable by thumb on a
    390px card. The accent hover tint previews the destructive intent before
-   it's even pressed. */
+   it's even pressed. `--accent` is this app's one destructive colour —
+   don't invent a second one (see `.icon-btn.is-danger` further down, a
+   Phase 5 dense-list variant that intentionally reuses this same colour
+   pair at the base 26px size instead of this rule's 36px). */
 .icon-btn.icon-btn-danger{ width:36px; height:36px; color:var(--ink-faint); }
 .icon-btn.icon-btn-danger svg{ width:16px; height:16px; }
 .icon-btn.icon-btn-danger:hover{ color:var(--accent); background:var(--accent-soft); }
@@ -668,6 +835,35 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 :root{ --sticky-stack: calc(var(--topbar-h, 0px) + var(--tabbar-h, 0px) + var(--itnav-h, 0px) + 12px); }
 .it-city{ margin-bottom:28px; scroll-margin-top:var(--sticky-stack); }
 .it-day{ scroll-margin-top:var(--sticky-stack); }
+
+/* PHASE 6 ITEM 5 — back-to-top. React-conditionally mounted (only rendered
+   once scrolled past the threshold — see ItineraryPanel.tsx), deliberately
+   NOT the "always mounted, opacity/pointer-events toggled" approach the
+   mockup demo used: an always-present-but-invisible focusable button is a
+   real keyboard/AT trap (a Tab stop that goes nowhere visible), and
+   conditional mounting sidesteps it entirely rather than adding
+   `tabIndex`/`aria-hidden` bookkeeping to fake the same thing. The reused
+   global `fadein` keyframe (see `.panel`) already respects
+   `prefers-reduced-motion` via this file's top-level blanket rule, so no
+   extra media query is needed for the appearance itself — only the actual
+   scroll-to-top call (`ItineraryPanel.tsx`) needs its own explicit
+   `prefersReducedMotion()` check, same pattern as `RouteStrip.tsx`/
+   `MapPanel.tsx`. `position:fixed` (not `.map-save-bar`'s `sticky`): this
+   button isn't anchored to a particular panel column, it floats over the
+   whole viewport regardless of scroll container. */
+.back-to-top{
+  position:fixed; right:20px; bottom:24px; z-index:20;
+  width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background:var(--paper-raised); border:1px solid var(--line-strong); box-shadow:var(--shadow-md);
+  color:var(--ink-soft); animation:fadein .18s ease;
+}
+.back-to-top:hover{ color:var(--ink); box-shadow:var(--shadow-lg); }
+.back-to-top svg{ width:18px; height:18px; }
+@media (max-width:719px){
+  /* Same clearance the Map save bar already gets from the fixed bottom tab
+     dock (~L1549) — otherwise the dock would sit on top of/hide this button. */
+  .back-to-top{ bottom: calc(64px + max(10px, env(safe-area-inset-bottom, 10px)) + 14px); }
+}
 .it-city-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
 .it-city-head h3{ font-family:var(--font-display); font-size:1.15rem; font-weight:600; }
 .it-city-head .range{ font-size:12px; color:var(--ink-soft); }
@@ -695,6 +891,23 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .icon-btn:hover{ background:var(--paper-sunk); color:var(--ink); }
 .icon-btn svg{ width:14px; height:14px; }
 .icon-btn:disabled{ opacity:.32; cursor:not-allowed; }
+/* Compact 26px destructive variant (Phase 5 — the Budget expense row's
+   delete, alongside its non-accented edit sibling; also used by the
+   trip-companion chip's own remove button). Corrected in code review: this
+   originally hovered to gold, which reads as a SECOND, independently
+   invented "destructive" convention — DESIGN-SYSTEM.md reserves gold for
+   "owed/pending/stale/needs attention", not destructive, and
+   `.icon-btn.icon-btn-danger` above already established `--accent` as this
+   app's one danger colour, with an explicit comment saying not to invent a
+   second one. Reuses that SAME colour pair here — the only thing that
+   differs from `.icon-btn-danger` is size: these are dense list rows
+   (Budget expenses, trip companions) that want the base 26px `.icon-btn`
+   sizing already used for the Itinerary stop-edit affordance, not that
+   rule's 36px thumb-reachable treatment (justified there by Phase 4's
+   higher single-item stakes — destroying written prose). Same danger
+   colour, different size for a different density of surrounding chrome —
+   not two conventions. */
+.icon-btn.is-danger:hover{ background:var(--accent-soft); color:var(--accent-soft-ink); }
 .stop-move{ display:none; }
 .reorder-mode .stop-move{ display:flex; }
 
@@ -778,7 +991,8 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 
 .cat-breakdown{ margin-bottom:22px; }
 .cat-row{ display:grid; grid-template-columns:110px 1fr 110px; align-items:center; gap:10px; padding:6px 0; font-size:12.5px; }
-.cat-row .cat-label{ font-weight:600; color:var(--ink-soft); }
+.cat-row .cat-label{ font-weight:600; color:var(--ink-soft); display:flex; align-items:center; gap:6px; min-width:0; }
+.cat-row .cat-label span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cat-bar-track{ height:8px; border-radius:var(--radius-full); background:var(--paper-sunk); overflow:hidden; }
 .cat-bar-fill{ height:100%; background:var(--jade); border-radius:var(--radius-full); transition:width .25s ease; }
 /* .cat-amt is a right-aligned flex column: the amount on its own line, the
@@ -789,12 +1003,79 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .cat-amt-value{ white-space:nowrap; }
 .cat-amt-note{ display:block; color:var(--ink-soft); font-weight:500; font-size:10.5px; font-family:var(--font-body); white-space:nowrap; }
 
+/* ============================= PHASE 5 ITEMS 5/6 — trip companions (members) + By-person =============================
+   The "By person" card just below reuses `.cat-breakdown`/`.cat-row`/
+   `.cat-bar-track`/`.cat-bar-fill`/`.cat-amt` verbatim (identical bar/track/
+   amount layout to "By category" above it) — same jade bar colour on
+   purpose, per ux-review: both cards are structurally the same "money
+   already accounted for" slice, just grouped differently, so a different
+   accent per card would read as an unexplained inconsistency between two
+   adjacent, near-identical cards.
+
+   Members are deliberately NOT drawn from the Day/City categorical palette
+   (`--d-*`, see DESIGN-SYSTEM.md §2's "two categorical palettes" split) —a
+   user can hold "Day 2 = blue" from the Map tab and "Alex = blue" from
+   Budget in the same session, so reusing that hue pool for a third,
+   unrelated categorical meaning (who paid) is a real vocabulary collision,
+   and there's no fourth pool to draw from. Simplest fix needing no new
+   tokens: a neutral initial-letter avatar instead of a colour dot, used
+   everywhere a member shows up (chip, By-person row, expense row) — colour
+   was never the only signifier anyway, the name is always printed too. */
+.member-avatar{
+  width:18px; height:18px; border-radius:50%; flex:none; display:inline-flex; align-items:center; justify-content:center;
+  background:var(--paper-sunk); border:1px solid var(--line-strong); color:var(--ink-soft);
+  font-size:9px; font-weight:800; line-height:1;
+}
+.member-avatar-xs{ width:14px; height:14px; font-size:7.5px; }
+.members-card{ padding:14px 16px; margin-bottom:18px; }
+.members-list{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+.member-chip{
+  display:inline-flex; align-items:center; gap:7px; padding:5px 6px 5px 10px; border-radius:var(--radius-full);
+  background:var(--paper-sunk); border:1px solid var(--line); font-size:12.5px; font-weight:600;
+}
+.member-chip .icon-btn{ width:22px; height:22px; }
+.member-chip .icon-btn svg{ width:12px; height:12px; }
+.member-chip .rename-input{
+  border:1px solid var(--accent); border-radius:6px; padding:2px 6px; font-size:12.5px; font-weight:600;
+  width:100px; background:var(--paper-raised); color:var(--ink);
+}
+/* Compact, horizontal variant of the canonical empty-state pattern
+   (DESIGN-SYSTEM.md §4: dashed border + --paper-sunk fill + icon at
+   opacity .5 + bold lead line, all kept) — NOT the full stacked/centred
+   `.budget-empty` form, deliberately: this lives inside a card that already
+   has its own "Trip companions" heading right above it, so a full-height
+   centred block would be heavier chrome than the context needs. */
+.members-empty{
+  display:flex; align-items:center; gap:10px; padding:12px 14px; border:1.5px dashed var(--line-strong);
+  border-radius:var(--radius-md); background:var(--paper-sunk); color:var(--ink-soft); font-size:12.5px; margin:10px 0;
+}
+.members-empty svg{ width:18px; height:18px; opacity:.55; flex:none; }
+.members-empty strong{ display:block; color:var(--ink); font-size:12.5px; font-weight:700; margin-bottom:1px; }
+.add-member-form{ display:flex; gap:8px; margin-top:4px; }
+.add-member-form input{ flex:1; min-width:0; }
+
 .expense-list{ display:flex; flex-direction:column; gap:8px; }
-.expense{ display:flex; align-items:center; gap:12px; padding:12px 14px; }
+.expense{ display:flex; align-items:flex-start; gap:12px; padding:12px 14px; }
 .expense-swatch{ width:8px; align-self:stretch; border-radius:4px; flex:none; }
 .expense-main{ flex:1; min-width:0; }
 .expense-label{ font-size:13.5px; font-weight:700; }
 .expense-meta{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.expense-payer{ display:inline-flex; align-items:center; gap:4px; }
+.expense-payer svg{ width:11px; height:11px; flex:none; }
+/* An expense with no `paidBy` at all just omits `.expense-payer` — this
+   modifier is only for the orphan-tolerant case (PHASE5 trap #3): a
+   `paidBy` that no longer resolves to any current trip member renders here,
+   muted, instead of throwing or silently vanishing. */
+.expense-payer.is-unset{ color:var(--ink-faint); }
+/* Free-text note (Phase 5 item 4), surfaced under the meta row — reuses the
+   same line-clamp/excerpt treatment already established for Places'
+   description excerpt (`.pin-detail-note`/`.place-desc-excerpt`). Not
+   italic: italic reads as "a little aside"; a note the user deliberately
+   typed is the actual content, not a stylistic footnote. */
+.expense-note{
+  font-size:12px; color:var(--ink-soft); margin-top:5px; line-height:1.45; max-width:52ch;
+  display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
 .expense-amt{ flex:none; text-align:right; }
 /* .orig = what was actually paid, in its own currency (primary, bold).
    .conv = that amount converted to the home currency (secondary, muted) —
@@ -818,7 +1099,14 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .switch input:checked + .track{ background:var(--jade); }
 .switch input:checked + .track + .thumb{ transform:translateX(15px); }
 .paid-label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); }
-.expense-actions{ flex:none; }
+/* Edit + delete, grouped (Phase 5 item 4) — the same 26px `.icon-btn`
+   already used for dense-list secondary actions elsewhere (the Itinerary
+   stop-edit affordance). Edit stays the plain neutral hover — it's not the
+   primary action on this row (the paid toggle and the amount are); delete
+   gets `.icon-btn.is-danger`'s accent hover, this app's one destructive
+   colour (see that rule's comment — deliberately NOT a second, gold
+   "destructive" convention). */
+.expense-actions-group{ flex:none; display:flex; flex-direction:column; gap:4px; align-self:center; }
 
 /* add-expense form: currency + amount read as one compound field */
 .amount-currency-field{ display:flex; gap:6px; }
@@ -1209,3 +1497,163 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 
 /* utility */
 .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+/* ============================= MAP TAB — DAY QUICKNAV =============================
+   Promotes the Map tab's day-filter chips into their own sticky sub-bar
+   directly under the (also sticky) tabbar — the same pattern the Itinerary
+   tab already uses for #itQuickNav/.it-quicknav (~L649), just applied here.
+   Rendered by MapPanel.tsx, not App.tsx's shared chrome, so it only exists
+   while viewing the Map tab and the global header's height stays
+   tab-independent regardless of which tab is active. Approved via
+   mockup/header-nav-hierarchy.html #v3-condense. */
+.map-day-quicknav{
+  position:sticky; top:calc(var(--topbar-h, 0px) + var(--tabbar-h, 0px)); z-index:27;
+  display:flex; align-items:center; gap:8px; background:var(--paper-sunk); border:1px solid var(--line);
+  border-radius:var(--radius-md); padding:8px 10px; margin-bottom:16px;
+}
+/* The chip row scrolls horizontally on its own. It briefly hosted a trailing
+   icon-only Add-place button in Phase 5 (removed that same phase in favour
+   of a FAB below the map); Phase 6 removed the FAB too — Add-place now lives
+   solely in `.panel-head` (see the PHASE 6 ITEM 1 comment further up this
+   file), and the reachability gap that leaves is accepted, not solved here. */
+.map-day-quicknav-chips{ display:flex; align-items:center; gap:8px; overflow-x:auto; flex:1 1 auto; min-width:0; }
+
+/* PHASE 6 ITEM 3 — day chip short/full date split. Base/desktop: the full
+   `dayLabel` text shows, the numeric duplicate is a pure decorative aside so
+   `display:none` is fine for everyone at this width. Below 719px this flips
+   (see the override in the mobile-succinct section further down) — the
+   short numeric form shows, and the full label is `.visually-hidden`-clipped
+   rather than removed, because it's the chip's entire accessible name (only
+   the wrapping group carries its own `aria-label`). */
+.chip-date-short{ display:none; }
+@media (max-width:719px){
+  .chip-date-full{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .chip-date-short{ display:inline; }
+}
+
+/* ============================= MOBILE BOTTOM TAB DOCK =============================
+   Approved via mockup/header-nav-hierarchy.html Variant 3: below 720px (the
+   same thumb-critical threshold Modal.tsx's bottom-sheet/dialog switch and
+   the Map save-bar's mobile sizing already use) the SAME <nav role="tablist">
+   from App.tsx relocates to a fixed bottom dock instead of sticky top
+   chrome — CSS-only repositioning of one markup, not a second bottom-tabbar
+   implementation, so aria semantics/state can't drift between two variants.
+   Because the nav's DOM position never changes (still rendered right after
+   .topbar, before <main> — see App.tsx), a keyboard user tabbing through the
+   page reaches primary nav immediately after the topbar's own controls, not
+   after every focusable element in the panel below it first: the fix for
+   the "focus order skips past the whole panel" gap the mockup's Variant 3
+   frame flagged as unresolved.
+
+   Deliberately placed at the END of this file (not inline with the base
+   .tabbar/.tab/main rules above) so its overrides always win the cascade on
+   source order alone, regardless of what's declared for those selectors
+   earlier — this block, the base rules it overrides, and the desktop
+   condensing-header block below are all plain class/element selectors of
+   equal specificity. */
+@media (max-width:719px){
+  .tabbar{
+    position:fixed; top:auto; left:0; right:0; bottom:0; z-index:40;
+    border-bottom:none; border-top:1px solid var(--line);
+    box-shadow:0 -6px 18px -10px rgba(60,40,20,.22);
+    padding:0 4px calc(4px + max(10px, env(safe-area-inset-bottom, 10px)));
+  }
+  .tab{
+    flex:1 1 0; min-width:0; flex-direction:column; gap:3px;
+    padding:9px 2px 7px; border-radius:0; font-size:10.5px; font-weight:700;
+  }
+  .tab svg{ width:20px; height:20px; }
+  /* Unlike the top tabbar's inverted-pill active state, the bottom dock
+     signals the active tab with accent-coloured icon+label only — an
+     inverted full-tile fill would look like a filled app-icon tile fixed to
+     the edge of the screen, not a nav affordance, at this size/position. */
+  .tab.active{ background:transparent; color:var(--accent); }
+  /* Reserve room at the bottom of the scrolling page for the now-fixed dock
+     (its own height, ~64px, plus the same safe-area sliver reserved above)
+     so panel content is never hidden behind it. */
+  main{ padding-bottom:calc(64px + max(10px, env(safe-area-inset-bottom, 10px))); }
+  /* The Map tab's staged-changes Save bar (~L477) is ALSO sticky to the
+     bottom of the page — without this override it would render underneath
+     the now-fixed dock instead of above it, unreachable. */
+  .map-save-bar{ bottom:calc(64px + max(10px, env(safe-area-inset-bottom, 10px))); }
+
+  /* ============================= PHASE 5 ITEM 1 — mobile topbar icon-collapse =============================
+     The utility row (Export/Import/sync pill/Auto-plan/Sign out) already
+     collapses to icon-only on desktop, but only once you scroll
+     (`.topbar-actions.is-collapsed`, driven by useCondenseHeader, gated
+     >=720px — see the DESKTOP CONDENSING HEADER block below). Below 720px
+     that hook never fires at all, so without this the row just runs past
+     the right edge (`.topbar-row`/`.topbar-actions` have no flex-wrap) —
+     approved via mockup/phase5-mobile-and-expenses.html item 1 and
+     DESIGN-SYSTEM.md's "Mobile-succinct" rule (§5). Reuses the exact same
+     ruleset as `.topbar-actions.is-collapsed` above (same mechanism, two
+     triggers — scroll on desktop, width here) rather than a second pattern;
+     CSS-only, no class/JS needed since this targets `.topbar-actions`
+     directly, unconditionally, at this breakpoint. */
+  .topbar-actions .btn-collapsible{
+    width:38px; height:38px; padding:0; justify-content:center; border-radius:50%;
+  }
+  .topbar-actions .btn-collapsible .btn-label{
+    position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+  }
+  .topbar-actions .sync-indicator{ padding:6px; gap:0; }
+  .topbar-actions .sync-indicator-label{
+    position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+  }
+}
+
+/* ============================= DESKTOP CONDENSING HEADER =============================
+   Shrink-on-scroll refinement, desktop-only (mockup/header-nav-hierarchy.html
+   #v3-condense) — gives the Map tab's day chips / Add place (and every other
+   panel) more room under the still-sticky topbar+tabbar once you've actually
+   started scrolling, instead of losing that space to a header that never
+   shrinks. State (`.is-condensed` on `.topbar`, `.is-collapsed` on
+   `.topbar-actions`) is driven entirely by src/hooks/useCondenseHeader.ts via
+   an IntersectionObserver on the `.condense-sentinel` below — see that hook
+   for the hysteresis reasoning. The whole block is wrapped in the same
+   >=720px breakpoint the mobile bottom-tab-dock media query above is the
+   exact complement of, so the two can never be visually active at the same
+   time even if the JS gating (matchMedia, same hook) ever raced a resize. */
+@media (min-width:720px){
+  .topbar.can-condense{ transition: padding .22s ease; }
+  .topbar.can-condense .trip-title{ transition: font-size .22s ease; }
+  .topbar.can-condense .route-strip{ transition: padding .22s ease, margin .22s ease; }
+  .topbar.can-condense .route-node{ transition: width .22s ease; }
+  .topbar.can-condense .route-node .line{ transition: width .22s ease, left .22s ease; }
+
+  .topbar.is-condensed{ padding:10px 16px 0; }
+  .topbar.is-condensed .topbar-row{ align-items:center; }
+  /* display:none, not .visually-hidden — the eyebrow/subtitle aren't
+     labelling anything still on screen in this state, for anyone, sighted or
+     not; there's no argument for keeping them in the AT tree while hiding
+     them visually (see DESIGN-SYSTEM.md's a11y floor). */
+  .topbar.is-condensed .trip-eyebrow,
+  .topbar.is-condensed .trip-sub{ display:none; }
+  .topbar.is-condensed .trip-title{ font-size:1.02rem; }
+  .topbar.is-condensed .route-strip{ margin-top:8px; padding-bottom:8px; }
+  .topbar.is-condensed .route-node{ width:60px; }
+  /* the connecting .line between dots is a fixed-width absolutely-positioned
+     asset calibrated to the node's own width (base .route-node .line rule:
+     width:104px, left:-52px — exactly half on each side); shrinking the node
+     without also shrinking its line would leave the line overshooting into
+     neighbouring nodes. */
+  .topbar.is-condensed .route-node .line{ width:60px; left:-30px; }
+  /* RouteStrip.tsx's `title` attribute (added alongside this feature) lets a
+     sighted mouse user recover a name this ellipsis clips. */
+  .topbar.is-condensed .route-city{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  /* display:none, same reasoning and technique as the eyebrow/subtitle above
+     — NOT a quietly different opacity/max-height fade that would leave the
+     date in the route-node button's accessible name (its only source is its
+     own text content: city + date) after sighted users can no longer see it. */
+  .topbar.is-condensed .route-date{ display:none; }
+}
+
+/* Zero-footprint scroll sentinel for useCondenseHeader (rendered as <main>'s
+   first child in App.tsx): real height — the 88px/32px hysteresis band from
+   the mockup's own hand-tuned demo constants, expressed here as this
+   element's height rather than two scroll-pixel constants in JS — but
+   pulled back up by an equal negative bottom margin so it never actually
+   pushes page content down. Present unconditionally (harmless below 720px:
+   nothing observes it there, since useCondenseHeader never attaches its
+   IntersectionObserver off the desktop breakpoint). */
+.condense-sentinel{ height:56px; margin-bottom:-56px; pointer-events:none; }

@@ -7,8 +7,13 @@
 import Dexie from 'dexie';
 import type { Table } from 'dexie';
 import type { Day, Expense, ID, ItineraryItem, Place, Trip } from './schema';
-import { migrateExpenseV1ToV2, migratePlaceV2ToV3, migrateTripV1ToV2 } from './exportImport';
-import type { ExpenseV1, PlaceV2, TripV1 } from './exportImport';
+import {
+  migrateExpenseV1ToV2,
+  migrateExpenseV4ToV5,
+  migratePlaceV2ToV3,
+  migrateTripV1ToV2,
+} from './exportImport';
+import type { ExpenseV1, ExpenseV4, PlaceV2, TripV1 } from './exportImport';
 
 /**
  * A place's WIP free-text draft (`description`/`selfReview`), local-only and
@@ -156,6 +161,51 @@ export class TripDatabase extends Dexie {
       placeDrafts: 'placeId',
       stagedAssignments: 'placeId, city',
     });
+
+    // v5 (Phase 6 — expense city attachment + member colour): Expense.dayId/
+    // Expense.itemId are DROPPED (see schema.ts's Expense doc comment) and
+    // replaced by the coarser Expense.city -- so the `expenses` INDEX
+    // changes too, from `'id, tripId, dayId'` to `'id, tripId, city'`. This
+    // is the FIRST version bump in this file's history to actually change
+    // the index layout -- every version above this one reused the same
+    // `STORES` object verbatim (see that object's own comment). The
+    // `.stores()` call below is therefore written out explicitly rather than
+    // `{ ...STORES, ... }`, since `STORES.expenses` itself is exactly what's
+    // changing. `TripMember.color` needs no store/index change at all -- it
+    // lives inside the `trips` row's already-freeform `Trip.members` array.
+    //
+    // The upgrade derives each expense's new `city` from its (about-to-be-
+    // dropped) `dayId`, looked up against the LOCAL `days` table inside this
+    // same upgrade transaction -- reusing `migrateExpenseV4ToV5` (exported
+    // from exportImport.ts) so this in-place upgrade and the JSON import
+    // path (`parseSnapshot`'s v4->v5 step) can never drift out of sync with
+    // each other, the same rule every earlier version bump in this file
+    // follows. A `dayId` that doesn't resolve to any LOCAL day (an orphaned
+    // reference) degrades to `city: undefined` ("Whole trip") rather than
+    // throwing -- same orphan-tolerance posture as `Expense.paidBy`.
+    this.version(5)
+      .stores({
+        trips: 'id',
+        days: 'id, tripId, date',
+        places: 'id, tripId, city, status, dayId',
+        itinerary: 'id, dayId, order',
+        expenses: 'id, tripId, city',
+        placeDrafts: 'placeId',
+        stagedAssignments: 'placeId, city',
+      })
+      .upgrade(async (tx) => {
+        const days: Day[] = await tx.table('days').toArray();
+        const cityByDayId = new Map(days.map((d) => [d.id, d.city]));
+        await tx
+          .table('expenses')
+          .toCollection()
+          .modify((raw: Record<string, unknown>) => {
+            const migrated = migrateExpenseV4ToV5(raw as unknown as ExpenseV4, cityByDayId);
+            Object.assign(raw, migrated);
+            delete raw.dayId;
+            delete raw.itemId;
+          });
+      });
   }
 }
 

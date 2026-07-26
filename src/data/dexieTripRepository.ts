@@ -146,7 +146,7 @@ export class DexieTripRepository implements TripRepository {
       this.listAllItinerary(trip.id),
       this.listExpenses(trip.id),
     ]);
-    return { version: 3, trip, days, places, itinerary, expenses };
+    return { version: 5, trip, days, places, itinerary, expenses };
   }
 
   async importSnapshot(snapshot: TripSnapshot): Promise<void> {

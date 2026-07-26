@@ -17,6 +17,28 @@ describe('serializeSnapshot / parseSnapshot', () => {
     expect(parsed).toEqual(snapshot);
   });
 
+  it('round-trips Trip.members and Expense.note/paidBy (Phase 5) losslessly', () => {
+    const snapshot = buildSeed();
+    snapshot.trip = { ...snapshot.trip, members: [{ id: 'member-1', name: 'Alex' }] };
+    snapshot.expenses = [
+      {
+        id: 'exp-1',
+        tripId: snapshot.trip.id,
+        category: 'Food',
+        label: 'Noodles',
+        amount: 38,
+        currency: 'CNY',
+        paid: true,
+        note: 'Split three ways',
+        paidBy: 'member-1',
+      },
+    ];
+    const json = serializeSnapshot(snapshot);
+    const parsed = parseSnapshot(json);
+    expect(parsed).toEqual(snapshot);
+    expect(parsed.version).toBe(5);
+  });
+
   it('throws on malformed JSON', () => {
     expect(() => parseSnapshot('{not valid json')).toThrow('parseSnapshot: invalid JSON');
   });
@@ -67,10 +89,10 @@ describe('parseSnapshot — v1 -> v2 -> v3 chained migration', () => {
     ],
   });
 
-  it('migrates a v1 snapshot all the way to v3 shape (version, trip.rates, expense amount/currency, place description)', () => {
+  it('migrates a v1 snapshot all the way to v5 shape (version, trip.rates, expense amount/currency/city, place description)', () => {
     const parsed = parseSnapshot(V1_JSON);
 
-    expect(parsed.version).toBe(3);
+    expect(parsed.version).toBe(5);
     expect(parsed.trip).toEqual({
       id: 'trip-v1',
       name: 'Old Trip',
@@ -86,16 +108,19 @@ describe('parseSnapshot — v1 -> v2 -> v3 chained migration', () => {
     expect(parsed.expenses).toEqual([
       { id: 'exp-1', tripId: 'trip-v1', category: 'Food', label: 'Noodles', amount: 38, currency: 'CNY', paid: true },
       {
+        // dayId 'day-1' resolved against the snapshot's own `days` array
+        // (below) and became `city: 'Shanghai'` -- dayId/itemId are gone.
         id: 'exp-2',
         tripId: 'trip-v1',
-        dayId: 'day-1',
         category: 'Transport',
         label: 'Metro',
         amount: 0,
         currency: 'CNY',
         paid: false,
+        city: 'Shanghai',
       },
     ]);
+    expect((parsed.expenses[1] as unknown as { dayId?: string }).dayId).toBeUndefined();
     // days/itinerary pass through untouched.
     expect(parsed.days).toEqual([{ id: 'day-1', tripId: 'trip-v1', date: '2026-11-09', city: 'Shanghai' }]);
     // note -> description, and a fresh updatedAt was backfilled.
@@ -106,11 +131,11 @@ describe('parseSnapshot — v1 -> v2 -> v3 chained migration', () => {
     expect(Number.isNaN(Date.parse(parsed.places[0].updatedAt))).toBe(false);
   });
 
-  it('a migrated v1 snapshot re-serializes as v3 and round-trips (no longer version 1)', () => {
+  it('a migrated v1 snapshot re-serializes as v5 and round-trips (no longer version 1)', () => {
     const migrated = parseSnapshot(V1_JSON);
     const reparsed = parseSnapshot(serializeSnapshot(migrated));
     expect(reparsed).toEqual(migrated);
-    expect(reparsed.version).toBe(3);
+    expect(reparsed.version).toBe(5);
   });
 
   it('the migrated rate preserves the "multiply to convert" convention (rates.CNY === old cnyToHomeRate)', () => {
@@ -129,8 +154,8 @@ describe('parseSnapshot — unsupported/missing version is rejected, never silen
     );
   });
 
-  it('throws for an unrecognized future version (e.g. 4)', () => {
-    expect(() => parseSnapshot(JSON.stringify({ ...BASE, version: 4 }))).toThrow(
+  it('throws for an unrecognized future version (e.g. 6)', () => {
+    expect(() => parseSnapshot(JSON.stringify({ ...BASE, version: 6 }))).toThrow(
       'parseSnapshot: unsupported snapshot version',
     );
   });
@@ -141,7 +166,7 @@ describe('parseSnapshot — unsupported/missing version is rejected, never silen
     );
   });
 
-  it('does not throw for a well-formed current (v3) snapshot', () => {
+  it('does not throw for a well-formed current (v5) snapshot', () => {
     const snapshot = buildSeed();
     expect(() => parseSnapshot(serializeSnapshot(snapshot))).not.toThrow();
   });
@@ -187,10 +212,10 @@ describe('parseSnapshot — v2 -> v3 migration (Place.note -> description, updat
     expenses: [],
   });
 
-  it('migrates a v2 snapshot to v3: note -> description, note removed, updatedAt backfilled', () => {
+  it('migrates a v2 snapshot to v5: note -> description, note removed, updatedAt backfilled', () => {
     const parsed = parseSnapshot(V2_JSON);
 
-    expect(parsed.version).toBe(3);
+    expect(parsed.version).toBe(5);
     const withNote = parsed.places.find((p) => p.id === 'place-with-note');
     expect(withNote?.description).toBe('Go at sunset');
     expect((withNote as unknown as { note?: string })?.note).toBeUndefined();
@@ -269,5 +294,243 @@ describe('migrateSnapshotV2ToV3', () => {
     expect(migrated.version).toBe(3);
     const [a, b] = migrated.places;
     expect(a.updatedAt).toBe(b.updatedAt);
+  });
+});
+
+describe('parseSnapshot — v3 -> v4 migration (Phase 5: Expense.note/paidBy, Trip.members)', () => {
+  const V3_JSON = JSON.stringify({
+    version: 3,
+    trip: {
+      id: 'trip-v3',
+      name: 'V3 Trip',
+      startDate: '2026-11-07',
+      endDate: '2026-11-30',
+      homeCurrency: 'AUD',
+      tripCurrency: 'CNY',
+      rates: { AUD: 1, CNY: 0.21 },
+      ratesBase: 'AUD',
+      cities: [],
+      // no `members` — that's the whole point of the v3 fixture
+    },
+    days: [],
+    places: [],
+    itinerary: [],
+    expenses: [
+      {
+        id: 'exp-v3',
+        tripId: 'trip-v3',
+        category: 'Food',
+        label: 'Noodles',
+        amount: 38,
+        currency: 'CNY',
+        paid: true,
+        // no `note`/`paidBy`
+      },
+    ],
+  });
+
+  it('an old v3 snapshot (no members/note/paidBy) imports cleanly as v5 with those fields simply absent', () => {
+    const parsed = parseSnapshot(V3_JSON);
+
+    expect(parsed.version).toBe(5);
+    expect(parsed.trip.members).toBeUndefined();
+    expect(parsed.expenses[0].note).toBeUndefined();
+    expect(parsed.expenses[0].paidBy).toBeUndefined();
+    expect(parsed.expenses[0].city).toBeUndefined();
+    expect(parsed.expenses[0].coversMemberIds).toBeUndefined();
+    // Everything else passes through untouched.
+    expect(parsed.expenses[0]).toMatchObject({ id: 'exp-v3', amount: 38, currency: 'CNY' });
+  });
+
+  it('an imported v3 snapshot re-serializes as v5 and round-trips losslessly', () => {
+    const migrated = parseSnapshot(V3_JSON);
+    const reparsed = parseSnapshot(serializeSnapshot(migrated));
+    expect(reparsed).toEqual(migrated);
+    expect(reparsed.version).toBe(5);
+  });
+
+  it('a v3 snapshot that already carries member/note/paidBy-shaped data (hand-edited) still migrates and preserves it', () => {
+    const withExtras = JSON.stringify({
+      version: 3,
+      trip: {
+        id: 'trip-v3b',
+        name: 'V3 Trip',
+        startDate: '2026-11-07',
+        endDate: '2026-11-30',
+        homeCurrency: 'AUD',
+        tripCurrency: 'CNY',
+        rates: { AUD: 1 },
+        cities: [],
+        members: [{ id: 'member-1', name: 'Alex' }],
+      },
+      days: [],
+      places: [],
+      itinerary: [],
+      expenses: [
+        {
+          id: 'exp-v3b',
+          tripId: 'trip-v3b',
+          category: 'Food',
+          label: 'Noodles',
+          amount: 38,
+          currency: 'CNY',
+          paid: true,
+          note: 'Split three ways',
+          paidBy: 'member-1',
+        },
+      ],
+    });
+    const parsed = parseSnapshot(withExtras);
+    expect(parsed.version).toBe(5);
+    expect(parsed.trip.members).toEqual([{ id: 'member-1', name: 'Alex' }]);
+    expect(parsed.expenses[0]).toMatchObject({ note: 'Split three ways', paidBy: 'member-1' });
+  });
+});
+
+describe('parseSnapshot — v4 -> v5 migration (Phase 6: Expense.city replaces dayId/itemId, coversMemberIds, TripMember.color)', () => {
+  const V4_JSON = JSON.stringify({
+    version: 4,
+    trip: {
+      id: 'trip-v4',
+      name: 'V4 Trip',
+      startDate: '2026-11-07',
+      endDate: '2026-11-30',
+      homeCurrency: 'AUD',
+      tripCurrency: 'CNY',
+      rates: { AUD: 1, CNY: 0.21 },
+      ratesBase: 'AUD',
+      cities: [{ name: 'Shanghai', order: 1, nights: 2, arrive: '2026-11-09', depart: '2026-11-11' }],
+      members: [{ id: 'member-1', name: 'Alex' }],
+    },
+    days: [{ id: 'day-1', tripId: 'trip-v4', date: '2026-11-09', city: 'Shanghai' }],
+    places: [],
+    itinerary: [],
+    expenses: [
+      {
+        id: 'exp-resolvable',
+        tripId: 'trip-v4',
+        dayId: 'day-1',
+        itemId: 'item-1',
+        category: 'Food',
+        label: 'Noodles',
+        amount: 38,
+        currency: 'CNY',
+        paid: true,
+        paidBy: 'member-1',
+      },
+      {
+        id: 'exp-orphan',
+        tripId: 'trip-v4',
+        dayId: 'day-does-not-exist',
+        category: 'Transport',
+        label: 'Metro',
+        amount: 5,
+        currency: 'CNY',
+        paid: false,
+      },
+      {
+        id: 'exp-no-day',
+        tripId: 'trip-v4',
+        category: 'Shopping',
+        label: 'Souvenirs',
+        amount: 12,
+        currency: 'CNY',
+        paid: true,
+      },
+    ],
+  });
+
+  it('derives city from a resolvable dayId and drops dayId/itemId', () => {
+    const parsed = parseSnapshot(V4_JSON);
+
+    expect(parsed.version).toBe(5);
+    const resolved = parsed.expenses.find((e) => e.id === 'exp-resolvable');
+    expect(resolved).toMatchObject({ city: 'Shanghai', amount: 38, paidBy: 'member-1' });
+    expect((resolved as unknown as { dayId?: string }).dayId).toBeUndefined();
+    expect((resolved as unknown as { itemId?: string }).itemId).toBeUndefined();
+  });
+
+  it('degrades an unresolvable dayId to "Whole trip" (city undefined), never throws', () => {
+    const parsed = parseSnapshot(V4_JSON);
+
+    const orphan = parsed.expenses.find((e) => e.id === 'exp-orphan');
+    expect(orphan).toBeDefined();
+    expect(orphan?.city).toBeUndefined();
+    expect((orphan as unknown as { dayId?: string }).dayId).toBeUndefined();
+  });
+
+  it('leaves an expense that never had a dayId with city simply absent', () => {
+    const parsed = parseSnapshot(V4_JSON);
+
+    const noDay = parsed.expenses.find((e) => e.id === 'exp-no-day');
+    expect(noDay?.city).toBeUndefined();
+  });
+
+  it('a migrated v4 snapshot re-serializes as v5 and round-trips losslessly', () => {
+    const migrated = parseSnapshot(V4_JSON);
+    const reparsed = parseSnapshot(serializeSnapshot(migrated));
+    expect(reparsed).toEqual(migrated);
+    expect(reparsed.version).toBe(5);
+  });
+
+  it('a v5 snapshot with Expense.city/coversMemberIds and TripMember.color round-trips losslessly', () => {
+    const snapshot = buildSeed();
+    snapshot.trip = { ...snapshot.trip, members: [{ id: 'm1', name: 'Alex', color: 'm-denim' }] };
+    snapshot.expenses = [
+      {
+        id: 'exp-1',
+        tripId: snapshot.trip.id,
+        category: 'Food',
+        label: 'Noodles',
+        amount: 38,
+        currency: 'CNY',
+        paid: true,
+        city: 'Shanghai',
+        coversMemberIds: ['m1'],
+      },
+    ];
+    const json = serializeSnapshot(snapshot);
+    const parsed = parseSnapshot(json);
+    expect(parsed).toEqual(snapshot);
+    expect(parsed.version).toBe(5);
+  });
+
+  it('normalises an explicit empty coversMemberIds: [] to undefined ("everyone") on import', () => {
+    const snapshot = buildSeed();
+    snapshot.expenses = [
+      {
+        id: 'exp-empty-covers',
+        tripId: snapshot.trip.id,
+        category: 'Food',
+        label: 'Noodles',
+        amount: 38,
+        currency: 'CNY',
+        paid: true,
+        coversMemberIds: [],
+      },
+    ];
+    const json = serializeSnapshot(snapshot);
+    const parsed = parseSnapshot(json);
+    expect(parsed.expenses[0].coversMemberIds).toBeUndefined();
+  });
+
+  it('preserves a non-empty coversMemberIds as-is', () => {
+    const snapshot = buildSeed();
+    snapshot.trip = { ...snapshot.trip, members: [{ id: 'm1', name: 'Alex' }, { id: 'm2', name: 'Sam' }] };
+    snapshot.expenses = [
+      {
+        id: 'exp-covers-one',
+        tripId: snapshot.trip.id,
+        category: 'Food',
+        label: 'Noodles',
+        amount: 38,
+        currency: 'CNY',
+        paid: true,
+        coversMemberIds: ['m1'],
+      },
+    ];
+    const json = serializeSnapshot(snapshot);
+    const parsed = parseSnapshot(json);
+    expect(parsed.expenses[0].coversMemberIds).toEqual(['m1']);
   });
 });

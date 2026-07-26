@@ -9,7 +9,9 @@
       "Bash(npx tsc *)",
       "Bash(npx oxlint *)",
       "Bash(git stash *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(awk '/PHASE 5 ITEM/{p=1} p{print NR\": \"$0} /^$/{if\\(p && prevblank\\){}} ' src/index.css)",
+      "Bash(grep -iE \"#[0-9a-f]{3,6}|rgb\\\\\\(|rgba\\\\\\(\")"
     ]
   }
 }
