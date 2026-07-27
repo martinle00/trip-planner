@@ -1,0 +1,20 @@
+{
+  // Cloudflare Workers static-assets deployment (`npx wrangler deploy`).
+  // There is no Worker script — this is an assets-only Worker, so no `main`.
+  //
+  // NOTE: this project deploys via WORKERS, not classic Pages. The difference
+  // that matters: on Pages you get SPA fallback with a `public/_redirects`
+  // line reading `/* /index.html 200`. On Workers that exact rule is REJECTED
+  // at deploy time ("Infinite loop detected") — the asset server already
+  // strips `/index` and `.html`, so the rewrite re-matches its own rule.
+  // `not_found_handling` below is the Workers equivalent. Don't reintroduce
+  // that _redirects line; `public/_headers` is still honoured and stays.
+  "name": "trip-planner",
+  "compatibility_date": "2026-07-27",
+  "assets": {
+    "directory": "./dist",
+    // Serve index.html (200) for any path that isn't a real file, so a deep
+    // link or a refresh lands in the app rather than on a 404.
+    "not_found_handling": "single-page-application"
+  }
+}

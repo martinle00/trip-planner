@@ -1,6 +1,6 @@
 # Deploying the China Trip Planner
 
-Target: **Cloudflare Pages** (static build) + the existing **Supabase** project.
+Target: **Cloudflare Workers** static assets + the existing **Supabase** project.
 
 Chosen for China reachability — you'll be using this inside mainland China in
 Nov 2026, and Cloudflare's CDN is the least-blocked of the free static hosts.
@@ -121,20 +121,20 @@ Never put the Secret key anywhere near this repo: it bypasses RLS.
 
 Dashboard → Authentication → URL Configuration.
 
-- **Site URL**: your production URL (e.g. `https://china-trip-planner.pages.dev`,
+- **Site URL**: your production URL (e.g. `https://trip-planner.<subdomain>.workers.dev`,
   or your custom domain once §5 is done).
 - **Redirect URLs**: add every origin the app is opened from, each with `/**`:
   ```
   http://localhost:5173/**
-  https://china-trip-planner.pages.dev/**
+  https://trip-planner.<subdomain>.workers.dev/**
   https://<your-custom-domain>/**
   ```
 
-Cloudflare Pages also gives every deployment a unique preview URL
-(`<hash>.china-trip-planner.pages.dev`). Magic links **will not work** from
-those unless you add a wildcard — either add `https://*.china-trip-planner.pages.dev/**`
+Cloudflare also gives non-production branches their own preview URL
+(`<version>-trip-planner.<subdomain>.workers.dev`). Magic links **will not
+work** from those unless you add a wildcard — either add `https://*.workers.dev/**`
 or accept that only the production URL can sign in. Prefer the latter: a
-wildcard on a shared `pages.dev` subdomain is a wider grant than it looks.
+wildcard on a shared `workers.dev` subdomain is a wider grant than it looks.
 
 ### 2.3 Email rate limits
 
@@ -145,15 +145,31 @@ configured under Authentication → Emails.
 
 ---
 
-## 3. Cloudflare Pages setup
+## 3. Cloudflare setup
 
-1. Push the repo to GitHub (see §7 — nothing is committed yet).
-2. Cloudflare dashboard → Workers & Pages → Create → Pages → Connect to Git.
+> **This project deploys via Cloudflare WORKERS (static assets), not classic
+> Pages.** Cloudflare defaults new git-connected projects to Workers, and the
+> two differ in exactly one place that matters here — SPA fallback:
+>
+> | | Pages | Workers (what we use) |
+> |---|---|---|
+> | SPA fallback | `public/_redirects`: `/* /index.html 200` | `wrangler.jsonc` → `assets.not_found_handling: "single-page-application"` |
+> | `_headers` | supported | supported |
+> | Deploy | build output dir | `npx wrangler deploy` |
+>
+> On Workers the `_redirects` SPA line is **rejected at deploy time** with
+> `Invalid _redirects configuration … Infinite loop detected [code: 100324]` —
+> the asset server already strips `/index` and `.html`, so that rewrite
+> re-matches its own rule. `wrangler.jsonc` is committed and carries the
+> correct config; don't reintroduce that `_redirects` line.
+
+1. Push the repo to GitHub (see §7).
+2. Cloudflare dashboard → Workers & Pages → Create → **Workers** → Connect to Git.
 3. Pick the repo. Settings:
-   - **Framework preset**: None (or Vite)
    - **Build command**: `npm run build`
-   - **Build output directory**: `dist`
+   - **Deploy command**: `npx wrangler deploy`
    - **Root directory**: `/`
+   - Asset directory comes from `wrangler.jsonc` (`./dist`), not the dashboard.
 4. **Environment variables** (Production *and* Preview both):
    | Name | Value |
    |---|---|
@@ -168,7 +184,8 @@ configured under Authentication → Emails.
 5. Deploy.
 
 Already in the repo for this:
-- `public/_redirects` — `/* /index.html 200`, so a deep link or a refresh
+- `wrangler.jsonc` — assets-only Worker (no `main`), `directory: ./dist`, and
+  `not_found_handling: "single-page-application"` so a deep link or a refresh
   serves the app instead of a 404.
 - `public/_headers` — security headers, plus `no-cache` on `sw.js` /
   `index.html` and immutable caching for fingerprinted `/assets/*`. Getting
@@ -202,7 +219,7 @@ In order. Each one has failed for a real reason before:
 
 ## 5. Custom domain (optional)
 
-Pages → your project → Custom domains. If the domain is already on
+Workers → your Worker → Settings → Domains & Routes. If the domain is already on
 Cloudflare, it's a click; otherwise point the CNAME as instructed. **Then go
 back and add it to Supabase's redirect URLs (§2.2)** — this is the step people
 forget, and sign-in breaks the moment you start using the new domain.
@@ -211,8 +228,8 @@ forget, and sign-in breaks the moment you start using the new domain.
 
 ## 6. Rollback
 
-Cloudflare keeps every deployment. Pages → Deployments → pick the last good
-one → "Rollback to this deployment". Takes effect in seconds.
+Cloudflare keeps every version. Workers → your Worker → Deployments → pick
+the last good version → rollback. Takes effect in seconds.
 
 Caveats that make rollback less complete than it looks:
 - **Service worker**: `registerType: 'autoUpdate'`, so clients pick up the
