@@ -235,6 +235,33 @@ likely be the common path.)
 > Note item 8 removes tap-to-drop, which was the only WGS-84-native input method. That
 > raises the stakes on getting this right.
 
+#### ✅ Landed 2026-07-26
+
+- **`src/lib/coordinateInput.ts`** — `parseCoordinateInput()` handles the decimal pair,
+  DMS, `/maps/@lat,lng,17z`, `!3d`/`!4d` place URLs, and `?q=`/`ll=`/`query=` params.
+  `!3d/!4d` is checked **before** `@`: on a place URL the `@` is the map camera and the
+  `!3d/!4d` is the actual marker, and they differ. `maps.app.goo.gl` short links get
+  their own failure reason — resolving one needs a network redirect that is CORS-blocked
+  from the browser, so the UI tells the user to open it and copy the full URL.
+- **`src/lib/gcj02.ts`** — forward transform is the published algorithm; the inverse has
+  no closed form and is recovered by 3-pass fixed-point iteration (sub-metre, asserted
+  by a round-trip test). No-op outside the standard mainland bounding box, so a pasted
+  Sydney coordinate is never touched.
+- **UI:** a "Coordinates (paste from Google Maps)" field in the manual-entry stage only.
+  Live-parsed as you type; shows the resulting pin position, or a specific message per
+  failure reason. Blank still falls back to the centroid — the field is an upgrade, not
+  a new required step.
+
+> **The GCJ-02 shift is ON by default but reversible from the UI** — the note under the
+> field says how far it moved the pin and offers "Use the pasted numbers instead". That
+> was deliberate: the offset is still empirically unverified, so a wrong assumption is a
+> toggle rather than a code change. **Confirm it in a browser and then remove the
+> toggle** if the default proves right — a permanent toggle here is a smell.
+
+Not done as part of this: item 8 (tap-to-drop is still present), and no ux-designer /
+ux-reviewer round covered this field. The CSS (`.coord-*` in `index.css`) follows the
+design system's tokens and the `-soft-ink` rule but has not been design-reviewed.
+
 ---
 
 ## Workstream state
@@ -247,8 +274,9 @@ likely be the common path.)
 | ux-designer round 5 | ❌ NOT SENT — items 8 and 9. (The two carry-overs below are now DONE.) |
 | ux-reviewer | ⏸ ran once (changes requested, all addressed). **Needs a final pass once design settles.** |
 | backend-impl | ✅ items 3,4,5,7 landed. Reviewed 2026-07-21, 2 defects fixed — see top of file. |
-| GCJ-02 conversion (item 9) | ❌ not briefed to backend yet |
-| frontend-engineer | ✅ items 3,4,6,7 complete (2026-07-21). Items 1,2 NOT done; 8,9 out of scope. |
+| GCJ-02 conversion (item 9) | ✅ `src/lib/gcj02.ts`, applied by default, user-reversible in the UI. **Still unverified in a browser.** |
+| Item 9 (paste coordinates) | ✅ landed 2026-07-26 — see below. Went straight to code, **no mockup/ux-reviewer pass**. |
+| frontend-engineer | ✅ items 3,4,6,7 complete (2026-07-21). Items 1,2 NOT done; 8 out of scope. |
 | code-reviewer | ✅ 2 blockers found + fixed, re-verified |
 | qa-tester | ✅ PASS — 1 defect found + fixed. Suite 282/282. |
 

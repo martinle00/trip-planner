@@ -321,3 +321,96 @@ describe('AddPlaceModal — save paths', () => {
     expect(saved.address).toBeUndefined();
   });
 });
+
+describe('AddPlaceModal — manual coordinates (Phase 4 item 9)', () => {
+  /** Open the modal and switch to the manual-entry stage. */
+  function openManual() {
+    render(<AddPlaceModal open mode="search" point={null} defaultCity="Chengdu" onClose={() => {}} />);
+    fireEvent.click(screen.getByText(/Can.t find it\? Enter it manually/));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Pasted place' } });
+    return screen.getByLabelText(/Coordinates/);
+  }
+
+  it('pins a pasted pair instead of the city centroid', async () => {
+    const coord = openManual();
+    // Sydney: outside China, so no datum shift is applied and the saved value
+    // must be byte-identical to what was pasted.
+    fireEvent.change(coord, { target: { value: '-33.8688, 151.2093' } });
+    fireEvent.click(screen.getByText('Save to wishlist'));
+    await flush();
+
+    const saved = addPlaceMock.mock.calls[0][0];
+    expect(saved.lat).toBe(-33.8688);
+    expect(saved.lng).toBe(151.2093);
+  });
+
+  it('reads a Google Maps place URL and prefers its marker over the camera', async () => {
+    const coord = openManual();
+    fireEvent.change(coord, {
+      target: {
+        value:
+          'https://www.google.com/maps/place/X/@-33.9000,151.3000,17z/data=!4m6!3m5!8m2!3d-33.8688!4d151.2093',
+      },
+    });
+    fireEvent.click(screen.getByText('Save to wishlist'));
+    await flush();
+
+    const saved = addPlaceMock.mock.calls[0][0];
+    expect(saved.lat).toBe(-33.8688);
+    expect(saved.lng).toBe(151.2093);
+  });
+
+  it('applies the China datum shift by default, and stops when the user opts out', async () => {
+    const coord = openManual();
+    fireEvent.change(coord, { target: { value: '30.5728, 104.0668' } });
+
+    // On by default: saved value must differ from the pasted one.
+    expect(screen.getByText(/correct China.s map offset/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Use the pasted numbers instead'));
+    fireEvent.click(screen.getByText('Save to wishlist'));
+    await flush();
+
+    const saved = addPlaceMock.mock.calls[0][0];
+    expect(saved.lat).toBe(30.5728);
+    expect(saved.lng).toBe(104.0668);
+  });
+
+  it('shifts a Chinese coordinate a few hundred metres when left on', async () => {
+    const coord = openManual();
+    fireEvent.change(coord, { target: { value: '30.5728, 104.0668' } });
+    fireEvent.click(screen.getByText('Save to wishlist'));
+    await flush();
+
+    const saved = addPlaceMock.mock.calls[0][0];
+    expect(saved.lat).not.toBe(30.5728);
+    expect(Math.abs(saved.lat - 30.5728)).toBeLessThan(0.01);
+  });
+
+  it('falls back to the city centroid when the field is left blank', async () => {
+    resetStore([]);
+    openManual();
+    fireEvent.click(screen.getByText('Save to wishlist'));
+    await flush();
+
+    const saved = addPlaceMock.mock.calls[0][0];
+    expect(saved.lat).toBe(30.5728);
+    expect(saved.lng).toBe(104.0668);
+  });
+
+  it('explains an unusable short link rather than silently ignoring it', () => {
+    const coord = openManual();
+    fireEvent.change(coord, { target: { value: 'https://maps.app.goo.gl/A1b2C3d4E5' } });
+    expect(screen.getByText(/shortened Google link/)).toBeInTheDocument();
+  });
+
+  it('saves the centroid rather than blocking when the paste is unparseable', async () => {
+    resetStore([]);
+    const coord = openManual();
+    fireEvent.change(coord, { target: { value: 'somewhere near the river' } });
+    expect(screen.getByText(/Couldn.t read a coordinate/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Save to wishlist'));
+    await flush();
+    expect(addPlaceMock.mock.calls[0][0].lat).toBe(30.5728);
+  });
+});

@@ -18,7 +18,7 @@
 // falls back to manual entry (`suggestPlaceLocation()` supplies a city-centroid
 // coordinate at save time). Offline is driven off `useOnlineStatus()`.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Modal } from '../../components/Modal';
 import { Icon } from '../../components/Icons';
@@ -26,6 +26,10 @@ import { useTripStore } from '../../store/useTripStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { searchPlaces } from '../../lib/geocode';
 import type { GeocodeResult } from '../../lib/geocode';
+import { formatCoordinate, parseCoordinateInput } from '../../lib/coordinateInput';
+import type { CoordinateParseFailure } from '../../lib/coordinateInput';
+import { gcj02ToWgs84, isInsideChina } from '../../lib/gcj02';
+import { haversineMeters } from '../../lib/geo';
 import { PLACE_CATEGORIES, inferCityFromAddress, orderedCities, suggestPlaceLocation } from '../../lib/tripView';
 
 export type AddPlaceMode = 'search' | 'pin';
@@ -58,6 +62,14 @@ const SEARCH_STATUS_MESSAGES: Record<SearchStatus, string> = {
   error: "Search isn't working right now. Enter the place manually below.",
 };
 
+const COORD_FAILURE_MESSAGES: Record<Exclude<CoordinateParseFailure, 'empty'>, string> = {
+  shortlink:
+    'That’s a shortened Google link. Open it first, then copy the full address out of the browser’s address bar.',
+  unrecognised:
+    'Couldn’t read a coordinate from that. Paste a pair like 31.2304, 121.4737, or a full Google Maps link.',
+  'out-of-range': 'Those numbers are out of range — latitude comes first (−90 to 90), then longitude.',
+};
+
 export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPlaceModalProps) {
   const trip = useTripStore((s) => s.trip);
   const places = useTripStore((s) => s.places);
@@ -79,6 +91,16 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
   // writing about it are different moments: this stays a fast, few-second
   // step; real long-form writing happens later, from the place's own card.
   const [description, setDescription] = useState('');
+  // Manual entry's coordinate escape hatch. Without it a manually-added place
+  // lands on the city centroid, which for a city this size is useless — and
+  // Nominatim's China coverage is patchy enough that manual is the common path,
+  // not the rare one.
+  const [coordInput, setCoordInput] = useState('');
+  // Google serves GCJ-02 for Chinese locations; our OSM tiles are WGS-84, so a
+  // pasted Chinese coordinate needs the datum shift to land on the building.
+  // On by default, but reversible from the UI — the offset has not been
+  // verified against a real browser yet (see PHASE4.md item 9).
+  const [applyChinaShift, setApplyChinaShift] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -88,6 +110,16 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
   const closeTimerRef = useRef<number | null>(null);
 
   const cityNames = trip ? orderedCities(trip).map((c) => c.name) : [];
+
+  const parsedCoord = useMemo(() => parseCoordinateInput(coordInput), [coordInput]);
+  const pastedPoint = parsedCoord.ok ? { lat: parsedCoord.lat, lng: parsedCoord.lng } : null;
+  const shiftAvailable = pastedPoint !== null && isInsideChina(pastedPoint);
+  const shiftApplied = shiftAvailable && applyChinaShift;
+  const manualPoint = pastedPoint && shiftApplied ? gcj02ToWgs84(pastedPoint) : pastedPoint;
+  const coordFailureMessage =
+    parsedCoord.ok || parsedCoord.reason === 'empty'
+      ? `Leave this blank and the pin drops at the centre of ${city || defaultCity || 'the city'} — right city, wrong street.`
+      : COORD_FAILURE_MESSAGES[parsedCoord.reason];
 
   function clearPendingTimers() {
     if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
@@ -106,6 +138,8 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     setFlashName(false);
     setName('');
     setDescription('');
+    setCoordInput('');
+    setApplyChinaShift(true);
     setCategory(PLACE_CATEGORIES[0]);
     setCity(defaultCity || cityNames[0] || '');
     setSaving(false);
@@ -220,6 +254,9 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
       lat = selectedResult.lat;
       lng = selectedResult.lng;
       address = selectedResult.address;
+    } else if (manualPoint) {
+      lat = manualPoint.lat;
+      lng = manualPoint.lng;
     } else {
       const loc = suggestPlaceLocation(city || defaultCity, places);
       lat = loc.lat;
@@ -335,8 +372,8 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
                   <strong>{searchStatus === 'offline' ? "Search needs a connection" : "Search isn't working right now"}</strong>
                   <span>
                     {searchStatus === 'offline'
-                      ? "You’re offline right now. Add the place manually below — we’ll drop the pin at the centre of the city and you can fine-tune its position once you’re back online."
-                      : "We couldn’t reach the place search service. Add the place manually below — we’ll drop the pin at the centre of the city."}
+                      ? "You’re offline right now. Add the place manually below — you can paste its coordinates from Google Maps to pin it exactly, or leave them blank and we’ll use the centre of the city."
+                      : "We couldn’t reach the place search service. Add the place manually below — paste its coordinates from Google Maps to pin it exactly."}
                   </span>
                 </div>
               </div>
@@ -404,6 +441,43 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
               </select>
             </div>
           </div>
+
+          {mode === 'search' && !selectedResult && (
+            <div style={{ marginTop: 10 }}>
+              <label htmlFor="ap-coord">
+                Coordinates <span className="field-optional">(paste from Google Maps)</span>
+              </label>
+              <input
+                className="text-input coord-input"
+                type="text"
+                id="ap-coord"
+                value={coordInput}
+                onChange={(e) => setCoordInput(e.target.value)}
+                placeholder="31.2304, 121.4737 — or a Google Maps link"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <div className="coord-status" aria-live="polite">
+                {manualPoint ? (
+                  <p className="coord-ok">
+                    <Icon name="target" /> Pin drops at {formatCoordinate(manualPoint.lat, manualPoint.lng)}
+                  </p>
+                ) : (
+                  <p className="coord-hint">{coordFailureMessage}</p>
+                )}
+                {shiftAvailable && manualPoint && pastedPoint && (
+                  <p className="coord-note">
+                    {shiftApplied
+                      ? `Moved ${Math.round(haversineMeters(pastedPoint, manualPoint))}m to correct China’s map offset — Google’s coordinates are shifted there, ours aren’t.`
+                      : 'Using the pasted numbers exactly. Google’s Chinese coordinates are normally offset, so the pin may sit a few hundred metres out.'}
+                    <button type="button" className="coord-toggle" onClick={() => setApplyChinaShift((v) => !v)}>
+                      {shiftApplied ? 'Use the pasted numbers instead' : 'Correct the offset'}
+                    </button>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           <div style={{ marginTop: 10 }}>
             <label htmlFor="ap-description">
