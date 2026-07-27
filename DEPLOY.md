@@ -138,10 +138,23 @@ wildcard on a shared `workers.dev` subdomain is a wider grant than it looks.
 
 ### 2.3 Email rate limits
 
-Supabase's built-in SMTP is heavily rate-limited (a handful of emails per
-hour) and is explicitly not for production. That's survivable for one or two
-users; it is not if you later invite people (`SHARING.md`). Custom SMTP is
-configured under Authentication → Emails.
+Supabase's built-in email provider allows **2 emails per hour**, project-wide
+across all auth emails (magic links, signup confirmations, password resets),
+and is **not adjustable** without custom SMTP. There's also a **60-second
+cooldown per address** before the same user can request another link.
+
+This will bite during §4 — the two-account RLS test is 2 emails on its own,
+so one expired link or one retry puts you over, and a rate-limited request
+looks exactly like a broken magic link (no error, no email).
+
+Custom SMTP (Authentication → Emails → SMTP Settings) lifts it to a
+configurable default of 30/hour. Do this before `SHARING.md`: invites are
+entirely email-driven and 2/hour makes them unusable.
+
+Meanwhile: sessions persist in localStorage, so it's one sign-in per device,
+not per visit.
+
+Source: https://supabase.com/docs/guides/auth/rate-limits
 
 ---
 
@@ -216,6 +229,48 @@ In order. Each one has failed for a real reason before:
       trip, not during it.
 
 ---
+
+## 4.1 Troubleshooting — two traps that both look like "the deploy didn't work"
+
+**"Missing VITE_SUPABASE_URL" / white screen.** The `VITE_*` values are
+inlined by Vite **at build time**; they do not exist at runtime. On an
+assets-only Worker, adding them to the Worker's runtime *Variables* fails
+outright (`Variables cannot be added to a Worker that only has static
+assets`) — they belong in **Settings → Build → Variables and secrets**,
+next to the build and deploy commands.
+
+Verify from outside the browser, which is faster and less ambiguous than
+poking at the UI:
+
+```bash
+ASSET=$(curl -sS https://<your-worker>.workers.dev/ | grep -o '/assets/[^"]*\.js' | head -1)
+curl -sS "https://<your-worker>.workers.dev$ASSET" -o /tmp/bundle.js
+grep -o "https://[a-z]*\.supabase\.co" /tmp/bundle.js   # must print the project URL
+grep -c "VITE_SUPABASE_URL" /tmp/bundle.js              # only the guard's message; the
+                                                        # value itself must be inlined
+```
+
+Comparing the deployed asset filename against `ls dist/assets/*.js` also
+tells you instantly whether the live build is even the commit you think it
+is — Vite fingerprints the bundle, so identical names mean identical builds.
+
+**Stale service worker after a failed first deploy.** If a deploy fails,
+Cloudflare keeps serving the last version that succeeded — and any browser
+that loaded it has that build's service worker precaching its app shell.
+Fixing the deploy does not dislodge it, and a plain reload won't either:
+you'll keep seeing the old UI (or an old white screen) against a perfectly
+correct server.
+
+- Confirm in one step: open the URL in a private window (no worker there).
+- Fix: DevTools → Application → Service Workers → Unregister, then Storage →
+  Clear site data, then reload.
+- iOS PWA: delete the home-screen icon and clear the site's website data,
+  then re-add. An installed iOS PWA holds its worker indefinitely otherwise.
+
+`public/_headers` (`no-cache` on `sw.js`/`index.html`) prevents this going
+forward; it cannot retroactively fix a client that already cached a worker
+served without it. Every device that saw the broken build needs clearing
+once.
 
 ## 5. Custom domain (optional)
 

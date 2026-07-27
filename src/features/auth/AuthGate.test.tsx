@@ -7,7 +7,7 @@
 // SIGNED_OUT/SIGNED_IN-as-a-different-user must still re-gate rendering.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AuthGate } from './AuthGate';
 
 type Listener = (event: string, session: unknown) => void;
@@ -35,8 +35,11 @@ vi.mock('../../lib/supabaseClient', () => ({
   },
 }));
 
+// Mutable so a test can make the one-time bootstrap fail — see the
+// 'bootstrap failure' block at the bottom of this file.
+const bootstrapMigrationMock = vi.fn<() => Promise<void>>();
 vi.mock('../../data/bootstrapMigration', () => ({
-  bootstrapMigration: () => Promise.resolve(),
+  bootstrapMigration: () => bootstrapMigrationMock(),
 }));
 
 beforeEach(() => {
@@ -44,6 +47,8 @@ beforeEach(() => {
   getSessionGate = undefined;
   currentSession = { user: { id: 'user-1' } };
   localStorage.clear();
+  bootstrapMigrationMock.mockReset();
+  bootstrapMigrationMock.mockResolvedValue(undefined);
   localStorage.setItem('trip-planner:bootstrapped:user-1', '1');
 });
 
@@ -142,5 +147,81 @@ describe('AuthGate', () => {
     // the new user, proving the effect re-ran.
     await waitFor(() => expect(localStorage.getItem('trip-planner:bootstrapped:user-2')).toBe('1'));
     await waitFor(() => expect(screen.getByTestId('app-marker')).toBeInTheDocument());
+  });
+});
+
+// The one-time bootstrap can genuinely fail — the case that prompted this was
+// `import_trip_snapshot` returning 409 (`duplicate key value violates unique
+// constraint "trips_pkey"`) for a second account. It used to reject inside an
+// un-caught async effect: `wiredUserId` was never set, so the DERIVED gate
+// state sat on 'bootstrapping' forever, and because the effect is keyed on
+// values that hadn't changed it never retried. A spinner, indefinitely, with
+// the only evidence in the server log.
+describe('AuthGate — bootstrap failure', () => {
+  beforeEach(() => {
+    // First-ever sign-in on this device, so bootstrap actually runs.
+    localStorage.removeItem('trip-planner:bootstrapped:user-1');
+  });
+
+  it('reports the failure instead of spinning forever, and shows the real error', async () => {
+    bootstrapMigrationMock.mockRejectedValueOnce(
+      new Error('duplicate key value violates unique constraint "trips_pkey"'),
+    );
+
+    render(
+      <AuthGate>
+        <div data-testid="app-marker">app content</div>
+      </AuthGate>,
+    );
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByText(/Couldn.t open your trip/)).toBeInTheDocument();
+    expect(screen.getByText(/trips_pkey/)).toBeInTheDocument();
+    expect(screen.queryByTestId('app-marker')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loading your trip/)).not.toBeInTheDocument();
+  });
+
+  it('does not set the bootstrapped flag on failure — the next boot must retry', async () => {
+    bootstrapMigrationMock.mockRejectedValueOnce(new Error('nope'));
+
+    render(
+      <AuthGate>
+        <div data-testid="app-marker">app content</div>
+      </AuthGate>,
+    );
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(localStorage.getItem('trip-planner:bootstrapped:user-1')).toBeNull();
+  });
+
+  it('"Try again" re-runs the bootstrap and renders the app once it succeeds', async () => {
+    bootstrapMigrationMock.mockRejectedValueOnce(new Error('transient'));
+
+    render(
+      <AuthGate>
+        <div data-testid="app-marker">app content</div>
+      </AuthGate>,
+    );
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(bootstrapMigrationMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(screen.getByTestId('app-marker')).toBeInTheDocument());
+    expect(bootstrapMigrationMock).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem('trip-planner:bootstrapped:user-1')).toBe('1');
+  });
+
+  it('a successful bootstrap still renders the app and sets the flag', async () => {
+    render(
+      <AuthGate>
+        <div data-testid="app-marker">app content</div>
+      </AuthGate>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('app-marker')).toBeInTheDocument());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(localStorage.getItem('trip-planner:bootstrapped:user-1')).toBe('1');
   });
 });

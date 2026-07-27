@@ -7,7 +7,7 @@ import { SyncedTripRepository } from '../../data/syncedTripRepository';
 import { setTripRepository } from '../../data/tripRepositoryInstance';
 import { bootstrapMigration } from '../../data/bootstrapMigration';
 
-type GateState = 'checking-session' | 'signed-out' | 'bootstrapping' | 'ready';
+type GateState = 'checking-session' | 'signed-out' | 'bootstrapping' | 'bootstrap-failed' | 'ready';
 
 /** localStorage key recording that `bootstrapMigration` has already run
  *  (successfully reached a decision) for a given user on this device.
@@ -38,6 +38,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   /** The user id the trip repository is currently wired up for, or null. */
   const [wiredUserId, setWiredUserId] = useState<string | null>(null);
   const [bootstrapping, setBootstrapping] = useState(false);
+  /** Why the one-time bootstrap failed, if it did. Without this the async
+   *  effect below could reject and simply never set `wiredUserId` — leaving
+   *  the gate on its spinner forever, with nothing to retry it, because the
+   *  effect is keyed on values that didn't change. That is exactly how a
+   *  409 from `import_trip_snapshot` presented: an endless "Loading your
+   *  trip…" on the device, and the only evidence server-side. */
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  /** Bumped by "Try again" to re-run the bootstrap effect. */
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -107,19 +116,30 @@ export function AuthGate({ children }: { children: ReactNode }) {
     // needs one real check against the remote before it's safe to proceed
     // (see bootstrapMigration.ts) — this is the one boot that briefly waits.
     setBootstrapping(true);
+    setBootstrapError(null);
     (async () => {
-      await bootstrapMigration(local, remote);
-      if (cancelled) return;
-      localStorage.setItem(flagKey, '1');
-      setTripRepository(new SyncedTripRepository(remote, local));
-      setWiredUserId(userId);
-      setBootstrapping(false);
+      try {
+        await bootstrapMigration(local, remote);
+        if (cancelled) return;
+        localStorage.setItem(flagKey, '1');
+        setTripRepository(new SyncedTripRepository(remote, local));
+        setWiredUserId(userId);
+        setBootstrapping(false);
+      } catch (err) {
+        if (cancelled) return;
+        // The flag is deliberately NOT set: this device hasn't successfully
+        // bootstrapped, so the next boot must try again rather than wiring up
+        // a repository whose one-time migration never ran.
+        console.error('Bootstrap failed', err);
+        setBootstrapError(err instanceof Error ? err.message : String(err));
+        setBootstrapping(false);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [userId, wiredUserId]);
+  }, [userId, wiredUserId, bootstrapAttempt]);
 
   // What to render, DERIVED rather than imperatively assigned. This is the
   // key invariant: as long as the repository is wired for the currently
@@ -129,6 +149,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // "Loading…" whenever a late-resolving `getSession()` reset it to
   // 'checking-session' after the repository effect had already settled
   // (the effect, keyed on an unchanged userId, then never re-ran to undo it).
+  //
+  // `bootstrapError` is read here but never *un*-sets 'ready': it's only
+  // consulted once `wiredUserId !== userId`, so the invariant above still
+  // holds exactly as written — a wired repository always renders the app,
+  // whatever else has happened. It only replaces the spinner that would
+  // otherwise be shown forever.
   const state: GateState = !sessionResolved
     ? 'checking-session'
     : !userId
@@ -137,7 +163,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
         ? 'ready'
         : bootstrapping
           ? 'bootstrapping'
-          : 'checking-session';
+          : bootstrapError
+            ? 'bootstrap-failed'
+            : 'checking-session';
 
   const handleSendLink = async () => {
     setError(null);
@@ -165,6 +193,34 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <main>
           <p className="panel-hint">Loading&hellip;</p>
         </main>
+      </div>
+    );
+  }
+
+  if (state === 'bootstrap-failed') {
+    // Shows the raw error on purpose. This screen only appears when the app
+    // cannot start at all, and the underlying message ("duplicate key value
+    // violates unique constraint \"trips_pkey\"") is the difference between
+    // a five-minute diagnosis and reading server logs. It's also the one
+    // failure a user can't work around by retrying blindly.
+    return (
+      <div className="boot-cold-start" role="alert">
+        <div className="boot-cold-start-title">Couldn&rsquo;t open your trip</div>
+        <div className="boot-cold-start-hint">
+          Signing in worked, but setting this device up didn&rsquo;t. If this keeps happening, check that
+          you&rsquo;re signing in with the same account you use elsewhere.
+        </div>
+        <p className="save-error" style={{ marginTop: 12 }}>
+          <span>{bootstrapError}</span>
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button className="btn btn-primary btn-sm" onClick={() => setBootstrapAttempt((n) => n + 1)}>
+            Try again
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => void supabase.auth.signOut()}>
+            Sign out
+          </button>
+        </div>
       </div>
     );
   }

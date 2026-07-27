@@ -1,77 +1,77 @@
-# Sharing the trip with companions — design
+# Sharing the trip — design
 
-**Status: not started.** This is the "my partner signs in and sees *this*
-trip" feature. Deploy first (`DEPLOY.md` Phase 1); this builds on a
-deployment whose auth and RLS have actually been exercised.
+**Status: not started.**
 
-Estimate: a phase of work, not an afternoon. The single-owner assumption is
-load-bearing in the database, the RLS policies, the remote repository and the
-bootstrap flow.
+The model, decided 2026-07-27: **there is exactly one trip.** Everyone who
+signs in is a member of it. Nobody creates trips, nobody has their own trip,
+there is no trip picker. This is an internal tool for one household's trip.
 
----
-
-## What's in the way
-
-1. **`trips_user_id_unique`** (`0001_init.sql`) — one trip per account, at the
-   DB level. A second member cannot be an owner of the same trip row, and the
-   index must be dropped for the membership model to exist at all.
-
-2. **Every RLS policy** is `trips.user_id = auth.uid()`. All five tables need
-   rewriting to "…is a member of this trip". `itinerary` joins through
-   `days → trips`, so its policy is the awkward one.
-
-3. **`SupabaseTripRepository.getTrip()`** selects `.eq('user_id', this.userId)`.
-   An invited member has no such row and would see *no trip* — then
-   `seedIfEmpty()` would helpfully create them their own. Membership lookup
-   has to replace the `user_id` filter.
-
-4. **`import_trip_snapshot`** inserts `auth.uid()` as the trip's `user_id`.
-   If a member imports a JSON backup, they silently **take ownership** of the
-   trip. Needs to preserve the existing owner and be member-gated.
-
-5. **`bootstrapMigration.ts`** pushes local Dexie up when the remote is empty.
-   For an invited member on a device that already has a seeded local trip,
-   "remote is empty" must mean "and I'm not a member of anyone's trip" — or
-   they'll overwrite the shared trip with their own seed data. This is the
-   most destructive failure mode in the whole feature.
-
-6. **No conflict resolution, by design** (`CLAUDE.md`). Today that's fine —
-   one person, last write wins. With two people editing simultaneously it
-   becomes a real product question: two people editing the same day's stops
-   will silently clobber each other. Only the prose fields (About / My review)
-   append-merge; everything else is last-write-wins.
-
-7. **Naming collision.** `TripMember` already exists in `schema.ts` — it's a
-   *travel companion for expense splitting* (Phase 5, "Paid by"), with no
-   account behind it. The new concept is an *access grant tied to an auth
-   user*. Do not reuse the name: call the table `trip_collaborators`.
-   Conflating them will produce a bug where deleting a budget companion
-   revokes someone's access, or worse.
+That constraint removes most of what a general "multi-tenant trips app" would
+need. Do not reintroduce per-user trips, per-user trip ids, or an
+invite-creates-a-trip flow — an earlier draft of this document assumed them
+and they were all unnecessary.
 
 ---
 
-## Proposed shape
+## The bug this has to fix
 
-### Migration `0005_trip_collaborators.sql`
+A second account signing in today gets, from `import_trip_snapshot`:
+
+```
+409  duplicate key value violates unique constraint "trips_pkey"
+```
+
+`ACTIVE_TRIP_ID` (`'trip-china-2026'`) is a hardcoded constant, and `trips.id`
+is the primary key across the whole project — so the trip belongs to whoever
+seeded first. A second account's `seedIfEmpty()` (or `bootstrapMigration`'s
+push) tries to insert that same row and collides. And because
+`import_trip_snapshot` is `security invoker`, its opening
+`delete from trips where id = ...` is RLS-filtered to rows *that* account
+owns, so it deletes nothing and can't clear the way for its own insert.
+
+**The shared id is not the problem** — with one global trip it's correct.
+The problem is that a second account tries to create a trip at all.
+
+(The endless spinner this produced on the device is fixed separately:
+`AuthGate` now surfaces a failed bootstrap instead of hanging on it.)
+
+---
+
+## What actually has to change
+
+Smaller than it looks, because "one trip, many members" removes the
+ownership questions.
+
+### 1. Migration `0005_trip_members.sql`
 
 ```sql
 create table public.trip_collaborators (
   trip_id text not null references public.trips(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
-  role text not null default 'editor' check (role in ('owner','editor','viewer')),
-  invited_email text,
   created_at timestamptz not null default now(),
   primary key (trip_id, user_id)
 );
-
-drop index public.trips_user_id_unique;   -- one trip per account no longer holds
 ```
 
-Backfill the current owner as a collaborator, then every policy becomes a
-membership test. Use a `security definer` helper so the policies don't
-recurse (a policy on `trips` that queries `trip_collaborators`, which itself
-has a policy that queries `trips`, is an infinite loop — this is the classic
-Supabase RLS footgun):
+Backfill the current owner. Drop `trips_user_id_unique` — with membership,
+`trips.user_id` stops meaning "the only person who can see this" and becomes
+just "who created it".
+
+**Naming:** `trip_collaborators`, NOT `trip_members`. `TripMember` already
+exists in `schema.ts` and means *a travel companion for expense splitting*
+(Phase 5, "Paid by") with no account behind it. Conflating the two produces a
+bug where deleting a budget companion revokes someone's sign-in access.
+
+**Roles: skip them.** Everyone who's in, is in — editor for all. Adding
+`role` later is additive; adding it now doubles the policy surface for a
+household of three.
+
+### 2. RLS — five policies rewritten
+
+Each policy's `trips.user_id = auth.uid()` becomes a membership test, via a
+`security definer` helper so the policies don't recurse (a policy on `trips`
+that queries `trip_collaborators`, whose own policy queries `trips`, is an
+infinite loop — the classic Supabase RLS footgun):
 
 ```sql
 create or replace function public.is_trip_member(p_trip_id text)
@@ -85,55 +85,59 @@ as $$
 $$;
 ```
 
-Writes should additionally check the role isn't `viewer` — worth deciding
-early whether viewers exist at all, since "editor-only" removes an entire
-axis of policy complexity.
+`itinerary` still joins through `days → trips`, so its policy stays the
+awkward one.
 
-### Invite flow
+### 3. Client: stop creating trips
 
-Simplest that works, in order of increasing effort:
+- **`SupabaseTripRepository.getTrip()`** — drop `.eq('user_id', this.userId)`.
+  RLS already scopes what's visible, so a member simply gets the trip. This is
+  *simpler* than today's code, not more complex.
+- **`SupabaseTripRepository.seedIfEmpty()`** — make it a no-op. The trip
+  exists; no client should ever create one again. Seeding remotely is the
+  thing that 409s, and in this model it is never correct.
+- **`bootstrapMigration`** — must not push local up either. For a non-owner it
+  can only collide, and it's the exact path that failed on the phone. In this
+  model there is nothing to migrate: the remote trip is authoritative from the
+  start.
+- **Empty state** — if `getTrip()` returns nothing, the user is signed in but
+  not a member. That needs a real screen ("you're not on this trip yet"), not
+  a silent empty trip and not a spinner.
 
-1. **Manual** — you add a row to `trip_collaborators` in the dashboard with
-   their user id after they've signed up once. Zero code. Ugly, fine for two
-   people, and a legitimate answer for a private trip planner.
-2. **Invite by email** — a `pending_invites` table keyed on email; on sign-in,
-   claim any invite matching the session's email and convert it to a
-   collaborator row. Needs a claim step somewhere in `AuthGate`.
-3. **Invite link with a token** — a share URL carrying a single-use token.
-   Nicest UX, most surface area, needs an edge function to redeem safely.
+### 4. Adding people
 
-Start at 1. It's honestly enough for a partner and a parent, and it lets the
-RLS work be verified independently of an invite UI.
+Start manual: add a row to `trip_collaborators` in the dashboard with their
+user id once they've signed in once. Zero code, and honest for a household.
 
-### Client changes
-
-- `getTrip()` → membership lookup rather than `user_id`.
-- `seedIfEmpty()` → must not seed when the user is a collaborator on a trip.
-- `bootstrapMigration` → membership check before any push-local-up.
-- `importSnapshot` / `import_trip_snapshot` → preserve owner, gate on membership.
-- Some UI for "who else is on this trip" — and it must not be confused with
-  the Budget tab's existing companions list (see item 7).
-
-### Test plan
-
-The mocked tests can't cover any of the above. This needs two real accounts
-against the live project:
-
-- B sees A's trip; a third account C sees neither.
-- B's edit appears for A.
-- B's local Dexie seed does **not** overwrite the shared trip on first sign-in
-  (item 5 — test this deliberately, with a device that has local data).
-- B importing a JSON backup does not transfer ownership (item 4).
-- Removing B revokes access immediately.
+An invite flow (`pending_invites` keyed on email, claimed on first sign-in) is
+worth building only if manual becomes annoying. Note §2.3 of `DEPLOY.md`
+first: the built-in email provider allows **2 emails per hour**, so any invite
+flow needs custom SMTP before it's usable.
 
 ---
 
-## Cheaper alternative worth considering
+## What this does NOT fix
 
-If the actual need is "my family can *see* the plan", a **read-only published
-snapshot** is dramatically less work and has no RLS rewrite: export the trip
-to static JSON at publish time and render it at a `/share/<id>` route with no
-auth. No live sync, no conflicts, no ownership questions — and it's the
-version that keeps working when Supabase isn't reachable from China.
+**Concurrent editing.** The app has no merge or conflict resolution, by
+design (`CLAUDE.md`) — and with several people editing, last-write-wins stops
+being a theoretical caveat. Two people reordering the same day will silently
+clobber each other; only About / My review append-merge. Worth deciding
+whether that's acceptable (it may well be, for a household planning together)
+rather than discovering it mid-trip.
 
-Worth a deliberate decision before committing to full collaboration.
+---
+
+## Test plan
+
+None of this is coverable by the mocked tests. It needs two real accounts
+against the live project:
+
+- B sees the trip; C (not a collaborator) sees the "not on this trip" screen,
+  never the data.
+- B's edit shows up for A.
+- B signing in on a device with existing local Dexie data does **not**
+  overwrite the shared trip.
+- Removing B revokes access immediately.
+- `DEPLOY.md` §1.2's two-account RLS test needs rewriting: it currently
+  expects the second account to see "an empty, freshly seeded trip", which
+  will no longer be true (and is what 409s today).
