@@ -43,8 +43,10 @@ interface AddPlaceModalProps {
   open: boolean;
   mode: AddPlaceMode;
   point: AddPlacePoint | null;
-  /** The trip city currently selected on the Map — used as the default
-   *  City field value and as the geocode search's `cityHint`. */
+  /** The trip city currently selected on the Map — used as the geocode
+   *  search's `cityHint` (and in the coordinate hint copy). Deliberately NOT
+   *  pre-selected in the City field: an unnoticed default is how a place ends
+   *  up filed under the wrong city. */
   defaultCity: string;
   onClose: () => void;
 }
@@ -84,7 +86,10 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
   const [flashName, setFlashName] = useState(false);
 
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<string>(PLACE_CATEGORIES[0]);
+  // Both start empty and are required to save. Neither is defaulted: a
+  // pre-filled Category/City reads as "already answered", and the wrong
+  // answer is silently accepted at a rate a deliberate choice never is.
+  const [category, setCategory] = useState<string>('');
   const [city, setCity] = useState('');
   // A short, optional description only — NOT the full About/My review editor
   // the place detail modal has (Phase 4 item 3/7). Adding a place and
@@ -140,8 +145,8 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     setDescription('');
     setCoordInput('');
     setApplyChinaShift(true);
-    setCategory(PLACE_CATEGORIES[0]);
-    setCity(defaultCity || cityNames[0] || '');
+    setCategory('');
+    setCity('');
     setSaving(false);
     setSaved(false);
     setSearchStatus(online ? 'idle' : 'offline');
@@ -241,7 +246,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
   async function handleSave(e: FormEvent) {
     e.preventDefault();
     const trimmedName = name.trim();
-    if (!trimmedName || saving) return;
+    if (!trimmedName || !category || !city || saving) return;
     setSaving(true);
 
     let lat: number;
@@ -258,7 +263,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
       lat = manualPoint.lat;
       lng = manualPoint.lng;
     } else {
-      const loc = suggestPlaceLocation(city || defaultCity, places);
+      const loc = suggestPlaceLocation(city, places);
       lat = loc.lat;
       lng = loc.lng;
     }
@@ -266,7 +271,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     await addPlace({
       name: trimmedName,
       category,
-      city: city || defaultCity,
+      city,
       description: description.trim() || undefined,
       lat,
       lng,
@@ -275,6 +280,13 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     setSaved(true);
     closeTimerRef.current = window.setTimeout(onClose, 900);
   }
+
+  const missingFields = [
+    !name.trim() && 'a name',
+    !category && 'a category',
+    !city && 'a city',
+  ].filter((f): f is string => typeof f === 'string');
+  const canSave = missingFields.length === 0;
 
   const detailsVisible = mode === 'pin' || selectedResult !== null || manualEntry;
   const searchStageVisible = mode === 'pin' || !detailsVisible;
@@ -422,7 +434,8 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
           <div className="add-form-grid" style={{ marginTop: 10 }}>
             <div>
               <label htmlFor="ap-cat">Category</label>
-              <select id="ap-cat" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <select id="ap-cat" value={category} onChange={(e) => setCategory(e.target.value)} required>
+                <option value="">Choose a category&hellip;</option>
                 {PLACE_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -432,7 +445,8 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
             </div>
             <div>
               <label htmlFor="ap-city">City</label>
-              <select id="ap-city" value={city} onChange={(e) => setCity(e.target.value)}>
+              <select id="ap-city" value={city} onChange={(e) => setCity(e.target.value)} required>
+                <option value="">Choose a city&hellip;</option>
                 {cityNames.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -492,9 +506,17 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
             />
           </div>
 
-          <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: 14 }} disabled={!name.trim() || saving}>
+          <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: 14 }} disabled={!canSave || saving}>
             <Icon name="check" /> Save to wishlist
           </button>
+          {/* Says what's missing rather than leaving a dead button — the two
+              selects now start empty, so "why can't I save?" is a real
+              question here in a way it wasn't before. */}
+          {!canSave && (
+            <p className="coord-hint" style={{ marginTop: 8 }}>
+              Add {missingFields.join(' and ')} to save this place.
+            </p>
+          )}
           {saved && (
             <div className="accepted-msg on" style={{ marginTop: 12, marginBottom: 0 }}>
               <Icon name="check" /> Saved &mdash; you&rsquo;ll find it on the map and in Places any time.

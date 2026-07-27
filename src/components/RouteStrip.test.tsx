@@ -73,3 +73,45 @@ describe('RouteStrip', () => {
     expect(document.querySelector('.route-pending-dot')).not.toBeInTheDocument();
   });
 });
+
+// Day-trip legs (Wulong from Chongqing, Shenzhen from Guangzhou) were filtered
+// out of the strip entirely, which also meant they could never be selected —
+// so the Map had no way to show them. They're in now, marked as day trips
+// rather than passed off as overnight stops.
+describe('RouteStrip — day-trip legs', () => {
+  const WITH_DAY_TRIP: City[] = [
+    { name: 'Chongqing', order: 1, nights: 3, arrive: '2026-11-20', depart: '2026-11-23' },
+    { name: 'Wulong', order: 2, nights: 0, arrive: '2026-11-21', depart: '2026-11-22', parentCity: 'Chongqing' },
+  ];
+
+  it('renders a day-trip leg as a selectable node', () => {
+    const onSelect = vi.fn();
+    render(<RouteStrip cities={WITH_DAY_TRIP} selectedCity="Chongqing" onSelect={onSelect} />);
+
+    const wulong = screen.getByText('Wulong').closest('button')!;
+    fireEvent.click(wulong);
+    expect(onSelect).toHaveBeenCalledWith('Wulong');
+  });
+
+  it('marks it as a day trip instead of showing a misleading two-date range', () => {
+    render(<RouteStrip cities={WITH_DAY_TRIP} selectedCity="Chongqing" onSelect={() => {}} />);
+
+    const wulong = screen.getByText('Wulong').closest('button')!;
+    expect(wulong.className).toContain('is-daytrip');
+    // Zero nights — "21–22 Nov" would overstate it.
+    expect(wulong).toHaveTextContent('Day trip · 21 Nov');
+    expect(wulong).not.toHaveTextContent('21–22 Nov');
+    expect(wulong).toHaveTextContent(/day trip from Chongqing/);
+
+    const chongqing = screen.getByText('Chongqing').closest('button')!;
+    expect(chongqing.className).not.toContain('is-daytrip');
+    expect(chongqing).toHaveTextContent('20–23 Nov');
+  });
+
+  it('a day-trip leg can be the active city', () => {
+    render(<RouteStrip cities={WITH_DAY_TRIP} selectedCity="Wulong" onSelect={() => {}} />);
+    const wulong = screen.getByText('Wulong').closest('button')!;
+    expect(wulong).toHaveAttribute('aria-current', 'true');
+    expect(wulong.className).toContain('active');
+  });
+});

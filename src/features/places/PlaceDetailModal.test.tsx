@@ -415,3 +415,177 @@ describe('PlaceDetailModal — closing while dirty is never guarded (Phase 4 ite
     await flush();
   });
 });
+// The identity fields (name/category/city/location) share the ONE edit
+// session with About/My review — one pencil, one "Save changes", one discard
+// story (mockup/place-detail-modal-v2.html). A first attempt gave them their
+// own editor with its own Save/Cancel and was rejected in UX review; these
+// tests pin the approved shape so it doesn't drift back.
+describe('PlaceDetailModal — editing name, category, city and location', () => {
+  const TRIP = {
+    id: 'trip-1',
+    name: 'Trip',
+    startDate: '2026-11-07',
+    endDate: '2026-11-30',
+    homeCurrency: 'AUD',
+    tripCurrency: 'CNY',
+    rates: { AUD: 1, CNY: 0.21 },
+    cities: [
+      { name: 'Chongqing', order: 1, nights: 2, arrive: '2026-11-07', depart: '2026-11-09' },
+      { name: 'Chengdu', order: 2, nights: 2, arrive: '2026-11-09', depart: '2026-11-11' },
+    ],
+  };
+
+  let updatePlaceMock: ReturnType<typeof vi.fn>;
+  let updateItineraryItemMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    updatePlaceMock = vi.fn(async () => {});
+    updateItineraryItemMock = vi.fn(async () => {});
+    useTripStore.setState({
+      trip: TRIP as never,
+      itineraryByDay: { d1: [{ id: 'it-1', dayId: 'd1', title: 'Hongya Cave', order: 0, placeId: 'place-1' }] },
+      updatePlace: updatePlaceMock as never,
+      updateItineraryItem: updateItineraryItemMock as never,
+    });
+  });
+
+  async function openEditor(place: Place = PLACE) {
+    render(<PlaceDetailModal place={place} pinColor="var(--d-grey)" onClose={() => {}} onDraftChange={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit this place' }));
+  }
+
+  it('the one pencil opens the identity fields, and focus lands in the name input', async () => {
+    await openEditor();
+
+    const name = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(name.value).toBe('Hongya Cave');
+    expect(document.activeElement).toBe(name);
+    expect(screen.getByLabelText('Category')).toBeInTheDocument();
+    expect(screen.getByLabelText('City')).toBeInTheDocument();
+    // No second editor: exactly one save control, and no "Edit details".
+    expect(screen.queryByRole('button', { name: /Edit details|Save details/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Save changes/ })).toHaveLength(1);
+  });
+
+  it('read mode shows no raw coordinate — the location is behind "View on map"', async () => {
+    const onViewOnMap = vi.fn();
+    render(
+      <PlaceDetailModal
+        place={PLACE}
+        pinColor="var(--d-grey)"
+        onClose={() => {}}
+        onViewOnMap={onViewOnMap}
+        onDraftChange={() => {}}
+      />,
+    );
+    await flush();
+
+    expect(screen.queryByLabelText('Location')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /View on map/ }));
+    expect(onViewOnMap).toHaveBeenCalledWith('Chongqing');
+  });
+
+  it('one "Save changes" commits the prose draft AND the identity fields', async () => {
+    await openEditor();
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Hongya Cave (night view)' } });
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Food' } });
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Chengdu' } });
+    fireEvent.click(screen.getByRole('button', { name: /Change/ }));
+    // Sydney: outside China, so no datum shift — the saved pair is exact.
+    fireEvent.change(screen.getByLabelText('Location'), { target: { value: '-33.8688, 151.2093' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+    await flush();
+
+    expect(useTripStore.getState().commitPlaceDraft).toHaveBeenCalledWith('place-1');
+    expect(updatePlaceMock).toHaveBeenCalledTimes(1);
+    expect(updatePlaceMock.mock.calls[0][0]).toMatchObject({
+      id: 'place-1',
+      name: 'Hongya Cave (night view)',
+      category: 'Food',
+      city: 'Chengdu',
+      lat: -33.8688,
+      lng: 151.2093,
+    });
+  });
+
+  it('an unchanged place skips the identity write entirely', async () => {
+    await openEditor();
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+    await flush();
+
+    expect(updatePlaceMock).not.toHaveBeenCalled();
+  });
+
+  it('renaming also retitles the itinerary stop created from this place', async () => {
+    await openEditor();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+    await flush();
+
+    expect(updateItineraryItemMock).toHaveBeenCalledTimes(1);
+    expect(updateItineraryItemMock.mock.calls[0][0]).toMatchObject({ id: 'it-1', title: 'Renamed' });
+  });
+
+  it('an empty name blocks the save, reports on the one error line, and focuses the name', async () => {
+    await openEditor();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  ' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+    await flush();
+
+    expect(updatePlaceMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('A place needs a name.');
+    expect(document.activeElement).toBe(screen.getByLabelText('Name'));
+  });
+
+  it('an unreadable location blocks the save and opens the location field to show why', async () => {
+    await openEditor();
+    fireEvent.click(screen.getByRole('button', { name: /Change/ }));
+    fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'near the river' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+    await flush();
+
+    expect(updatePlaceMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/read a location/);
+    expect(screen.getByRole('button', { name: /Change/ })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('closing on top of an unsaved identity edit asks before dropping it', async () => {
+    const onClose = vi.fn();
+    render(<PlaceDetailModal place={PLACE} pinColor="var(--d-grey)" onClose={onClose} onDraftChange={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit this place' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Half-typed' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Discard this draft?')).toBeInTheDocument();
+  });
+
+  it('discarding restores the stored values and hands focus back to the pencil', async () => {
+    await openEditor();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Half-typed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    await flush();
+
+    const pencil = screen.getByRole('button', { name: 'Edit this place' });
+    expect(pencil).toBeInTheDocument();
+    expect(document.activeElement).toBe(pencil);
+    fireEvent.click(pencil);
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Hongya Cave');
+  });
+
+  it('does not re-apply the China offset to the coordinate already stored', async () => {
+    // Chongqing — inside China. Opening the editor must NOT arm the shift, or
+    // every open would walk the pin a few hundred metres further off.
+    await openEditor({ ...PLACE, lat: 29.5647, lng: 106.5787 });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+    await flush();
+
+    expect(updatePlaceMock.mock.calls[0][0]).toMatchObject({ lat: 29.5647, lng: 106.5787 });
+  });
+});

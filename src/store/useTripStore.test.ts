@@ -15,7 +15,7 @@ import {
   getStagedAssignmentCountsByCity,
 } from './useTripStore';
 import type { DayPlan } from '../lib/autoplan';
-import { setTripRepository } from '../data/tripRepositoryInstance';
+import { setTripRepository, tripRepository } from '../data/tripRepositoryInstance';
 import { DexieTripRepository } from '../data/dexieTripRepository';
 import type { TripRepository } from '../data/tripRepository';
 import type { Place, Trip } from '../data/schema';
@@ -1890,5 +1890,178 @@ describe('staged assignments are cleared alongside sign-out / whole-trip import'
 
     expect(useTripStore.getState().stagedAssignments).toEqual({});
     expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
+  });
+});
+
+// A place is only "on" a day because a linked itinerary stop put it there —
+// that assignment is what colours its map pin. Deleting the stops therefore
+// has to release the places, or you get an itinerary that's empty on screen
+// while the map still shows a full day of coloured pins.
+describe('removeItineraryItem — releases the place it was linked to', () => {
+  it('clears dayId/status so the pin goes back to unassigned grey', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places[0];
+    const day = days.find((d) => d.city === place.city)!;
+
+    await useTripStore.getState().assignPlaceToDay(place.id, day.id);
+    const [linked] = linkedItemsOn(day.id, place.id);
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(day.id);
+
+    await useTripStore.getState().removeItineraryItem(linked.id);
+
+    const after = useTripStore.getState().places.find((p) => p.id === place.id)!;
+    expect(after.dayId).toBeUndefined();
+    expect(after.status).toBe('wishlist');
+  });
+
+  it('persists the release — a reload does not resurrect the assignment', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places[0];
+    const day = days.find((d) => d.city === place.city)!;
+
+    await useTripStore.getState().assignPlaceToDay(place.id, day.id);
+    const [linked] = linkedItemsOn(day.id, place.id);
+    await useTripStore.getState().removeItineraryItem(linked.id);
+
+    await useTripStore.getState().init();
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBeUndefined();
+  });
+
+  it('clearing every stop of a day leaves no place still assigned to it', async () => {
+    const { places, days } = useTripStore.getState();
+    const day = days[0];
+    const inCity = places.filter((p) => p.city === day.city).slice(0, 3);
+    expect(inCity.length).toBeGreaterThan(1);
+
+    for (const p of inCity) await useTripStore.getState().assignPlaceToDay(p.id, day.id);
+    const stops = useTripStore.getState().itineraryByDay[day.id] ?? [];
+    for (const stop of stops) await useTripStore.getState().removeItineraryItem(stop.id);
+
+    expect(useTripStore.getState().itineraryByDay[day.id] ?? []).toHaveLength(0);
+    expect(useTripStore.getState().places.filter((p) => p.dayId === day.id)).toHaveLength(0);
+  });
+
+  it('leaves a place alone when it is assigned to a different day than the deleted stop', async () => {
+    const { places, days } = useTripStore.getState();
+    // Needs a city with at least two days.
+    const place = places.find((p) => days.filter((d) => d.city === p.city).length > 1)!;
+    expect(place).toBeDefined();
+    const [dayA, dayB] = days.filter((d) => d.city === place.city);
+
+    // The place lives on B; a second stop on A also references it (the shape
+    // auto-plan and a moved assignment can leave behind). Deleting A's stop
+    // must not undo the newer, deliberate assignment to B.
+    await useTripStore.getState().assignPlaceToDay(place.id, dayB.id);
+    const strayOnA = await useTripStore
+      .getState()
+      .addItineraryItem({ dayId: dayA.id, placeId: place.id, title: place.name });
+
+    await useTripStore.getState().removeItineraryItem(strayOnA.id);
+
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(dayB.id);
+  });
+
+  it('a hand-written stop with no linked place touches no place at all', async () => {
+    const { places, days } = useTripStore.getState();
+    const day = days[0];
+    const before = places.map((p) => p.dayId);
+
+    const item = await useTripStore.getState().addItineraryItem({ dayId: day.id, title: 'Coffee' });
+    await useTripStore.getState().removeItineraryItem(item.id);
+
+    expect(useTripStore.getState().places.map((p) => p.dayId)).toEqual(before);
+  });
+});
+
+// The itinerary is the source of truth; a place's dayId is a copy of it.
+// Data written by an older build (a deleted stop that left its place
+// assigned, a moved stop that left it behind) is healed on load rather than
+// trusted — that divergence is what made the Map show days the Itinerary
+// didn't have.
+describe('init() — reconciles place day assignments against the itinerary', () => {
+  it('drops a stored dayId that no itinerary stop backs', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places[0];
+    const day = days.find((d) => d.city === place.city)!;
+
+    // Write the divergence straight to the repository, behind the store's
+    // back — exactly the shape an older build could leave.
+    await tripRepository.upsertPlace({ ...place, dayId: day.id, status: 'planned' });
+    await useTripStore.getState().init();
+
+    const healed = useTripStore.getState().places.find((p) => p.id === place.id)!;
+    expect(healed.dayId).toBeUndefined();
+    expect(healed.status).toBe('wishlist');
+  });
+
+  it('persists the repair, so it does not have to be redone every load', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places[0];
+    const day = days.find((d) => d.city === place.city)!;
+
+    await tripRepository.upsertPlace({ ...place, dayId: day.id, status: 'planned' });
+    await useTripStore.getState().init();
+    // Let the best-effort background write land.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const stored = (await tripRepository.listPlaces(place.tripId)).find((p) => p.id === place.id)!;
+    expect(stored.dayId).toBeUndefined();
+  });
+
+  it('moves a place to the day its stop is actually on', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => days.filter((d) => d.city === p.city).length > 1)!;
+    const [dayA, dayB] = days.filter((d) => d.city === place.city);
+
+    await useTripStore.getState().assignPlaceToDay(place.id, dayB.id);
+    // Point the place at the wrong day behind the store's back.
+    const current = useTripStore.getState().places.find((p) => p.id === place.id)!;
+    await tripRepository.upsertPlace({ ...current, dayId: dayA.id });
+    await useTripStore.getState().init();
+
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(dayB.id);
+  });
+
+  it('leaves agreeing data alone — a clean load writes nothing back', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places[0];
+    const day = days.find((d) => d.city === place.city)!;
+    await useTripStore.getState().assignPlaceToDay(place.id, day.id);
+
+    const before = useTripStore.getState().places.find((p) => p.id === place.id)!;
+    await useTripStore.getState().init();
+    const after = useTripStore.getState().places.find((p) => p.id === place.id)!;
+
+    expect(after.dayId).toBe(day.id);
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+});
+
+describe('updateItineraryItem — a moved stop takes its place with it', () => {
+  it('follows the place to the new day', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => days.filter((d) => d.city === p.city).length > 1)!;
+    const [dayA, dayB] = days.filter((d) => d.city === place.city);
+
+    await useTripStore.getState().assignPlaceToDay(place.id, dayA.id);
+    const [item] = linkedItemsOn(dayA.id, place.id);
+    await useTripStore.getState().updateItineraryItem({ ...item, dayId: dayB.id });
+
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(dayB.id);
+    expect(linkedItemsOn(dayB.id, place.id)).toHaveLength(1);
+    expect(linkedItemsOn(dayA.id, place.id)).toHaveLength(0);
+  });
+
+  it('a same-day edit does not touch the place', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places[0];
+    const day = days.find((d) => d.city === place.city)!;
+
+    await useTripStore.getState().assignPlaceToDay(place.id, day.id);
+    const before = useTripStore.getState().places.find((p) => p.id === place.id)!;
+    const [item] = linkedItemsOn(day.id, place.id);
+    await useTripStore.getState().updateItineraryItem({ ...item, startTime: '10:30' });
+
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)).toBe(before);
   });
 });

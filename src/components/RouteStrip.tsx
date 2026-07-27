@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { City } from '../data/schema';
-import { fmtCompactRange } from '../lib/dates';
+import { fmtCompactRange, fmtDayMonth } from '../lib/dates';
 
 /** URL-safe id fragment for a city name, e.g. "Zhangjiajie" -> "zhangjiajie". */
 export function citySlug(name: string): string {
@@ -70,10 +70,16 @@ export function RouteStrip({ cities, selectedCity, onSelect, pendingCities }: Ro
       {cities.map((city) => {
         const active = selectedCity === city.name;
         const hasPending = pendingCities?.has(city.name) ?? false;
+        // A day-trip leg (Wulong, Shenzhen) — you sleep in the parent city
+        // and come back the same day. Shown in the strip so it can be
+        // selected and mapped, but marked so it doesn't read as another
+        // overnight stop: hollow dot, dashed connector, "Day trip" instead
+        // of a night count's date range.
+        const dayTrip = Boolean(city.parentCity);
         return (
           <button
             key={city.name}
-            className={`route-node${active ? ' active' : ''}${hasPending ? ' has-pending' : ''}`}
+            className={`route-node${active ? ' active' : ''}${hasPending ? ' has-pending' : ''}${dayTrip ? ' is-daytrip' : ''}`}
             data-city={citySlug(city.name)}
             aria-current={active ? 'true' : undefined}
             // A no-op at full width. The desktop condensing header (App.tsx's
@@ -83,7 +89,11 @@ export function RouteStrip({ cities, selectedCity, onSelect, pendingCities }: Ro
             // enough to overrun it, and this title is what recovers the full
             // text for a sighted mouse user when it does. Also carries the
             // date, which the condensed state hides outright.
-            title={`${city.name} · ${fmtCompactRange(city.arrive, city.depart)}`}
+            title={
+              dayTrip
+                ? `${city.name} · day trip from ${city.parentCity} · ${fmtDayMonth(city.arrive)}`
+                : `${city.name} · ${fmtCompactRange(city.arrive, city.depart)}`
+            }
             onClick={() => onSelect(city.name)}
           >
             <span className="line" />
@@ -91,9 +101,14 @@ export function RouteStrip({ cities, selectedCity, onSelect, pendingCities }: Ro
             {hasPending && <span className="route-pending-dot" aria-hidden="true" />}
             <span className="route-city">
               {city.name}
+              {dayTrip && <span className="visually-hidden">, day trip from {city.parentCity}</span>}
               {hasPending && <span className="visually-hidden">, has unsaved changes</span>}
             </span>
-            <span className="route-date">{fmtCompactRange(city.arrive, city.depart)}</span>
+            {/* A day trip's arrive/depart span two dates but zero nights, so
+                the usual "21–22 Nov" range would overstate it. */}
+            <span className="route-date">
+              {dayTrip ? `Day trip · ${fmtDayMonth(city.arrive)}` : fmtCompactRange(city.arrive, city.depart)}
+            </span>
           </button>
         );
       })}

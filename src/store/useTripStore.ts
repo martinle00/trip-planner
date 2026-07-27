@@ -30,6 +30,7 @@ import { stagedAssignmentRepository } from '../data/stagedAssignmentRepository';
 import type { StagedAssignment } from '../data/stagedAssignmentRepository';
 import * as exchangeRates from '../lib/exchangeRates';
 import { appendRemoteIfDifferent } from '../lib/proseMerge';
+import { reconcilePlaceDaysToItinerary } from '../lib/reconcilePlaceDays';
 
 export interface TripState {
   // ---- data ----
@@ -347,12 +348,33 @@ function domainDataInitPatch(
   versionAtRead: number,
 ): Partial<Pick<TripState, 'places' | 'days' | 'itineraryByDay' | 'expenses'>> {
   if (versionAtRead !== mutationVersion) return {};
+  // Every load reconciles what it read: the itinerary is the source of truth
+  // for what's planned on which day, and a place's `dayId` is only a copy of
+  // that. See lib/reconcilePlaceDays.ts for why they can disagree at all.
+  // In-memory only — persisting the repair is init()'s job, and only from an
+  // authoritative read (never from a possibly-stale cache paint).
+  const { places } = reconcilePlaceDaysToItinerary(data.places, data.itinerary, data.days);
   return {
-    places: data.places,
+    places,
     days: data.days,
     itineraryByDay: groupByDay(data.itinerary),
     expenses: data.expenses,
   };
+}
+
+/**
+ * Writes back the day assignments the reconciliation had to correct, so the
+ * stored data stops disagreeing with the itinerary for every other device
+ * too. Best-effort and deliberately non-blocking: a failure (offline, RLS)
+ * just leaves the rows to be re-corrected in memory on the next load, which
+ * is exactly what happens today. Only ever called with an AUTHORITATIVE
+ * read's data — repairing from a stale cache could push a wrong assignment.
+ */
+function persistReconciledPlaces(corrected: Place[]): void {
+  if (corrected.length === 0) return;
+  void Promise.all(corrected.map((place) => tripRepository.upsertPlace(place))).catch((err) => {
+    console.warn('Could not persist reconciled place/day assignments', err);
+  });
 }
 
 function groupByDay(items: ItineraryItem[]): Record<ID, ItineraryItem[]> {
@@ -640,6 +662,10 @@ export const useTripStore = create<TripState>((set, get) => ({
         ...domainDataInitPatch({ places, days, itinerary, expenses }, mutationVersionAtRead),
         ...stagedAssignmentsInitPatch(stagedEntries, stagedVersionAtRead),
       });
+      // Local-only mode: this read IS authoritative, so heal the stored rows.
+      if (mutationVersionAtRead === mutationVersion) {
+        persistReconciledPlaces(reconcilePlaceDaysToItinerary(places, itinerary, days).corrected);
+      }
       return;
     }
 
@@ -725,6 +751,11 @@ export const useTripStore = create<TripState>((set, get) => ({
           ...domainDataInitPatch({ places, days, itinerary, expenses }, mutationVersionAtRead),
           ...stagedAssignmentsInitPatch(stagedEntries, stagedVersionAtRead),
         });
+        // The remote read is the authoritative one — heal the stored rows
+        // from it (never from the cache paint above, which may be stale).
+        if (mutationVersionAtRead === mutationVersion) {
+          persistReconciledPlaces(reconcilePlaceDaysToItinerary(places, itinerary, days).corrected);
+        }
       } catch (err) {
         if (token !== initToken) return;
         const message = err instanceof Error ? err.message : 'Failed to sync trip data';
@@ -1123,9 +1154,42 @@ export const useTripStore = create<TripState>((set, get) => ({
       next[finalItem.dayId] = sortByOrder([...(next[finalItem.dayId] ?? []), finalItem]);
       return { itineraryByDay: next };
     });
+
+    // A linked stop moved to another day takes its place with it — otherwise
+    // the map keeps colouring that pin for the day the stop just left. Same
+    // inlined place-side write (and the same reason for not delegating to
+    // assignPlaceToDay) as removeItineraryItem below.
+    if (!isMove || !finalItem.placeId) return;
+    const place = get().places.find((p) => p.id === finalItem.placeId);
+    // Only if the place was actually following this stop — if it points
+    // somewhere else, that's a newer assignment this must not undo.
+    if (!place || place.dayId !== currentDayId) return;
+    const moved: Place = {
+      ...place,
+      dayId: finalItem.dayId,
+      status: 'planned',
+      updatedAt: new Date().toISOString(),
+    };
+    await tripRepository.upsertPlace(moved);
+    mutationVersion++;
+    set((s) => ({ places: s.places.map((p) => (p.id === moved.id ? moved : p)) }));
   },
 
+  // Removing a stop also releases the place it came from: a place stays
+  // `dayId`-assigned (and therefore keeps its day colour on the map, and its
+  // day in the Places dropdown) purely because a linked itinerary item put
+  // it there. Deleting every stop of a day used to leave those places still
+  // assigned to it — an itinerary emptied on screen, with the map still
+  // showing a full day of coloured pins.
+  //
+  // The place-side write is inlined rather than delegating to the public
+  // assignPlaceToDay for two reasons: that action's unassign branch calls
+  // BACK into this one (so they'd be mutually recursive), and it runs inside
+  // runExclusive, which this would deadlock against.
   removeItineraryItem: async (id) => {
+    const item = Object.values(get().itineraryByDay)
+      .flat()
+      .find((i) => i.id === id);
     await tripRepository.deleteItineraryItem(id);
     mutationVersion++;
     set((s) => {
@@ -1135,6 +1199,22 @@ export const useTripStore = create<TripState>((set, get) => ({
       }
       return { itineraryByDay: next };
     });
+
+    if (!item?.placeId) return;
+    const place = get().places.find((p) => p.id === item.placeId);
+    // Only if the place is still assigned to the day this stop was on —
+    // it may have been moved elsewhere since, and unassigning it then would
+    // undo a newer, deliberate assignment.
+    if (!place || place.dayId !== item.dayId) return;
+    const released: Place = {
+      ...place,
+      dayId: undefined,
+      status: 'wishlist',
+      updatedAt: new Date().toISOString(),
+    };
+    await tripRepository.upsertPlace(released);
+    mutationVersion++;
+    set((s) => ({ places: s.places.map((p) => (p.id === released.id ? released : p)) }));
   },
 
   reorderItinerary: async (dayId, orderedIds) => {

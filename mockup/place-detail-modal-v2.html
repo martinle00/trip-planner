@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Place detail v2 — identity fields folded into the one edit session</title>
+<style>
+  /* ============================= TOKENS (ported from mockup/mockup.html) ============================= */
+  :root{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350;
+    --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-full: 999px;
+    --shadow-sm: 0 1px 2px rgba(60,40,20,.08), 0 1px 1px rgba(60,40,20,.05);
+    --shadow-md: 0 8px 24px -8px rgba(60,40,20,.22), 0 2px 6px rgba(60,40,20,.08);
+    --shadow-lg: 0 24px 60px -16px rgba(30,20,10,.35);
+    --font-display: 'Songti SC','STSong','Noto Serif SC', Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Consolas', 'Roboto Mono', monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+      --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+      --line: #362E24; --line-strong: #453A2C;
+      --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+      --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B;
+      --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+      --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+      --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper: #18140F; --paper-raised: #241F19; --paper-sunk: #14110D;
+    --ink: #F3ECE2; --ink-soft: #B3A796; --ink-faint: #7C7365;
+    --line: #362E24; --line-strong: #453A2C;
+    --accent: #E2735F; --accent-ink: #221008; --accent-soft: #3E241E; --accent-soft-ink: #F0B4A6;
+    --jade: #6BB99B; --jade-soft: #1F332C; --jade-soft-ink: #6BB99B; --gold: #D9A94B; --gold-soft: #3A2F1A; --gold-soft-ink: #D9A94B;
+    --d-blue:#7CA6C4; --d-amber:#D6A05C; --d-moss:#86B884; --d-plum:#B686AD; --d-teal:#65C1AF;
+    --d-terra:#D68259; --d-indigo:#9497D9; --d-olive:#BEBD6A; --d-sky:#5FB8CC; --d-rose:#E38AA8; --d-violet:#A886D6; --d-grey:#776E60;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{
+    --paper: #FAF7F2; --paper-raised: #FFFFFF; --paper-sunk: #F1ECE3;
+    --ink: #211C18; --ink-soft: #6E6154; --ink-faint: #9C9184;
+    --line: #E6DDD0; --line-strong: #D8CBB8;
+    --accent: #B23A2E; --accent-ink: #ffffff; --accent-soft: #F5DED6; --accent-soft-ink: #7A2A20;
+    --jade: #3C7A63; --jade-soft: #DCEAE3; --jade-soft-ink: #2C6350; --gold: #B8842E; --gold-soft: #F1E2C4; --gold-soft-ink: #6B4A12;
+    --d-blue:#4C7C9C; --d-amber:#C07A2E; --d-moss:#5B8C5A; --d-plum:#93588A; --d-teal:#3E9C8C;
+    --d-terra:#C0562E; --d-indigo:#6B6EC0; --d-olive:#93923C; --d-sky:#21879E; --d-rose:#C2416B; --d-violet:#7A4FB0; --d-grey:#9C9488;
+    color-scheme: light;
+  }
+
+  /* ============================= RESET ============================= */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,p,ul,dl,dd,dt{ margin:0; }
+  ul{ list-style:none; padding:0; }
+  button{ font:inherit; color:inherit; }
+  textarea,select,input{ font:inherit; color:inherit; }
+  button, select{ cursor:pointer; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  svg{ display:block; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
+  .visually-hidden{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+    clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+
+  /* ============================= SCAFFOLDING (mockup-only, not app UI) ============================= */
+  .spec-bar{
+    position:sticky; top:0; z-index:200; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:var(--ink); color:var(--paper); padding:12px 18px; font-size:13px; flex-wrap:wrap;
+  }
+  .spec-bar strong{ font-size:14px; }
+  .spec-bar span{ color:#cabfae; }
+  .spec-bar-tools{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .state-btn{
+    font-size:11.5px; font-weight:700; color:#cabfae; background:transparent;
+    border:1px solid rgba(255,255,255,.3); border-radius:var(--radius-full); padding:6px 12px;
+  }
+  .state-btn:hover{ color:var(--paper); border-color:rgba(255,255,255,.6); }
+  .state-btn.is-active{ color:var(--ink); background:var(--paper); border-color:var(--paper); }
+  .btn-icon{ width:36px; height:36px; padding:0; justify-content:center; border-radius:50%; flex:none; display:inline-flex; align-items:center; }
+  .spec-bar .btn-icon{ background:transparent; border:1px solid rgba(255,255,255,.3); color:var(--paper); }
+  .spec-bar .btn-icon:hover{ background:rgba(255,255,255,.12); }
+  .spec-bar .btn-icon svg{ width:16px; height:16px; }
+  .frame-label{ max-width:1100px; margin:26px auto 10px; padding:0 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); }
+  .frame-wrap{ max-width:1100px; margin:0 auto 40px; padding:0 18px; }
+  .frame-hint{ font-size:12.5px; color:var(--ink-soft); margin:2px 0 0; font-weight:400; text-transform:none; letter-spacing:0; }
+
+  /* Reviewer-facing decisions summary. Not part of the shipped UI — a
+     reading aid for this review round, standing in for the longer
+     explanation in the handoff message. */
+  .notes-panel{
+    max-width:1100px; margin:22px auto 0; padding:16px 18px; background:var(--paper-raised);
+    border:1px solid var(--line); border-radius:var(--radius-md); box-shadow:var(--shadow-sm);
+  }
+  .notes-panel h2{ font-family:var(--font-display); font-size:1.05rem; font-weight:600; margin-bottom:8px; }
+  .notes-panel ol{ list-style:decimal; padding-left:1.2em; display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .notes-panel li::marker{ color:var(--ink-faint); font-weight:700; }
+  .notes-panel strong{ color:var(--ink); }
+
+  /* ============================= BUTTONS / CHIPS / TAGS ============================= */
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; border-radius:var(--radius-full);
+    padding:9px 16px; font-size:13.5px; font-weight:600; background:var(--paper-raised); border-color:var(--line-strong); color:var(--ink);
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease; white-space:nowrap;
+  }
+  .btn:hover{ box-shadow:var(--shadow-sm); }
+  .btn:active{ transform:scale(.97); }
+  .btn svg{ width:15px; height:15px; flex:none; }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-ghost{ background:transparent; border-color:var(--line-strong); }
+  .btn-ghost:hover{ background:var(--paper-sunk); }
+  .btn-sm{ padding:6px 12px; font-size:12.5px; }
+  .btn[disabled]{ opacity:.5; pointer-events:none; }
+
+  .tag{
+    display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700;
+    padding:3px 9px; border-radius:var(--radius-full); letter-spacing:.02em;
+    background:var(--paper-sunk); color:var(--ink-soft); border:1px solid var(--line);
+  }
+  .tag.city{ background:var(--accent-soft); color:var(--accent-soft-ink); border-color:transparent; }
+  .tag.reviewed{ background:var(--jade-soft); color:var(--jade-soft-ink); border-color:transparent; }
+  .tag-icon{ width:10px; height:10px; }
+
+  .flash-confirm{ animation:flashOk .8s ease; }
+  @keyframes flashOk{
+    0%{ box-shadow:0 0 0 0 var(--jade-soft); }
+    25%{ box-shadow:0 0 0 4px var(--jade-soft); }
+    100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+  }
+
+  select{
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:6px 26px 6px 9px; font-size:12px; font-weight:600; color:var(--ink); appearance:none; -webkit-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239C9184' stroke-width='2'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 8px center; background-size:14px;
+  }
+  .text-input{
+    width:100%; background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:8px 10px; font-size:13px; font-family:inherit; color:var(--ink);
+  }
+  .text-input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .field-optional{ color:var(--ink-faint); font-weight:500; text-transform:none; letter-spacing:0; }
+  .field-label{ font-size:11.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:5px; }
+
+  /* Coordinate paste field — ported byte-for-byte from src/index.css
+     (.coord-input etc, backing the Add Place manual-entry flow) and from
+     lib/coordinateInput.ts / lib/gcj02.ts's parsing + China-offset logic.
+     Reused here rather than re-invented: this is the SAME "paste from
+     Google Maps, reversible datum-shift note" pattern, just triggered from
+     the place detail modal's edit session instead of Add Place. */
+  .coord-input{ font-family:var(--font-mono); font-size:13px; }
+  .coord-status{ margin-top:6px; display:flex; flex-direction:column; gap:5px; }
+  .coord-hint{ font-size:12px; color:var(--ink-soft); line-height:1.45; }
+  .coord-ok{ display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--jade-soft-ink); font-family:var(--font-mono); }
+  .coord-ok svg{ width:14px; height:14px; flex:none; }
+  .coord-note{ font-size:11.5px; color:var(--ink-soft); line-height:1.45; }
+  .coord-toggle{
+    display:inline; background:transparent; border:none; padding:0; margin-left:5px;
+    font-size:11.5px; font-weight:600; color:var(--accent); text-decoration:underline;
+  }
+  .coord-toggle:hover{ text-decoration:none; }
+
+  .add-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+  /* ============================= MODAL (mirrors src/components/Modal.tsx) ============================= */
+  .overlay{
+    position:fixed; inset:0; background:rgba(20,14,8,.5); backdrop-filter:blur(2px);
+    display:none; align-items:flex-end; justify-content:center; z-index:100; padding:0;
+  }
+  .overlay.open{ display:flex; }
+  .modal{
+    background:var(--paper-raised); width:100%; max-width:560px; max-height:92vh; overflow-y:auto;
+    border-radius:var(--radius-lg) var(--radius-lg) 0 0; box-shadow:var(--shadow-lg);
+    padding:20px 18px 22px;
+  }
+  @media (min-width:720px){
+    .overlay{ align-items:center; }
+    .modal{ border-radius:var(--radius-lg); max-height:85vh; }
+  }
+  .phone-frame .overlay{ align-items:flex-end; position:absolute; }
+  .phone-frame .modal{ border-radius:var(--radius-lg) var(--radius-lg) 0 0; max-height:94%; }
+
+  .modal-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .modal-title-block{ min-width:0; flex:1; }
+  .modal-title{ font-family:var(--font-display); font-size:1.25rem; font-weight:600; display:flex; align-items:center; gap:9px; }
+  .place-icon{
+    width:24px; height:24px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
+    background:var(--pin-color, var(--d-grey)); box-shadow:0 1px 3px rgba(0,0,0,.2);
+  }
+  .place-icon svg{ width:12px; height:12px; stroke:#fff; fill:none; }
+  .modal-title .place-icon{ width:26px; height:26px; }
+  .modal-title .place-icon svg{ width:13px; height:13px; }
+  .modal-tags{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 0 35px; align-items:center; }
+
+  /* Ported byte-for-byte from mockup/place-detail-modal.html (lines
+     216-221) rather than re-declared — the small icon-link pattern used
+     there for "Notes & review" on a place card, reused here for "View on
+     map" instead of inventing a second version of the same idea. */
+  .detail-link{
+    display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:var(--accent);
+    background:none; border:none; padding:0; text-align:left; align-self:flex-start;
+  }
+  .detail-link:hover{ text-decoration:underline; }
+  .detail-link svg{ width:11px; height:11px; }
+
+  /* "View on map" — the read-mode reply to "should the coordinate be
+     visible?" (see notes panel, decision 2). Round 1 gave this its own
+     class with byte-identical properties to .detail-link (defined in
+     mockup/place-detail-modal.html, the small icon-link pattern already
+     used elsewhere in this app for "Notes & review" on a place card) —
+     the reviewer correctly called that out as reinventing rather than
+     reusing. Fixed: the markup now carries BOTH classes
+     (`class="detail-link modal-map-link"`), .detail-link supplies the
+     actual link look, and .modal-map-link is left with only the
+     layout-specific bits that are genuinely new here (the header
+     indent, the chevron, and the touch-target bump below). Deliberately
+     not a number pair: nobody scans a lat/lng to decide whether a pin is
+     in the right place, they look at a map. Clicking it would switch to
+     the Map tab centred on this pin and close the modal — sketched here
+     as a no-op since that cross-tab handoff is a wiring detail, not a
+     design question this file is about. */
+  .modal-map-link{
+    margin:8px 0 0 35px;
+    /* Round-2 fix (reviewer finding 3): 0 padding + 12px text was a ~14px
+       hit target — under both the design system's ~44px guidance and
+       WCAG 2.2's 24px floor, on exactly the control someone opens this
+       modal to use when a pin is misplaced. min-height alone (rather than
+       padding, which would visibly enlarge the icon/text row) keeps the
+       look identical while giving the whole link a real vertical hit
+       area, consistent with how .modal-close/.modal-edit-btn are sized. */
+    min-height:40px; padding:2px 2px 2px 0;
+  }
+  .modal-map-link .chev{ width:11px; height:11px; margin-left:-1px; }
+
+  .modal-cues{ display:flex; gap:8px; flex-wrap:wrap; margin:9px 0 0 35px; }
+  .editing-cue{
+    display:none; align-self:flex-start; font-size:10.5px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.06em; color:var(--accent-soft-ink); background:var(--accent-soft);
+    padding:3px 9px; border-radius:var(--radius-full); border:none;
+  }
+  .modal[data-mode="edit"] .editing-cue, .modal[data-mode="saving"] .editing-cue{ display:inline-block; }
+  .draft-pill{
+    display:none; align-items:center; gap:5px; align-self:flex-start; font-size:10.5px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.06em; color:var(--gold-soft-ink); background:var(--gold-soft);
+    padding:3px 9px 3px 7px; border-radius:var(--radius-full); border:none;
+  }
+  .draft-pill .dot{ width:6px; height:6px; border-radius:50%; background:var(--gold); flex:none; }
+  .draft-pill:hover{ box-shadow:var(--shadow-sm); }
+  .modal-head-actions{ display:flex; gap:8px; flex:none; }
+  .modal-close, .modal-edit-btn{
+    width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:var(--paper-sunk); border:none; flex:none; color:var(--ink-soft);
+  }
+  .modal-close:hover, .modal-edit-btn:hover{ background:var(--line); color:var(--ink); }
+  .modal-close svg, .modal-edit-btn svg{ width:16px; height:16px; }
+  .modal-close[disabled], .modal-edit-btn[disabled]{ opacity:.4; pointer-events:none; }
+  .modal[data-mode="edit"] .modal-edit-btn, .modal[data-mode="saving"] .modal-edit-btn{ display:none; }
+
+  /* ---------------------------------------------------------------------
+     IDENTITY FIELDS — Name / Category / City / Location.
+     Lives in the modal-head zone, not in a new bordered "Details" section
+     below the fold (that's the arrangement a prior round was rejected for
+     — see notes panel decision 1). Read mode shows a title + two .tag
+     chips + the "View on map" link here; edit mode swaps that SAME zone
+     for a name input + two compact selects + the location disclosure.
+     Same visual footprint, same physical location on screen, one flips to
+     the other — nothing new is inserted between the header and About.
+     --------------------------------------------------------------------- */
+  .identity-edit{ display:none; }
+  .modal[data-mode="edit"] .identity-edit, .modal[data-mode="saving"] .identity-edit{ display:block; }
+  .modal[data-mode="edit"] .modal-title, .modal[data-mode="saving"] .modal-title,
+  .modal[data-mode="edit"] .modal-tags, .modal[data-mode="saving"] .modal-tags,
+  .modal[data-mode="edit"] .modal-map-link, .modal[data-mode="saving"] .modal-map-link{ display:none; }
+
+  /* Deliberately styled like a bigger, plainer version of the read-mode
+     title (same font-display, close to the same size) rather than a
+     generic .text-input — it's still occupying the title's slot, just
+     editable now. */
+  .modal-title-input{
+    display:block; width:100%; font-family:var(--font-display); font-size:1.1rem; font-weight:600;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:7px 10px; color:var(--ink);
+  }
+  .modal-title-input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  /* Category/city: compact selects standing in for the read-mode .tag
+     chips, sized close to chip height rather than a full-height form
+     control — this is the hierarchy fix in miniature. They read as "the
+     tags, but editable" rather than "a form". */
+  .identity-fields-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  .identity-fields-row select{ width:100%; }
+  .identity-fields-row label{ margin-bottom:3px; }
+
+  /* Location: collapsed by default even in edit mode (see notes panel
+     decision 2) — a raw coordinate is a correction path for the rare
+     "the pin is in the wrong place" case, not something to surface every
+     time someone fixes a typo in the name. The toggle itself is text, not
+     a number, so the "no lat/lng in front of the user" principle holds
+     until they explicitly ask to change it. */
+  .location-field{ margin-top:10px; }
+  /* Round-2 fixes (reviewer findings 3 and c): this is the affordance
+     someone opening the modal to fix a misplaced pin most needs to hit,
+     and it was previously a ~14px-tall text row (padding:0, 12px type,
+     --ink-soft). min-height gives it a real ~40px hit area without
+     changing its visual size; darker ink + heavier weight (was
+     --ink-soft/600, now --ink/700) makes it read as an actionable row
+     rather than a caption, now that it's the one place identity
+     information can be corrected. */
+  .location-toggle{
+    display:inline-flex; align-items:center; gap:5px; min-height:40px; background:none; border:none;
+    padding:0 3px; margin:0 0 0 -3px; border-radius:var(--radius-sm);
+    font-size:12.5px; font-weight:700; color:var(--ink);
+  }
+  .location-toggle:hover{ background:var(--paper-sunk); }
+  .location-toggle svg{ width:13px; height:13px; color:var(--ink-faint); flex:none; }
+  .location-toggle .chev{ width:11px; height:11px; color:var(--ink-faint); transition:transform .12s ease; }
+  .location-toggle[aria-expanded="true"] .chev{ transform:rotate(90deg); }
+  .location-toggle .action{ color:var(--accent); text-decoration:underline; }
+  .location-toggle:hover .action{ text-decoration:none; }
+  .location-editor{ display:none; margin-top:8px; padding:10px 11px; background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-sm); }
+  .location-editor.open{ display:block; }
+  .location-editor .field-label{ margin-bottom:6px; }
+
+  /* ============================= ABOUT / MY REVIEW (unchanged shape) ============================= */
+  .detail-section{ margin-top:20px; }
+  .detail-section .field-label{ display:flex; align-items:center; gap:4px; margin-bottom:8px; }
+  .detail-section .field-label svg{ width:11px; height:11px; }
+  .detail-section .detail-prose,
+  .detail-section .detail-empty,
+  .detail-section .detail-edit{ display:none; }
+  .detail-section[data-mode="view-filled"] > .detail-prose{ display:block; }
+  .detail-section[data-mode="view-empty"] > .detail-empty{ display:flex; }
+  .detail-section[data-mode="edit"] > .detail-edit{ display:block; }
+  .detail-prose{ font-size:13.5px; color:var(--ink); white-space:pre-line; line-height:1.6; }
+  .detail-empty{
+    align-items:center; gap:10px; padding:14px; border:1px dashed var(--line-strong); border-radius:var(--radius-md);
+    background:var(--paper-sunk);
+  }
+  .detail-empty svg{ width:18px; height:18px; color:var(--ink-faint); flex:none; }
+  .detail-empty-text{ flex:1; min-width:0; }
+  .detail-empty-text strong{ display:block; font-size:12.5px; color:var(--ink-soft); font-weight:700; }
+  .detail-empty-text span{ font-size:11.5px; color:var(--ink-faint); }
+  .detail-empty .btn{ flex:none; }
+  .detail-edit textarea{
+    width:100%; background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    padding:10px 11px; font-size:13.5px; font-family:inherit; color:var(--ink); resize:vertical; line-height:1.55;
+  }
+  .detail-edit textarea:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .modal[data-mode="saving"] .detail-edit textarea{ opacity:.7; pointer-events:none; }
+  /* Round-2 fix (reviewer finding 2): the prose textareas were locked while
+     a save is in flight but the identity fields — name input, category/city
+     selects, the location toggle and its nested coord input/"correct the
+     offset" button — were not, so a user could keep typing a new name under
+     a visible spinner. Same treatment, same selector shape, just scoped to
+     .identity-edit's controls instead of .detail-edit's. */
+  .modal[data-mode="saving"] .identity-edit input,
+  .modal[data-mode="saving"] .identity-edit select,
+  .modal[data-mode="saving"] .identity-edit button{ opacity:.7; pointer-events:none; }
+  #about-desktop, #about-mobile{ min-height:88px; }
+  #review-desktop, #review-mobile{ min-height:120px; }
+
+  /* Sticky so Save/Cancel stays reachable when an on-screen keyboard eats
+     half a 390px viewport — unchanged from the approved v1. Everything
+     this revision added (name/category/city/location) now also commits
+     through this SAME footer; no second footer/save button was added. */
+  .modal-foot{
+    display:none; flex-direction:column; gap:10px; margin-top:22px; padding-top:14px; padding-bottom:2px;
+    border-top:1px solid var(--line); position:sticky; bottom:0; background:var(--paper-raised); z-index:2;
+  }
+  .modal[data-mode="edit"] .modal-foot, .modal[data-mode="saving"] .modal-foot{ display:flex; }
+  .modal-foot-actions{ display:flex; justify-content:flex-end; gap:10px; }
+  .modal[data-mode="saving"] .modal-foot-actions .btn-primary svg{ animation:spin .8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .save-error{
+    display:none; align-items:flex-start; gap:7px; font-size:12px; font-weight:600; line-height:1.4;
+    color:var(--gold-soft-ink); background:var(--gold-soft); border-radius:var(--radius-sm); padding:9px 10px;
+  }
+  .save-error.show{ display:flex; }
+  .save-error svg{ width:14px; height:14px; flex:none; margin-top:1px; }
+
+  .discard-confirm{
+    display:none; flex-direction:column; gap:10px; margin-top:22px; padding-top:14px; padding-bottom:2px;
+    border-top:1px solid var(--line); position:sticky; bottom:0; background:var(--paper-raised); z-index:2;
+  }
+  .modal[data-mode="confirm-discard"] .discard-confirm{ display:flex; }
+  .modal[data-mode="confirm-discard"] .modal-foot,
+  .modal[data-mode="confirm-discard"] .detail-section,
+  .modal[data-mode="confirm-discard"] .modal-head-actions,
+  .modal[data-mode="confirm-discard"] .identity-edit{ display:none; }
+  .discard-confirm-text{ display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--ink-soft); }
+  .discard-confirm-text svg{ width:16px; height:16px; flex:none; margin-top:1px; color:var(--gold-soft-ink); }
+  .discard-confirm-text strong{ display:block; color:var(--ink); font-size:13.5px; font-weight:700; margin-bottom:2px; }
+  .discard-confirm-actions{ display:flex; justify-content:flex-end; gap:10px; }
+  .discard-btn{ color:var(--gold-soft-ink); }
+
+  /* ============================= PHONE FRAME (mockup scaffolding) ============================= */
+  .phone-frame{
+    position:relative; width:390px; max-width:100%; margin:0 auto; padding:12px;
+    background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:34px; box-shadow:var(--shadow-md);
+  }
+  .phone-screen{ position:relative; background:var(--paper); border-radius:22px; overflow:auto; max-height:760px; padding:16px 14px 24px; min-height:600px; }
+  .phone-caption{ text-align:center; font-size:11.5px; color:var(--ink-faint); margin-top:10px; }
+</style>
+</head>
+<body>
+
+<div class="spec-bar">
+  <div><strong>Place detail — v2</strong> <span>&middot; identity fields folded into the one edit session; no second Save</span></div>
+  <div class="spec-bar-tools">
+    <button type="button" class="state-btn" data-state="view-filled" onclick="setDemoState('view-filled')">Read &middot; filled</button>
+    <button type="button" class="state-btn" data-state="view-empty" onclick="setDemoState('view-empty')">Read &middot; empty</button>
+    <button type="button" class="state-btn" data-state="view-draft" onclick="setDemoState('view-draft')">Read &middot; unsaved draft</button>
+    <button type="button" class="state-btn" data-state="edit" onclick="setDemoState('edit')">Edit</button>
+    <button type="button" class="state-btn" data-state="edit-location" onclick="setDemoState('edit-location')">Edit &middot; location open</button>
+    <button type="button" class="state-btn" data-state="edit-error" onclick="setDemoState('edit-error')">Edit &middot; validation error</button>
+    <button type="button" class="state-btn" data-state="saving" onclick="setDemoState('saving')">Saving&hellip;</button>
+    <button type="button" class="state-btn" data-state="confirm-discard" onclick="setDemoState('confirm-discard')">Discard confirm</button>
+    <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Toggle light / dark">
+      <svg id="themeIcon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+  </div>
+</div>
+
+<svg class="visually-hidden" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <defs>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0112 2a7 7 0 017 7.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5v-15z"/><path d="M4 20.5A2.5 2.5 0 006.5 18H20"/></symbol>
+    <symbol id="i-quote" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8c-2 1-3 3-3 5.5S6 18 8 18"/><path d="M17 8c-2 1-3 3-3 5.5S20 18 22 18"/></symbol>
+    <symbol id="i-cat-landmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 6h-8l4-6z"/><path d="M6 22V10M18 22V10M2 22h20"/></symbol>
+    <symbol id="i-cat-neighbourhood" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V11l4-3 4 3v10"/><path d="M13 21V8l4-4 4 4v13"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.5 8.5 0 1110 3.3 6.7 6.7 0 0020 14.2z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.3l9.7 17.4H2.3L12 3.3z"/><path d="M12 10v4.2"/><circle cx="12" cy="17.4" r="0.6" fill="currentColor" stroke="none"/></symbol>
+  </defs>
+</svg>
+
+<div class="notes-panel">
+  <h2>Design decisions — read before reviewing</h2>
+  <ol>
+    <li><strong>One editor, one Save.</strong> The prior round's separate "Details" block (its own Edit/Save/Cancel) is gone. Name/Category/City/Location now live inside the SAME edit session as About/My review, and commit through the SAME sticky <code>.modal-foot</code> "Discard draft" / "Save changes". There is exactly one pencil in the header; it opens everything at once. The empty-state "+ Add notes" / "+ Write a review" CTAs still enter this same edit mode (see <code>enterEditMode()</code> in the script).</li>
+    <li><strong>Read mode drops the raw coordinate.</strong> Category and city stay as the existing <code>.tag</code> chips under the title — that was already doing its job. Latitude/longitude is gone from permanent view; instead there's a small "View on map" link (reusing the app's existing <code>.detail-link</code> icon-link pattern, not a new control) — nobody scans a number pair to judge whether a pin is right, they look at the map.</li>
+    <li><strong>The hierarchy fix: identity fields occupy the header's own footprint, not a new section.</strong> In edit mode the title becomes a title-styled input and the two tag chips become two compact selects, in the exact same visual slot the read-mode title/tags sit in. Nothing new is inserted between the header and About — the fields most people will never touch this session (they're here to write a review) don't get a competing bordered "Details" block fighting for attention below the fold.</li>
+    <li><strong>Location itself is a collapsed disclosure, even inside edit mode.</strong> "Location set &middot; Change" opens the exact <code>.coord-input</code>/<code>.coord-status</code>/<code>.coord-ok</code>/<code>.coord-note</code>/<code>.coord-toggle</code> pattern already shipped in Add Place (ported byte-identical from <code>src/index.css</code>) with the current coordinate pre-filled and the reversible GCJ-02 note. Correcting a pin's position is rare compared to fixing a name typo or writing a review, so it stays out of sight until asked for — one more lever against the "too many fields at once" problem the previous round tripped on.</li>
+    <li><strong>Validation is one shared error, not four.</strong> Missing name/category/city, or an unparsable location, all resolve to the one <code>.save-error</code> line already sitting above Save — the same place a failed network save already reports through. No inline per-field error styling was invented.</li>
+  </ol>
+  <h2 style="margin-top:14px">Round 2 — reviewer findings addressed</h2>
+  <ol start="6">
+    <li><strong>Focus management on every mode transition.</strong> <code>enterEditMode()</code>/<code>attemptSave()</code>/<code>discardConfirmed()</code>/<code>handleCloseClick()</code> now all move focus explicitly (see <code>applyFocusForTransition()</code>): entering edit or hitting a validation error focuses the name input; save-success, discard-confirmed and "close mid-edit" all land back on the header pencil (<code>#editBtn-{frame}</code>); opening the discard-confirm step focuses "Keep editing". The location-toggle's own re-render got the same treatment. Restores the pattern v1 had and this file had dropped.</li>
+    <li><strong>Identity fields now lock while saving.</strong> <code>.modal[data-mode="saving"] .identity-edit input/select/button</code> gets the same opacity/pointer-events treatment the prose textareas already had — the name input, category/city selects, location toggle and coordinate field can no longer be edited under a live spinner.</li>
+    <li><strong>Bigger hit areas on "Location set · Change" and "View on map."</strong> Both get a real ~40px <code>min-height</code> in place of the old zero-padding text row. The location toggle also picked up darker ink and a heavier weight per the reviewer's note (c) — now reads as an actionable row, not a caption.</li>
+    <li><strong>"View on map" now actually reuses <code>.detail-link</code></strong> (ported byte-for-byte from <code>place-detail-modal.html</code>) instead of a same-shaped-but-separate class; <code>.modal-map-link</code> is left holding only the header-indent/chevron/hit-area bits that are genuinely new.</li>
+    <li><strong>The dialog's accessible name no longer depends on an element that goes <code>display:none</code>.</strong> A stable <code>.visually-hidden</code> <code>&lt;h2&gt;</code> now carries <code>id="modalName-{frame}"</code> and is always rendered; the rich visual title (icon + name) is <code>aria-hidden</code> so it isn't announced twice.</li>
+    <li><strong>Discard-confirm copy no longer overclaims.</strong> It now reads "…including any changes to name, category, city, location, notes and review" rather than always naming the identity fields regardless of what was actually touched.</li>
+  </ol>
+</div>
+
+<!-- ============================= DESKTOP / TABLET DEMO ============================= -->
+<h2 class="frame-label">Desktop / tablet width<span class="frame-hint">Use the state buttons in the bar above &mdash; both frames below track the same state.</span></h2>
+<div class="frame-wrap">
+  <div class="overlay open" id="overlay-desktop" style="position:relative; background:none; backdrop-filter:none; padding:24px 0">
+    <div class="modal" id="modal-desktop" role="dialog" aria-modal="true" aria-labelledby="modalName-desktop" tabindex="-1">
+      MODAL_BODY_DESKTOP
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MOBILE DEMO (390px) ============================= -->
+<h2 class="frame-label">Mobile &mdash; 390px width<span class="frame-hint">Same state, confined to a 390px frame so the bottom-sheet rendering is honest regardless of your browser width.</span></h2>
+<div class="frame-wrap" style="margin-bottom:60px">
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="overlay open" id="overlay-mobile" style="position:relative; background:none; backdrop-filter:none; padding:0; align-items:flex-start">
+        <div class="modal" id="modal-mobile" role="dialog" aria-modal="true" aria-labelledby="modalName-mobile" tabindex="-1" style="max-width:none; border-radius:var(--radius-lg); max-height:none;">
+          MODAL_BODY_MOBILE
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="phone-caption">Bottom-sheet chrome (rounded top corners, sticky footer against the keyboard) is demonstrated at full modal width above; this frame keeps the modal statically visible so every state is reachable without opening/closing it.</p>
+</div>
+
+<script>
+  // ---------------------------------------------------------------------
+  // Demo data. One real place (Hongya Cave, filled + reviewed) and one
+  // sparse place (Ciqikou, nothing written yet) so both the "view-filled"
+  // and "view-empty" states below are honest, not just imagined.
+  // ---------------------------------------------------------------------
+  var PLACE_FILLED = {
+    name: 'Hongya Cave', category: 'Landmark', city: 'Chongqing', icon: 'i-cat-landmark', color: 'var(--d-blue)',
+    lat: 29.5628, lng: 106.5763,
+    description: "Multi-tiered stilt-house complex built into the cliff above the Jialing River — a modern reconstruction of old Bayu-style architecture rather than an actual historic site. Eleven levels connect the riverside road up to Cangbai Road at the top; escalators inside make it easy to skip the stairs if the humidity's bad.\n\nBest seen from across the river, or from Qiansimen Bridge, right after dusk when all the levels light up together.",
+    review: "Worth timing it exactly right — we crossed Qiansimen Bridge at 6:40pm and caught the lights coming on tier by tier, easily the best ten minutes of the Chongqing leg. Skipped the paid rooftop deck; the free view from the bridge is honestly the better angle anyway."
+  };
+  var PLACE_EMPTY = {
+    name: 'Ciqikou Ancient Town', category: 'Neighbourhood', city: 'Chongqing', icon: 'i-cat-neighbourhood', color: 'var(--d-grey)',
+    lat: 29.5747, lng: 106.4592,
+    description: '', review: ''
+  };
+
+  var CATEGORIES = ['Landmark','Garden','Museum','Street / Market','Nature','Neighbourhood','Food'];
+  var CITIES = ['Singapore','Shanghai','Suzhou','Changsha','Zhangjiajie','Chongqing','Chengdu','Guangzhou'];
+
+  // ---------------------------------------------------------------------
+  // Demo state machine. Not the app's real store — enough to drive every
+  // named state from the spec-bar buttons for review purposes.
+  // ---------------------------------------------------------------------
+  var demoState = 'view-filled';
+  var locationOpen = false;
+  var editValues = null; // populated on entering edit
+  var editErrorText = null;
+
+  function cloneEditValues(place){
+    return {
+      name: place.name, category: place.category, city: place.city,
+      lat: place.lat, lng: place.lng, coordText: place.lat.toFixed(4) + ', ' + place.lng.toFixed(4)
+    };
+  }
+
+  function currentReadPlace(){ return demoState === 'view-empty' ? PLACE_EMPTY : PLACE_FILLED; }
+
+  function setDemoState(next){
+    var prev = demoState;
+    demoState = next;
+    locationOpen = (next === 'edit-location');
+    editErrorText = (next === 'edit-error') ? 'Add a name, category, and city to save this place.' : null;
+    if(next === 'edit' || next === 'edit-location' || next === 'edit-error' || next === 'saving'){
+      editValues = editValues || cloneEditValues(PLACE_FILLED);
+      if(next === 'edit-error'){ editValues.name = ''; }
+    } else {
+      editValues = null;
+    }
+    document.querySelectorAll('.state-btn').forEach(function(b){
+      b.classList.toggle('is-active', b.dataset.state === next);
+    });
+    render();
+    applyFocusForTransition(prev, next);
+  }
+
+  // ---------------------------------------------------------------------
+  // Focus management (reviewer round-2 finding 1). enterEditMode() ->
+  // setDemoState('edit') -> render() previously had no .focus() calls at
+  // all — v1 (mockup/place-detail-modal.html, ~lines 867/874/926/935/
+  // 1080/1101) moved focus on every one of these transitions; that pattern
+  // was dropped when this file was written. Every render() call replaces
+  // the modal's innerHTML wholesale, which silently drops focus to <body>
+  // on every state change unless something explicitly re-homes it.
+  //
+  // Rules (mirrors v1):
+  //   - entering edit mode fresh            -> focus the name input
+  //   - a validation error is shown          -> focus the (invalid) name input
+  //   - save succeeds / discard confirmed
+  //     / edit closed without saving         -> focus .modal-edit-btn (id
+  //                                             editBtn-{frame}), since
+  //                                             that's the pencil that will
+  //                                             re-open editing
+  //   - entering the discard confirm step    -> focus "Keep editing", the
+  //                                             non-destructive default
+  //                                             (mirrors its autofocus
+  //                                             attribute, made reliable
+  //                                             across the innerHTML swap)
+  //
+  // Both demo frames (desktop + 390px) are live simultaneously in this
+  // mockup, standing in for two separate instances of the same modal, so
+  // the same rule is applied to both on every transition.
+  // ---------------------------------------------------------------------
+  var EDIT_LIKE_STATES = { edit:1, 'edit-location':1, 'edit-error':1, saving:1 };
+  var VIEW_LIKE_STATES = { 'view-filled':1, 'view-empty':1, 'view-draft':1 };
+
+  function focusEl(id){
+    var el = document.getElementById(id);
+    if(el && typeof el.focus === 'function') el.focus();
+  }
+
+  function applyFocusForTransition(prev, next){
+    if(prev === next) return;
+    ['desktop','mobile'].forEach(function(frame){
+      if(next === 'edit-error'){
+        focusEl('name-' + frame);
+      } else if(next === 'confirm-discard'){
+        focusEl('keepEditing-' + frame);
+      } else if(!EDIT_LIKE_STATES[prev] && EDIT_LIKE_STATES[next]){
+        // Freshly entering edit mode (including re-entering it from the
+        // discard-confirm step via "Keep editing").
+        focusEl('name-' + frame);
+      } else if((EDIT_LIKE_STATES[prev] || prev === 'confirm-discard') && VIEW_LIKE_STATES[next]){
+        // Save succeeded, discard confirmed, or the modal was closed
+        // mid-edit without saving — all land back on a view-* state.
+        focusEl('editBtn-' + frame);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Simplified coordinate parsing for this mockup — decimal-pair only,
+  // mirroring the shape (not the full URL-format coverage) of the real
+  // lib/coordinateInput.ts, which also accepts DMS pairs and pasted Google
+  // Maps URLs. The full parser is production logic, not a design decision;
+  // reusing its class names/interaction is the point of this file, not
+  // re-implementing every input format it accepts.
+  // ---------------------------------------------------------------------
+  function parseCoord(text){
+    var m = /^([+-]?\d{1,3}(?:\.\d+)?)\s*[,\s]\s*([+-]?\d{1,3}(?:\.\d+)?)$/.exec(text.trim());
+    if(!m) return null;
+    var lat = Number(m[1]), lng = Number(m[2]);
+    if(lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat: lat, lng: lng };
+  }
+  // Toy stand-in for lib/gcj02.ts's real datum conversion — shifts by a
+  // fixed, plausible-looking amount so "Correct the offset" has something
+  // to visibly do in this mockup. Never treat this constant as real.
+  function fakeShift(pt){ return { lat: pt.lat - 0.0016, lng: pt.lng - 0.0021 }; }
+  function isInsideChinaish(pt){ return pt.lat > 15 && pt.lat < 55 && pt.lng > 70 && pt.lng < 137; }
+  function haversineApprox(a, b){
+    var R = 6371000, dLat = (b.lat - a.lat) * Math.PI/180, dLng = (b.lng - a.lng) * Math.PI/180;
+    var s = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s)));
+  }
+
+  function toggleLocationEditor(){
+    locationOpen = !locationOpen;
+    render();
+    // render() rebuilds the modal's innerHTML, which would otherwise drop
+    // focus off the very toggle button that was just clicked — same class
+    // of bug as finding 1, just triggered by a different control. Both
+    // frames share one locationOpen flag (see the note on toggleLocationEditor
+    // not taking a frame argument), so re-home focus in both.
+    ['desktop','mobile'].forEach(function(frame){ focusEl('locToggle-' + frame); });
+  }
+
+  function handleCoordInput(frame, value){
+    if(!editValues) return;
+    editValues.coordText = value;
+    renderLocationStatus(frame);
+  }
+
+  function renderLocationStatus(frame){
+    var toggle = document.getElementById('locToggle-' + frame);
+    var editor = document.getElementById('locEditor-' + frame);
+    if(toggle) toggle.setAttribute('aria-expanded', String(locationOpen));
+    if(editor) editor.classList.toggle('open', locationOpen);
+    if(!locationOpen || !editValues) return;
+    var input = document.getElementById('coord-' + frame);
+    var parsed = input ? parseCoord(input.value) : null;
+    var applyShift = editValues.applyShift !== false;
+    var shiftAvailable = parsed && isInsideChinaish(parsed);
+    var finalPt = parsed && shiftAvailable && applyShift ? fakeShift(parsed) : parsed;
+    var okEl = document.getElementById('coordOk-' + frame);
+    var hintEl = document.getElementById('coordHint-' + frame);
+    var noteEl = document.getElementById('coordNote-' + frame);
+    if(okEl) okEl.style.display = finalPt ? 'flex' : 'none';
+    if(hintEl) hintEl.style.display = finalPt ? 'none' : 'block';
+    if(okEl && finalPt) okEl.querySelector('span').textContent = 'Pin moves to ' + finalPt.lat.toFixed(5) + ', ' + finalPt.lng.toFixed(5);
+    if(noteEl){
+      if(shiftAvailable && finalPt){
+        noteEl.style.display = 'block';
+        var dist = haversineApprox(parsed, finalPt);
+        noteEl.querySelector('.coord-note-text').textContent = applyShift
+          ? ('Moved ' + dist + 'm to correct China’s map offset — Google’s coordinates are shifted there, ours aren’t. ')
+          : 'Using these numbers exactly. If you pasted them from Google, the pin may sit a few hundred metres out. ';
+        noteEl.querySelector('.coord-toggle').textContent = applyShift ? 'Use the pasted numbers instead' : 'Correct the offset';
+      } else {
+        noteEl.style.display = 'none';
+      }
+    }
+  }
+
+  function toggleShift(frame){
+    if(!editValues) return;
+    editValues.applyShift = editValues.applyShift === false ? true : false;
+    renderLocationStatus(frame);
+  }
+
+  function enterEditMode(){ setDemoState('edit'); }
+
+  // Closing (X / overlay / Escape) is NEVER destructive under the real
+  // app's local-draft model — the draft autosaves in the background as you
+  // type, so closing mid-edit just steps back to read mode with the
+  // "Unsaved changes" pill showing, the same as the approved v1. It is
+  // NOT the same action as the footer's explicit "Discard draft", which is
+  // the one thing that still needs the confirm step below.
+  function handleCloseClick(){
+    if(demoState === 'edit' || demoState === 'edit-location' || demoState === 'edit-error'){
+      setDemoState('view-draft');
+      return;
+    }
+    if(demoState === 'confirm-discard'){ keepEditing(); return; }
+    setDemoState('view-filled');
+  }
+
+  function handleDiscardClick(){ setDemoState('confirm-discard'); }
+  function keepEditing(){ setDemoState('edit'); }
+  function discardConfirmed(){ setDemoState('view-filled'); }
+
+  function attemptSave(){
+    if(!editValues) return;
+    // Reads the desktop frame's name field regardless of which frame's Save
+    // was actually clicked — a mockup simplification, since both frames are
+    // meant to mirror one shared state rather than being independently
+    // editable documents. Not a statement about which frame "wins" in the
+    // real single-instance app.
+    var name = document.getElementById('name-desktop') ? document.getElementById('name-desktop').value.trim() : editValues.name;
+    if(!name){
+      setDemoState('edit-error');
+      return;
+    }
+    setDemoState('saving');
+    window.setTimeout(function(){
+      // Commits everything — identity fields and prose — through this one
+      // path, then returns to read mode with a save confirmation. This is
+      // the "one Save, one discard story" the header pencil promises.
+      PLACE_FILLED.name = name;
+      setDemoState('view-filled');
+      var modalD = document.getElementById('modal-desktop');
+      var modalM = document.getElementById('modal-mobile');
+      [modalD, modalM].forEach(function(m){
+        m.classList.remove('flash-confirm'); void m.offsetWidth; m.classList.add('flash-confirm');
+      });
+    }, 700);
+  }
+
+  // ---------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------
+  function fieldHTML(frame){
+    var readPlace = currentReadPlace();
+    var editing = (demoState === 'edit' || demoState === 'edit-location' || demoState === 'edit-error' || demoState === 'saving');
+    var saving = demoState === 'saving';
+    var mode = demoState === 'confirm-discard' ? 'confirm-discard' : (editing ? (saving ? 'saving' : 'edit') : 'view');
+
+    var reviewed = readPlace.review ? '<span class="tag reviewed"><svg class="tag-icon" aria-hidden="true"><use href="#i-check"/></svg>Reviewed</span>' : '';
+
+    var evals = editValues || cloneEditValues(PLACE_FILLED);
+
+    return '' +
+      '<div class="modal-head">' +
+        '<div class="modal-title-block">' +
+          '<h2 class="visually-hidden" id="modalName-' + frame + '">' + escapeHtml(readPlace.name) + ' — place details</h2>' +
+          '<h2 class="modal-title" aria-hidden="true">' +
+            '<span class="place-icon" style="--pin-color:' + readPlace.color + '"><svg aria-hidden="true"><use href="#' + readPlace.icon + '"/></svg></span>' +
+            '<span>' + readPlace.name + '</span>' +
+          '</h2>' +
+          '<div class="modal-tags">' +
+            '<span class="tag">' + readPlace.category + '</span>' +
+            '<span class="tag city">' + readPlace.city + '</span>' +
+            reviewed +
+          '</div>' +
+          '<button type="button" class="detail-link modal-map-link" onclick="return false" title="Sketch only — would switch to the Map tab centred on this pin">' +
+            '<svg aria-hidden="true"><use href="#i-target"/></svg> View on map <svg class="chev" aria-hidden="true"><use href="#i-chevron-right"/></svg>' +
+          '</button>' +
+
+          '<!-- IDENTITY EDIT — occupies the exact same visual slot as the title+tags above; only one of the two is ever visible (CSS keyed on [data-mode]). -->' +
+          '<div class="identity-edit">' +
+            '<label class="visually-hidden" for="name-' + frame + '">Name</label>' +
+            '<input class="modal-title-input" id="name-' + frame + '" type="text" value="' + escapeAttr(evals.name) + '" oninput="if(editValues){editValues.name=this.value}" placeholder="Place name">' +
+            '<div class="identity-fields-row">' +
+              '<div>' +
+                '<label class="field-label" for="cat-' + frame + '">Category</label>' +
+                '<select id="cat-' + frame + '" onchange="if(editValues){editValues.category=this.value}">' +
+                  CATEGORIES.map(function(c){ return '<option' + (c === evals.category ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
+                '</select>' +
+              '</div>' +
+              '<div>' +
+                '<label class="field-label" for="city-' + frame + '">City</label>' +
+                '<select id="city-' + frame + '" onchange="if(editValues){editValues.city=this.value}">' +
+                  CITIES.map(function(c){ return '<option' + (c === evals.city ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
+                '</select>' +
+              '</div>' +
+            '</div>' +
+            '<div class="location-field">' +
+              '<button type="button" class="location-toggle" id="locToggle-' + frame + '" aria-expanded="' + locationOpen + '" aria-controls="locEditor-' + frame + '" onclick="toggleLocationEditor()">' +
+                '<svg aria-hidden="true"><use href="#i-pin"/></svg> <span>Location set</span> &middot; <span class="action">Change</span> <svg class="chev" aria-hidden="true"><use href="#i-chevron-right"/></svg>' +
+              '</button>' +
+              '<div class="location-editor' + (locationOpen ? ' open' : '') + '" id="locEditor-' + frame + '">' +
+                '<label class="field-label" for="coord-' + frame + '">Location</label>' +
+                '<input class="text-input coord-input" type="text" id="coord-' + frame + '" value="' + escapeAttr(evals.coordText) + '" ' +
+                  'oninput="handleCoordInput(\'' + frame + '\', this.value)" placeholder="31.2304, 121.4737 — or a Google Maps link" autocomplete="off" spellcheck="false">' +
+                '<div class="coord-status" aria-live="polite">' +
+                  '<p class="coord-ok" id="coordOk-' + frame + '"><svg aria-hidden="true"><use href="#i-target"/></svg><span></span></p>' +
+                  '<p class="coord-hint" id="coordHint-' + frame + '">Paste a pair like 31.2304, 121.4737, or a full Google Maps link.</p>' +
+                  '<p class="coord-note" id="coordNote-' + frame + '"><span class="coord-note-text"></span><button type="button" class="coord-toggle" onclick="toggleShift(\'' + frame + '\')">Correct the offset</button></p>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="modal-cues">' +
+            '<span class="editing-cue">Editing</span>' +
+            (demoState === 'view-draft' ? '<button type="button" class="draft-pill" onclick="enterEditMode()"><span class="dot" aria-hidden="true"></span>Unsaved changes</button>' : '') +
+          '</div>' +
+        '</div>' +
+        (mode !== 'confirm-discard' ? (
+          '<div class="modal-head-actions">' +
+            (mode === 'view' ? '<button class="modal-edit-btn" id="editBtn-' + frame + '" aria-label="Edit place" onclick="enterEditMode()"><svg aria-hidden="true"><use href="#i-edit"/></svg></button>' : '') +
+            '<button class="modal-close" aria-label="Close" onclick="handleCloseClick()" ' + (mode === 'saving' ? 'disabled' : '') + '><svg aria-hidden="true"><use href="#i-close"/></svg></button>' +
+          '</div>'
+        ) : '') +
+      '</div>' +
+
+      sectionHTML(frame, 'about', 'About', 'i-book', readPlace.description, editing,
+        'Nothing written yet', 'Opening hours, best time of day, tips before you go', '+ Add notes',
+        'What should you know before visiting? Opening hours, best time of day, getting there, tips…') +
+      sectionHTML(frame, 'review', 'My review', 'i-quote', readPlace.review, editing,
+        "You haven't reviewed this place yet", "Write it up once you've been", '+ Write a review',
+        "How did it go? Worth it, what you'd skip next time, how long you stayed…") +
+
+      (editing ? (
+        '<div class="modal-foot">' +
+          '<p class="save-error' + (editErrorText ? ' show' : '') + '" role="alert"><svg aria-hidden="true"><use href="#i-alert"/></svg><span>' + (editErrorText || '') + '</span></p>' +
+          '<div class="modal-foot-actions">' +
+            '<button type="button" class="btn btn-ghost" onclick="handleDiscardClick()" ' + (saving ? 'disabled' : '') + '>Discard draft</button>' +
+            '<button type="button" class="btn btn-primary" onclick="attemptSave()" ' + (saving ? 'disabled' : '') + '><svg aria-hidden="true"><use href="#i-check"/></svg> <span>' + (saving ? 'Saving…' : 'Save changes') + '</span></button>' +
+          '</div>' +
+        '</div>'
+      ) : '') +
+
+      (demoState === 'confirm-discard' ? (
+        '<div class="discard-confirm">' +
+          '<p class="discard-confirm-text"><svg aria-hidden="true"><use href="#i-alert"/></svg><span><strong>Discard this draft?</strong>It’ll be replaced with what’s currently saved &mdash; including any changes to name, category, city, location, notes and review. This can’t be undone.</span></p>' +
+          '<div class="discard-confirm-actions">' +
+            '<button type="button" class="btn discard-btn" onclick="discardConfirmed()">Discard draft</button>' +
+            '<button type="button" class="btn btn-primary" id="keepEditing-' + frame + '" onclick="keepEditing()" autofocus>Keep editing</button>' +
+          '</div>' +
+        '</div>'
+      ) : '');
+  }
+
+  function sectionHTML(frame, key, label, icon, text, editing, emptyTitle, emptyHint, emptyCta, placeholder){
+    var mode = editing ? 'edit' : (text ? 'view-filled' : 'view-empty');
+    return '' +
+      '<div class="detail-section" data-mode="' + mode + '">' +
+        '<label class="field-label" for="' + key + '-' + frame + '"><svg aria-hidden="true"><use href="#' + icon + '"/></svg>' + label + '</label>' +
+        '<div class="detail-prose">' + escapeHtml(text) + '</div>' +
+        '<div class="detail-empty">' +
+          '<svg aria-hidden="true"><use href="#' + icon + '"/></svg>' +
+          '<div class="detail-empty-text"><strong>' + emptyTitle + '</strong><span>' + emptyHint + '</span></div>' +
+          '<button type="button" class="btn btn-sm btn-ghost" onclick="enterEditMode()">' + emptyCta + '</button>' +
+        '</div>' +
+        '<div class="detail-edit"><textarea id="' + key + '-' + frame + '" placeholder="' + escapeAttr(placeholder) + '">' + escapeHtml(text) + '</textarea></div>' +
+      '</div>';
+  }
+
+  function escapeHtml(s){ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+
+  function render(){
+    ['desktop','mobile'].forEach(function(frame){
+      var modal = document.getElementById('modal-' + frame);
+      var mode = demoState === 'confirm-discard' ? 'confirm-discard' :
+        (demoState === 'saving' ? 'saving' : ((demoState === 'edit' || demoState === 'edit-location' || demoState === 'edit-error') ? 'edit' : 'view'));
+      modal.dataset.mode = mode;
+      modal.innerHTML = fieldHTML(frame);
+      renderLocationStatus(frame);
+    });
+  }
+
+  // ---------- theme toggle ----------
+  function systemTheme(){ return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+  function effectiveTheme(){ return document.documentElement.getAttribute('data-theme') || systemTheme(); }
+  function applyThemeIcon(){
+    var eff = effectiveTheme();
+    document.getElementById('themeIcon').innerHTML = '<use href="#i-' + (eff === 'dark' ? 'sun' : 'moon') + '"/>';
+  }
+  function toggleTheme(){
+    document.documentElement.setAttribute('data-theme', effectiveTheme() === 'dark' ? 'light' : 'dark');
+    applyThemeIcon();
+  }
+  applyThemeIcon();
+
+  setDemoState('view-filled');
+</script>
+</body>
+</html>

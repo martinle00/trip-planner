@@ -265,15 +265,20 @@ svg{ display:block; }
    a mobile override) as defence in depth. Root cause was CSS2.1 painting
    order: in-flow inline text (step 5) paints BEFORE a positioned descendant
    at z-index:0 (step 6), so this line always painted OVER `.route-city`
-   regardless of DOM order. Desktop never showed it because `top:11px` keeps
+   regardless of DOM order. Desktop never showed it because `top:8px` keeps
    the line at dot height, spatially clear of the text below — but Phase 5's
    mobile override put it at `top:50%` in a row layout, dead centre through
    the letters. Moving to z-index:-1 pushes the line into CSS2.1's step 2
    (negative stacking contexts, painted before ANY in-flow content), so it
    can no longer paint over text by construction, regardless of what future
    layout change might reposition it. */
+/* top:8px centres the 2px line on the dot: the node's padding-top is 4px and
+   the dot's box is 10px, so the dot spans y4-14 with its centre at y9, and a
+   2px line at y8-10 is centred on it. (It was 11px — inside the dot, so it
+   looked plausible, but it sat in the dot's lower third and every connector
+   in the strip rode low.) */
 .route-node .line{
-  position:absolute; top:11px; left:-52px; width:104px; height:2px; background:var(--line-strong); z-index:-1;
+  position:absolute; top:8px; left:-52px; width:104px; height:2px; background:var(--line-strong); z-index:-1;
 }
 .route-node:first-child .line{ display:none; }
 .route-dot{
@@ -282,7 +287,14 @@ svg{ display:block; }
   transition: width .12s ease, height .12s ease, background .12s ease, box-shadow .12s ease;
 }
 .route-city{ font-size:12px; font-weight:700; transition: color .12s ease; }
-.route-date{ font-size:10.5px; color:var(--ink-soft); transition: color .12s ease; }
+/* nowrap: "Day trip · 21 Nov" is roughly twice the length of "20–23 Nov" in
+   the same ~100px node, and a wrapped second line would stretch every
+   sibling node (the strip is a stretch row) and leave dead space under the
+   short ones. */
+.route-date{
+  font-size:10.5px; color:var(--ink-soft); transition: color .12s ease;
+  max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
 .route-node:hover .route-city{ color:var(--accent); }
 
 /* active = the city currently driving the Map screen (the timeline is the
@@ -298,6 +310,36 @@ svg{ display:block; }
   width:0; height:2.5px; background:var(--accent); border-radius:2px; transition:width .15s ease;
 }
 .route-node.active::before{ width:26px; }
+
+/* A day-trip leg (Wulong from Chongqing, Shenzhen from Guangzhou): you go
+   there, but you don't sleep there. It's selectable like any other leg, and
+   marked so it doesn't read as another overnight stop — a hollow dot and a
+   dashed connector, the same "nested under its parent" language the
+   Itinerary tab already uses for `.it-day.nested`. */
+/* The dot is the FIRST flex child, so its box height sets where `.route-city`
+   and `.route-date` start (4px padding + dot + 6px gap). Resizing it for the
+   day-trip variant therefore pushed those labels 2px up relative to every
+   ordinary node beside them — which is what made the strip look out of line.
+   Hollow is expressed purely in colour; the box stays 10px (13px active),
+   identical to a normal node. Don't reintroduce a width/height here. */
+.route-node.is-daytrip .route-dot{
+  background:var(--paper); box-shadow:0 0 0 1.5px var(--line-strong);
+}
+/* border-top on a zero-height box paints along the box's TOP edge, so this
+   has to sit at the same `top` as the solid segment's box (which fills
+   downward from its own top edge) — any other value and the dashed and solid
+   segments meet with a visible step where two nodes touch. */
+.route-node.is-daytrip .line{
+  background:none; height:0; top:8px;
+  border-top:2px dashed var(--line-strong);
+}
+.route-node.is-daytrip .route-city{ font-weight:600; }
+/* Active still means accent, at the same 13px as any other active node — the
+   inset ring is what keeps it reading as a day trip, since a 2px size
+   difference isn't a signal anyone can rely on. */
+.route-node.is-daytrip.active .route-dot{
+  background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft), inset 0 0 0 2px var(--paper);
+}
 
 /* "this city has unsaved (staged) changes" — same gold dot-on-border language
    as .pin-pending-dot below, so the signal reads the same wherever it shows
@@ -343,9 +385,9 @@ svg{ display:block; }
      side of its own node (same relationship the base 104px/-52px and the
      desktop is-condensed 60px/-30px pairings each keep for their own node
      width); leaving it at the base pairing here would overshoot into
-     neighbouring nodes. top:11px (not 50%) matches the base/desktop rule —
-     dot height, not label height. */
-  .route-node .line{ top:11px; width:92px; left:-46px; }
+     neighbouring nodes. top:8px (not 50%) matches the base/desktop rule —
+     the dot's vertical centre, not label height. */
+  .route-node .line{ top:8px; width:92px; left:-46px; }
   /* 11.5px — matches this file's own mobile route-city size exactly (see
      PHASE6.md's item-4 note on validating against the real value, not a more
      generous stand-in). */
@@ -1344,11 +1386,18 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    divider, inline discard-draft confirm (Phase 4 items 3/4/5). Mirrors
    mockup/place-detail-modal.html; opened from PlacesPanel's PlaceCard via
    PlaceDetailModal.tsx, on top of the shared Modal.tsx. */
-.modal-title-block{ min-width:0; }
+/* One rhythm for the whole head: every row here (title, tags, map link,
+   cues, and the identity fields that replace them in edit mode) is spaced
+   by this single `gap`, not by a per-row margin-top. Those margins had
+   drifted to 8px/9px/8px and, combined with the map link's 40px touch
+   target, made the read-mode stack look unevenly padded. */
+.modal-title-block{ min-width:0; flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
 .modal-title .place-icon{ width:26px; height:26px; }
 .modal-title .place-icon svg{ width:13px; height:13px; }
-.modal-tags{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 0 35px; }
-.modal-cues{ display:flex; gap:8px; flex-wrap:wrap; margin:9px 0 0 35px; }
+/* 34px indent = the 26px place-icon + `.modal-title`'s own 8px gap, so every
+   row below the title lines up with the title TEXT rather than its icon. */
+.modal-tags{ display:flex; gap:6px; flex-wrap:wrap; margin-left:34px; }
+.modal-cues{ display:flex; gap:8px; flex-wrap:wrap; margin-left:34px; }
 .editing-cue{
   display:inline-block; align-self:flex-start; font-size:10.5px; font-weight:700;
   text-transform:uppercase; letter-spacing:.06em; color:var(--accent-soft-ink); background:var(--accent-soft);
@@ -1366,7 +1415,10 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 }
 .draft-pill .dot{ width:6px; height:6px; border-radius:50%; background:var(--gold); flex:none; }
 .draft-pill:hover{ box-shadow:var(--shadow-sm); }
-.modal-head-actions{ display:flex; gap:8px; flex:none; }
+/* -2px: `.modal-head` is align-items:flex-start (correct — centring would
+   centre these against the whole multi-row title column), which leaves the
+   38px buttons' optical centre ~3.5px below the title's. */
+.modal-head-actions{ display:flex; gap:8px; flex:none; margin-top:-2px; }
 /* 38px, matching the app-wide .btn-icon circle — this dialog is heavily
    thumb-driven on mobile, so it gets the standard touch-friendly size
    instead of the shared .modal-close's smaller 30px (kept as-is for the
@@ -1382,6 +1434,80 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .detail-section{ margin-top:20px; }
 .detail-section .field-label{ display:flex; align-items:center; gap:5px; margin-bottom:8px; }
 .detail-section .field-label svg{ width:11px; height:11px; flex:none; }
+/* ---------------------------------------------------------------------
+   IDENTITY FIELDS — name / category / city / location.
+   Ported from mockup/place-detail-modal-v2.html (approved). They live in
+   the modal-head zone, NOT in a bordered section of their own below it:
+   read mode shows title + tag chips + "View on map" there, edit mode swaps
+   that SAME zone for a name input + two compact selects + the location
+   disclosure. One of the two is ever visible, so nothing is inserted
+   between the header and the prose the modal is really about. An earlier
+   second-editor arrangement was rejected in review for exactly that.
+   --------------------------------------------------------------------- */
+
+/* "View on map" is read mode's answer to "where is this?" — a map, not a
+   lat/lng pair. It reuses .detail-link (the place card's icon-link) and
+   adds only the header indent and a real touch target: at 12px text with
+   no padding it was a ~14px hit area, under both the 44px guidance here
+   and WCAG 2.2's 24px floor, on the control someone opens this modal to
+   use when a pin is wrong. min-height (not padding) buys the height
+   without visually enlarging the row. */
+/* This row has to be both a real touch target and on the head's 8px rhythm,
+   and the two constrain each other: the link's content is 18px tall (12px
+   text × the inherited 1.5 line-height — NOT the 14px of the glyph), so a
+   40px box cannot be pulled back into the rhythm at all — 40 > 18+8+8, so
+   any negative margin big enough to close the gap makes the hit box overlap
+   the chips above and the draft pill below. 32px is the largest box that
+   fits: (32-18)/2 = 7px of slack each side, cancelled by -7px margins for
+   an exact 8px optical gap, and still clear of WCAG 2.2 §2.5.8's 24px
+   floor. Don't raise it back to 40px without redoing this arithmetic. */
+.modal-map-link{ margin:-7px 0 -7px 34px; min-height:32px; padding:0 2px 0 0; }
+.modal-map-link .chev{ width:11px; height:11px; margin-left:-1px; }
+
+/* Deliberately a bigger, plainer version of the read-mode title rather
+   than a generic .text-input — it still occupies the title's slot, just
+   editable now. */
+/* Full width inside the head's flex column (which is align-items:flex-start,
+   so children shrink to content by default). */
+.identity-edit{ width:100%; }
+.modal-title-input{
+  display:block; width:100%; font-family:var(--font-display); font-size:1.1rem; font-weight:600;
+  background:var(--paper-sunk); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+  padding:7px 10px; color:var(--ink);
+}
+/* Compact selects standing in for the read-mode tag chips — "the tags, but
+   editable", not "a form". That's the hierarchy fix in miniature. */
+.identity-fields-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+.identity-fields-row select{ width:100%; }
+.identity-fields-row .field-label{ display:block; margin-bottom:3px; }
+
+.location-field{ margin-top:8px; }
+/* Same touch-target reasoning as .modal-map-link, plus --ink/700 instead of
+   --ink-soft/600 so it reads as an actionable row rather than a caption:
+   this is the one place a misplaced pin can be corrected. */
+.location-toggle{
+  display:inline-flex; align-items:center; gap:5px; min-height:40px; background:none; border:none;
+  padding:0 3px; margin:0 0 0 -3px; border-radius:var(--radius-sm);
+  font-size:12.5px; font-weight:700; color:var(--ink);
+}
+.location-toggle:hover{ background:var(--paper-sunk); }
+.location-toggle svg{ width:13px; height:13px; color:var(--ink-faint); flex:none; }
+.location-toggle .chev{ width:11px; height:11px; color:var(--ink-faint); transition:transform .12s ease; }
+.location-toggle[aria-expanded="true"] .chev{ transform:rotate(90deg); }
+.location-toggle .action{ color:var(--accent); text-decoration:underline; }
+.location-toggle:hover .action{ text-decoration:none; }
+.location-editor{
+  display:none; margin-top:8px; padding:10px 11px;
+  background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-sm);
+}
+.location-editor.open{ display:block; }
+.location-editor .field-label{ display:block; margin-bottom:6px; }
+/* Everything in the identity block locks under a live spinner, matching
+   what the prose textareas already do — a name you can still type into
+   while "Saving…" spins is a lie about which value gets committed. */
+.identity-edit input:disabled,
+.identity-edit select:disabled,
+.identity-edit button:disabled{ opacity:.7; pointer-events:none; }
 .detail-prose{ font-size:13.5px; color:var(--ink); white-space:pre-line; line-height:1.6; }
 .prose-block{ display:block; }
 /* The crude-by-design "keep both" conflict resolution: rendered from a

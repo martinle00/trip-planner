@@ -38,21 +38,47 @@ export function daysForCity(days: Day[], cityName: string): Day[] {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function dayOrdinal(day: Day, cityDays: Day[]): number {
-  return cityDays.findIndex((d) => d.id === day.id) + 1;
+/**
+ * Every day of a leg, INCLUDING the days spent on its day trips, sorted by
+ * date. `daysForCity` deliberately excludes them (a day trip's `Day.city` is
+ * the day-trip city), which is right for filtering — a Wulong day holds
+ * Wulong's stops — but wrong for counting: skipping the day trip would
+ * renumber the days either side of it, so 20/11 → "Day 1", 21/11 → Wulong,
+ * 22/11 → "Day 2" instead of "Day 3". You were still in Chongqing on the
+ * 22nd for the third day of that leg.
+ */
+export function daysForLeg(days: Day[], cityName: string): Day[] {
+  return days
+    .filter((d) => d.city === cityName || d.parentCity === cityName)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function dayOrdinal(day: Day, legDays: Day[]): number {
+  return legDays.findIndex((d) => d.id === day.id) + 1;
 }
 
 /**
  * Human label for a day, consistent across Map chips / Itinerary headers /
  * pin details:
  *  - a day-trip leg (parentCity set) → "Day trip · Mon 10 Nov"
- *  - a city with >1 calendar day → "Day 2 · Mon 10 Nov" (ordinal within that city)
- *  - a single-day city → "Mon 10 Nov"
+ *  - a leg with >1 calendar day → "Day 2 · Mon 10 Nov" (ordinal within the leg)
+ *  - a single-day leg → "Mon 10 Nov"
+ *
+ * `legDays` must be the leg's days INCLUDING its day trips (`daysForLeg`),
+ * or the ordinals skip a number around every day trip. A day-trip day still
+ * occupies its slot in that list — it just prints as "Day trip" instead of
+ * its number.
  */
-export function dayLabel(day: Day, cityDays: Day[]): string {
+export function dayLabel(day: Day, legDays: Day[], options?: { withDayTripCity?: boolean }): string {
   const dm = fmtWeekdayDayMonth(day.date);
-  if (day.parentCity) return `Day trip · ${dm}`;
-  if (cityDays.length > 1) return `Day ${dayOrdinal(day, cityDays)} · ${dm}`;
+  // `withDayTripCity` is for surfaces that show the day nested under its
+  // PARENT city (the Itinerary tab), where "Day trip" alone doesn't say
+  // where to. On the Map the day-trip city is already the selected one, so
+  // naming it again would just be an echo.
+  if (day.parentCity) {
+    return options?.withDayTripCity ? `Day trip · ${day.city} · ${dm}` : `Day trip · ${dm}`;
+  }
+  if (legDays.length > 1) return `Day ${dayOrdinal(day, legDays)} · ${dm}`;
   return dm;
 }
 
@@ -79,8 +105,11 @@ export interface ItineraryCitySection {
   city: City;
   range: string;
   days: ItineraryDayRow[];
-  /** This city's own (non-day-trip) days — used to compute "Day N" ordinals. */
+  /** This city's own (non-day-trip) days. */
   ownDays: Day[];
+  /** Own days AND its day trips', date-sorted — what "Day N" counts over, so
+   *  a day trip doesn't renumber the days after it. */
+  legDays: Day[];
 }
 
 /**
@@ -99,7 +128,13 @@ export function buildItinerarySections(trip: Trip, days: Day[]): ItineraryCitySe
       ...ownDays.map((day) => ({ day, nested: false })),
       ...childDays.map((day) => ({ day, nested: true })),
     ].sort((a, b) => a.day.date.localeCompare(b.day.date));
-    return { city, range: fmtRange(city.arrive, city.depart), days: merged, ownDays };
+    return {
+      city,
+      range: fmtRange(city.arrive, city.depart),
+      days: merged,
+      ownDays,
+      legDays: merged.map((row) => row.day),
+    };
   });
 }
 

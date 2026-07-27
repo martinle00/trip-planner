@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildSeed } from '../data/seed';
 import { autoPlan, DEFAULT_AUTOPLAN_CONFIG } from './autoplan';
-import type { DayPlan } from './autoplan';
+import type { AutoPlanConfig, DayPlan } from './autoplan';
+import type { Day, Place } from '../data/schema';
 
 function timeToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -57,10 +58,14 @@ describe('autoPlan', () => {
       let prevMinutes = -1;
       dp.stops.forEach((stop, idx) => {
         expect(stop.order).toBe(idx);
-        expect(stop.startTime).toMatch(/^\d{2}:\d{2}$/);
         expect(stop.durationMin).toBe(DEFAULT_AUTOPLAN_CONFIG.avgMinutesPerStop);
-        const minutes = timeToMinutes(stop.startTime);
+        // Under the default config every stop fits inside the day, so all of
+        // them are timed. A stop that didn't fit is left untimed rather than
+        // carrying an out-of-range time like "25:00".
+        expect(stop.startTime).toMatch(/^\d{2}:\d{2}$/);
+        const minutes = timeToMinutes(stop.startTime!);
         expect(minutes).toBeGreaterThan(prevMinutes);
+        expect(minutes).toBeLessThan(24 * 60);
         prevMinutes = minutes;
       });
     }
@@ -125,5 +130,75 @@ describe('autoPlan', () => {
     const plan = autoPlan([...seed.places, badPlace], seed.days, DEFAULT_AUTOPLAN_CONFIG);
     const placedIds = new Set(plan.flatMap((dp) => dp.stops.map((s) => s.placeId)));
     expect(placedIds.has('bad-1')).toBe(false);
+  });
+});
+
+// Regression: the scheduler used to keep adding minutes past midnight and
+// emit strings like "25:00" — not a valid time at all (`<input type="time">`
+// rejects it, and it reads as 1am the previous night). Reachable from the
+// modal's own knobs, which allow 8 stops × 180 min with a 60 min buffer.
+describe('autoPlan — start times never leave the day', () => {
+  const OVERFLOWING: AutoPlanConfig = {
+    maxStopsPerDay: 8,
+    dayStartTime: '09:00',
+    avgMinutesPerStop: 180,
+    travelBufferMin: 60,
+  };
+
+  it('emits no time outside 00:00–23:59, whatever the knobs are set to', () => {
+    const seed = buildSeed();
+    const plan = autoPlan(seed.places, seed.days, OVERFLOWING);
+
+    for (const dp of plan) {
+      for (const stop of dp.stops) {
+        if (stop.startTime === undefined) continue;
+        expect(stop.startTime).toMatch(/^([01]\d|2[0-3]):[0-5]\d$/);
+        expect(timeToMinutes(stop.startTime)).toBeLessThan(24 * 60);
+      }
+    }
+  });
+
+  it('keeps a stop that does not fit in the day, just without a time', () => {
+    // The seed never crowds enough pins into one day to overflow, so this
+    // builds the case directly: 8 places, one day, 240-minute steps.
+    const day: Day = { id: 'd1', tripId: 't', date: '2026-11-27', city: 'Shenzhen' };
+    const places: Place[] = Array.from({ length: 8 }, (_, i) => ({
+      id: `p${i}`,
+      tripId: 't',
+      name: `Stop ${i}`,
+      city: 'Shenzhen',
+      lat: 22.54 + i * 0.01,
+      lng: 114.05 + i * 0.01,
+      status: 'wishlist' as const,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }));
+
+    const [plan] = autoPlan(places, [day], OVERFLOWING);
+    expect(plan.stops.length).toBe(8);
+
+    // 09:00 + n×240: stops 0-3 fit (09:00, 13:00, 17:00, 21:00), stop 4 would
+    // be 01:00 the next day, so from there on they come back untimed rather
+    // than as "25:00".
+    expect(plan.stops.slice(0, 4).map((s) => s.startTime)).toEqual(['09:00', '13:00', '17:00', '21:00']);
+    expect(plan.stops.slice(4).every((s) => s.startTime === undefined)).toBe(true);
+    // Untimed stops keep their place in the running order.
+    expect(plan.stops.map((s) => s.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('times stay strictly increasing among the stops that do fit', () => {
+    const seed = buildSeed();
+    const plan = autoPlan(seed.places, seed.days, OVERFLOWING);
+
+    for (const dp of plan) {
+      const timed = dp.stops.filter((s) => s.startTime !== undefined);
+      const minutes = timed.map((s) => timeToMinutes(s.startTime!));
+      expect(minutes).toEqual([...minutes].sort((a, b) => a - b));
+      expect(new Set(minutes).size).toBe(minutes.length);
+      // Every timed stop precedes every untimed one within a day.
+      const firstUntimed = dp.stops.findIndex((s) => s.startTime === undefined);
+      if (firstUntimed >= 0) {
+        expect(dp.stops.slice(firstUntimed).every((s) => s.startTime === undefined)).toBe(true);
+      }
+    }
   });
 });

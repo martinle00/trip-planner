@@ -100,6 +100,14 @@ async function flush() {
 /** Advance fake time by the full debounce window, then drain microtasks so
  *  the resulting (mocked, already-resolved/rejected) search promise has
  *  fully settled and its state update has committed. */
+/** Category and City deliberately start empty (an unnoticed default is how
+ *  a place ends up filed under the wrong city), and both are required to
+ *  save — so every save-path test has to choose them explicitly. */
+function chooseCategoryAndCity(category = 'Landmark', city = 'Chengdu') {
+  fireEvent.change(screen.getByLabelText('Category'), { target: { value: category } });
+  fireEvent.change(screen.getByLabelText('City'), { target: { value: city } });
+}
+
 async function advanceDebounce() {
   await vi.advanceTimersByTimeAsync(300);
   await flush();
@@ -224,24 +232,27 @@ describe('AddPlaceModal — search state machine', () => {
 });
 
 describe('AddPlaceModal — category selector', () => {
-  it('offers exactly the canonical 8 categories, in order, defaulting to the first — and "Neighbourhood" is gone', async () => {
+  it('offers exactly the canonical 8 categories, in order, with nothing pre-selected — and "Neighbourhood" is gone', async () => {
     render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
 
     const select = screen.getByLabelText('Category') as HTMLSelectElement;
     const optionLabels = Array.from(select.options).map((o) => o.value);
-    expect(optionLabels).toEqual(PLACE_CATEGORIES);
-    expect(optionLabels).toEqual([
+    // The leading '' is the "Choose a category…" placeholder.
+    expect(optionLabels[0]).toBe('');
+    expect(optionLabels.slice(1)).toEqual(PLACE_CATEGORIES);
+    expect(optionLabels.slice(1)).toEqual([
       'Landmark', 'Nature', 'Garden', 'Museum', 'Street / Market', 'Shopping', 'Food', 'Entertainment',
     ]);
     expect(optionLabels).not.toContain('Neighbourhood');
-    expect(select.value).toBe(PLACE_CATEGORIES[0]);
+    expect(select.value).toBe('');
+    expect((screen.getByLabelText('City') as HTMLSelectElement).value).toBe('');
   });
 
   it('saving with a chosen category (e.g. the new "Shopping") persists it on the place', async () => {
     render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'A shop' } });
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Shopping' } });
+    chooseCategoryAndCity('Shopping');
     fireEvent.click(screen.getByText('Save to wishlist'));
     await flush();
 
@@ -253,7 +264,7 @@ describe('AddPlaceModal — category selector', () => {
     render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'A theme park' } });
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Entertainment' } });
+    chooseCategoryAndCity('Entertainment');
     fireEvent.click(screen.getByText('Save to wishlist'));
     await flush();
 
@@ -275,6 +286,7 @@ describe('AddPlaceModal — save paths', () => {
     expect(screen.getByText(result.name)).toBeInTheDocument();
 
     fireEvent.click(screen.getByText(result.name));
+    chooseCategoryAndCity();
     fireEvent.click(screen.getByText('Save to wishlist'));
     await flush();
 
@@ -293,6 +305,7 @@ describe('AddPlaceModal — save paths', () => {
 
     const nameInput = screen.getByLabelText('Name');
     fireEvent.change(nameInput, { target: { value: 'My dropped pin' } });
+    chooseCategoryAndCity();
     fireEvent.click(screen.getByText('Save to wishlist'));
     await flush();
 
@@ -310,6 +323,7 @@ describe('AddPlaceModal — save paths', () => {
 
     fireEvent.click(screen.getByText(/Can.t find it\? Enter it manually/));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Manually entered place' } });
+    chooseCategoryAndCity();
     fireEvent.click(screen.getByText('Save to wishlist'));
     await flush();
 
@@ -328,6 +342,7 @@ describe('AddPlaceModal — manual coordinates (Phase 4 item 9)', () => {
     render(<AddPlaceModal open mode="search" point={null} defaultCity="Chengdu" onClose={() => {}} />);
     fireEvent.click(screen.getByText(/Can.t find it\? Enter it manually/));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Pasted place' } });
+    chooseCategoryAndCity();
     return screen.getByLabelText(/Coordinates/);
   }
 
@@ -412,5 +427,50 @@ describe('AddPlaceModal — manual coordinates (Phase 4 item 9)', () => {
     fireEvent.click(screen.getByText('Save to wishlist'));
     await flush();
     expect(addPlaceMock.mock.calls[0][0].lat).toBe(30.5728);
+  });
+});
+
+describe('AddPlaceModal — required Category and City', () => {
+  it('blocks the save until both are chosen, and names what is missing', async () => {
+    render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Somewhere' } });
+    const save = screen.getByText('Save to wishlist').closest('button') as HTMLButtonElement;
+    expect(save).toBeDisabled();
+    expect(screen.getByText('Add a category and a city to save this place.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Food' } });
+    expect(screen.getByText('Add a city to save this place.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Shanghai' } });
+    expect(save).not.toBeDisabled();
+
+    fireEvent.click(save);
+    await flush();
+    expect(addPlaceMock.mock.calls[0][0]).toMatchObject({ category: 'Food', city: 'Shanghai' });
+  });
+
+  it('does not fall back to the map’s selected city when the field is left untouched', async () => {
+    render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Somewhere' } });
+    fireEvent.click(screen.getByText('Save to wishlist'));
+    await flush();
+
+    expect(addPlaceMock).not.toHaveBeenCalled();
+  });
+
+  it('a chosen search result still fills the City in from its address', async () => {
+    searchPlacesMock.mockResolvedValue([makeResult()]);
+    render(<AddPlaceModal open mode="search" point={null} defaultCity="" onClose={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText('Search for a place or address…'), {
+      target: { value: 'panda base' },
+    });
+    await advanceDebounce();
+    fireEvent.click(screen.getByText('Chengdu Panda Base'));
+
+    expect((screen.getByLabelText('City') as HTMLSelectElement).value).toBe('Chengdu');
+    expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('');
   });
 });

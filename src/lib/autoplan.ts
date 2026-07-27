@@ -36,8 +36,10 @@ export interface PlannedStop {
   placeId: ID;
   /** 0-based order within the day. */
   order: number;
-  /** Generated "HH:MM" start time. */
-  startTime: string;
+  /** Generated "HH:MM" start time, or undefined when the stop would fall
+   *  past the end of the day (see addMinutes) — it stays in the plan, just
+   *  untimed. */
+  startTime?: string;
   durationMin: number;
 }
 
@@ -394,10 +396,22 @@ function twoOpt(initial: number[], pts: GeoPoint[]): number[] {
 
 // ---- Time helpers -------------------------------------------------------
 
-/** Add `minutes` to an "HH:MM" 24h time string. */
-function addMinutes(hhmm: string, minutes: number): string {
+/**
+ * Add `minutes` to an "HH:MM" 24h time string, or return undefined if the
+ * result would run past the end of the same day.
+ *
+ * It used to wrap out of 24h notation and emit strings like "25:00" — not a
+ * time at all: `<input type="time">` rejects it, and it read as an itinerary
+ * stop starting at 1am the *previous* night. It's reachable from the modal's
+ * own knobs (8 stops × 180min + a 60min buffer from a 09:00 start lands the
+ * last stop at 37:00), so it wasn't a hypothetical. A stop that doesn't fit
+ * in the day keeps its place in the order and is simply left untimed, which
+ * the Itinerary already renders as "--:--".
+ */
+function addMinutes(hhmm: string, minutes: number): string | undefined {
   const [h, m] = hhmm.split(':').map(Number);
   const total = h * 60 + m + minutes;
+  if (total >= 24 * 60) return undefined;
   const hh = Math.floor(total / 60);
   const mm = total % 60;
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;

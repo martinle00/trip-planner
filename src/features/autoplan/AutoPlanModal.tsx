@@ -27,15 +27,19 @@ export function AutoPlanModal({ open, onClose }: AutoPlanModalProps) {
   const [config, setConfig] = useState<AutoPlanConfig>(DEFAULT_AUTOPLAN_CONFIG);
   const [draft, setDraft] = useState<DayPlan[] | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
 
   const dayColorMap = buildDayColorMap(days);
   const placeById = new Map(places.map((p) => [p.id, p]));
 
   function handleClose() {
+    if (applying) return; // don't walk out on writes that are still landing
     setDraft(null);
     setAccepted(false);
     setGenerating(false);
+    setApplyError(null);
     onClose();
   }
 
@@ -46,16 +50,30 @@ export function AutoPlanModal({ open, onClose }: AutoPlanModalProps) {
   function generate() {
     setGenerating(true);
     setAccepted(false);
+    setApplyError(null);
     window.setTimeout(() => {
       setDraft(autoPlan(places, days, config));
       setGenerating(false);
     }, 350);
   }
 
+  // Accept writes one itinerary item per stop, remotely first (see the
+  // repository's write-through model), so on a slow connection this is the
+  // longest wait in the whole flow — and it used to give no sign at all that
+  // anything was happening.
   async function accept() {
-    if (!draft) return;
-    await applyAutoPlan(draft);
-    setAccepted(true);
+    if (!draft || applying) return;
+    setApplying(true);
+    setApplyError(null);
+    try {
+      await applyAutoPlan(draft);
+      setAccepted(true);
+    } catch (err) {
+      console.error('Failed to apply the auto-plan draft', err);
+      setApplyError("Couldn't save the draft — check your connection and try again.");
+    } finally {
+      setApplying(false);
+    }
   }
 
   return (
@@ -64,7 +82,7 @@ export function AutoPlanModal({ open, onClose }: AutoPlanModalProps) {
         <h2 className="modal-title" id="autoplanTitle">
           <Icon name="sparkle" /> Auto-plan your itinerary
         </h2>
-        <button className="modal-close" aria-label="Close" onClick={handleClose}>
+        <button className="modal-close" aria-label="Close" onClick={handleClose} disabled={applying}>
           <Icon name="close" />
         </button>
       </div>
@@ -131,12 +149,18 @@ export function AutoPlanModal({ open, onClose }: AutoPlanModalProps) {
       </div>
 
       <div className="generate-row">
-        <button className="btn btn-primary autoplan-cta" onClick={generate}>
-          <Icon name="sparkle" /> Generate draft
+        <button className="btn btn-primary autoplan-cta" onClick={generate} disabled={generating || applying}>
+          {generating ? <span className="spin" aria-hidden="true" /> : <Icon name="sparkle" />}
+          {generating ? 'Generating…' : 'Generate draft'}
         </button>
       </div>
-      <div className={`generating${generating ? ' on' : ''}`}>
-        <span className="spin" /> Grouping nearby places into days&hellip;
+      {/* role=status so the wait is announced, not just drawn. */}
+      <div className={`generating${generating ? ' on' : ''}`} role="status">
+        {generating && (
+          <>
+            <span className="spin" aria-hidden="true" /> Grouping nearby places into days&hellip;
+          </>
+        )}
       </div>
 
       <div className={`draft${draft && !generating ? ' on' : ''}`}>
@@ -166,7 +190,11 @@ export function AutoPlanModal({ open, onClose }: AutoPlanModalProps) {
                     </div>
                     {d.stops.map((stop) => (
                       <div className="draft-stop" key={`${stop.placeId}-${stop.order}`}>
-                        <span className="t tabular">{stop.startTime}</span> {placeById.get(stop.placeId)?.name ?? 'Stop'}
+                        {/* Untimed = it didn't fit inside the day; same
+                            "--:--" the Itinerary shows for a stop with no
+                            start time. */}
+                        <span className="t tabular">{stop.startTime ?? '--:--'}</span>{' '}
+                        {placeById.get(stop.placeId)?.name ?? 'Stop'}
                       </div>
                     ))}
                   </div>
@@ -177,12 +205,19 @@ export function AutoPlanModal({ open, onClose }: AutoPlanModalProps) {
               Grouped by walking distance within each city &middot; places in a city with no scheduled days are left for
               you to plan manually.
             </p>
+            {applyError && (
+              <p className="save-error" role="alert">
+                <Icon name="alert" />
+                <span>{applyError}</span>
+              </p>
+            )}
             <div className="draft-actions">
-              <button className="btn btn-ghost" onClick={generate}>
+              <button className="btn btn-ghost" onClick={generate} disabled={applying}>
                 Regenerate
               </button>
-              <button className="btn btn-primary" onClick={accept} disabled={draft.length === 0}>
-                Accept draft
+              <button className="btn btn-primary" onClick={accept} disabled={draft.length === 0 || applying}>
+                {applying && <span className="spin" aria-hidden="true" />}
+                <span>{applying ? 'Adding to your Itinerary…' : 'Accept draft'}</span>
               </button>
             </div>
           </>

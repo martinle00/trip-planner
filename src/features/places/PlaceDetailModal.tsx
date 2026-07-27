@@ -40,15 +40,18 @@
 // re-triggers Modal.tsx's focus-trap effect (keyed on `[open, onClose]`),
 // yanking focus out of the textarea the user is actively typing in.
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { Modal } from '../../components/Modal';
 import { Icon } from '../../components/Icons';
 import { useTripStore } from '../../store/useTripStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
-import type { ID, Place } from '../../data/schema';
-import { categoryIcon } from '../../lib/tripView';
+import type { ID, ItineraryItem, Place } from '../../data/schema';
+import { PLACE_CATEGORIES, categoryIcon, orderedCities } from '../../lib/tripView';
 import { splitMergedProse } from '../../lib/proseMerge';
+import { formatCoordinate, parseCoordinateInput } from '../../lib/coordinateInput';
+import { gcj02ToWgs84, isInsideChina } from '../../lib/gcj02';
+import { haversineMeters } from '../../lib/geo';
 
 const DRAFT_DEBOUNCE_MS = 500;
 const SAVE_ERROR_FALLBACK =
@@ -67,6 +70,10 @@ interface PlaceDetailModalProps {
    *  day-color map. */
   pinColor: string;
   onClose: () => void;
+  /** Read mode's "View on map" handoff: switches to the Map tab showing
+   *  this place's city (App owns both pieces of state). Optional so the
+   *  modal still renders standalone — the link simply isn't offered. */
+  onViewOnMap?: (city: string) => void;
   /** Reports every time this place's draft existence flips, so the grid's
    *  card badges (which live outside this modal, and outside React state
    *  the store tracks reactively — drafts are IndexedDB-only) can stay in
@@ -74,7 +81,11 @@ interface PlaceDetailModalProps {
   onDraftChange: (placeId: ID, hasDraft: boolean) => void;
 }
 
-export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: PlaceDetailModalProps) {
+export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraftChange }: PlaceDetailModalProps) {
+  const trip = useTripStore((s) => s.trip);
+  const itineraryByDay = useTripStore((s) => s.itineraryByDay);
+  const updatePlace = useTripStore((s) => s.updatePlace);
+  const updateItineraryItem = useTripStore((s) => s.updateItineraryItem);
   const getPlaceDraft = useTripStore((s) => s.getPlaceDraft);
   const savePlaceDraft = useTripStore((s) => s.savePlaceDraft);
   const discardPlaceDraft = useTripStore((s) => s.discardPlaceDraft);
@@ -91,6 +102,41 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
   const [focusField, setFocusField] = useState<FieldKey | null>(null);
+
+  // --- The identity fields (name/category/city/location) ------------------
+  // Part of the SAME edit session as About/My review — one pencil, one
+  // "Save changes", one discard story (mockup/place-detail-modal-v2.html).
+  // An earlier attempt gave them their own block with their own Save/Cancel
+  // and was rejected in review: two live editors with two persistence models
+  // in one modal, and category/city duplicated from the head chips a few
+  // pixels above. In edit mode these fields take over the exact slot the
+  // title + tags + "View on map" occupy in read mode, so nothing new is
+  // inserted between the header and the prose the modal is really about.
+  //
+  // They are NOT written into the local draft: that machinery exists for
+  // long-form prose (append-merge on a concurrent edit), and "merge" is
+  // meaningless for a category. They ride along on Save instead — see
+  // handleSave, which commits the prose draft FIRST and only then writes the
+  // identity fields on top of the place it returns (writing them first would
+  // bump updatedAt and make commitPlaceDraft mistake this save for a
+  // concurrent edit from another device, append-merging the prose with
+  // itself).
+  const [nameValue, setNameValue] = useState('');
+  const [categoryValue, setCategoryValue] = useState('');
+  const [cityValue, setCityValue] = useState('');
+  const [coordValue, setCoordValue] = useState('');
+  const [locationOpen, setLocationOpen] = useState(false);
+  // Google serves GCJ-02 for Chinese locations while our tiles are WGS-84 —
+  // same offset problem (and same reversible toggle) as AddPlaceModal. Off on
+  // entry: the stored coordinate is already WGS-84, and re-shifting it would
+  // walk the pin a few hundred metres every time the field is opened.
+  const [applyChinaShift, setApplyChinaShift] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const editBtnRef = useRef<HTMLButtonElement>(null);
+  // Set when a transition should move focus somewhere that only exists after
+  // the re-render (the name input appears only in edit mode; the pencil only
+  // in read mode) — applied by the effect below, not inline.
+  const [pendingFocus, setPendingFocus] = useState<'name' | 'edit-btn' | null>(null);
 
   const debounceRef = useRef<number | null>(null);
   const flashTimerRef = useRef<number | null>(null);
@@ -109,6 +155,34 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
   const pendingWriteRef = useRef<{ placeId: ID; description: string; selfReview: string } | null>(null);
 
   const placeId = place?.id ?? null;
+  const cityNames = trip ? orderedCities(trip).map((c) => c.name) : [];
+
+  // Declared up here, not next to the JSX that uses them: `identityDirty`
+  // feeds handleRequestClose's dependency array, which is evaluated during
+  // render, so a later `const` would be in its temporal dead zone.
+  const parsedCoord = useMemo(() => parseCoordinateInput(coordValue), [coordValue]);
+  const pastedPoint = parsedCoord.ok ? { lat: parsedCoord.lat, lng: parsedCoord.lng } : null;
+  const shiftAvailable = pastedPoint !== null && isInsideChina(pastedPoint);
+  const shiftApplied = shiftAvailable && applyChinaShift;
+  const nextPoint = pastedPoint && shiftApplied ? gcj02ToWgs84(pastedPoint) : pastedPoint;
+
+  function resetIdentityFields(from: Place | null) {
+    setNameValue(from?.name ?? '');
+    setCategoryValue(from?.category ?? '');
+    setCityValue(from?.city ?? '');
+    setCoordValue(from ? `${from.lat}, ${from.lng}` : '');
+    setApplyChinaShift(false);
+  }
+
+  // True once any identity field diverges from what's stored. Unlike the
+  // prose fields there's no draft behind these, so this is what stops a
+  // close/discard from dropping them silently.
+  const identityDirty =
+    place !== null &&
+    (nameValue.trim() !== place.name ||
+      categoryValue !== (place.category ?? '') ||
+      cityValue !== place.city ||
+      (nextPoint !== null && (nextPoint.lat !== place.lat || nextPoint.lng !== place.lng)));
 
   // (Re)loads whenever a different place opens — including switching
   // straight from one place's card to another's while this same component
@@ -120,6 +194,8 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
   // or race that just-applied transition.
   useEffect(() => {
     let cancelled = false;
+    resetIdentityFields(place);
+    setLocationOpen(false);
     if (placeId) {
       setSaveError(null);
       setConflictMessage(null);
@@ -215,6 +291,17 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
     setFocusField(null);
   }, [mode, focusField]);
 
+  // Focus targets that only exist on the other side of a mode change: the
+  // name input is edit-mode only, the pencil is read-mode only. Both were
+  // being unmounted out from under the user's focus (dropping it to <body>)
+  // before this ran after the re-render instead of during the handler.
+  useEffect(() => {
+    if (!pendingFocus) return;
+    const el = pendingFocus === 'name' ? nameRef.current : editBtnRef.current;
+    el?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus, mode]);
+
   const persistDraft = useCallback(
     async (nextAbout: string, nextReview: string) => {
       if (!placeId) return;
@@ -273,21 +360,30 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
   // (which don't, so they default to 'about' — matching the approved
   // mockup's own setMode(), where the third `focusField` argument defaults
   // to 'about' when the caller doesn't pass one).
-  function enterEditMode(field: FieldKey = 'about') {
+  function enterEditMode(field: FieldKey | null = null) {
+    resetIdentityFields(place);
+    setLocationOpen(false);
     setMode('edit');
-    setFocusField(field);
+    // The empty-state CTAs know which prose field the user meant, so focus
+    // goes there; the pencil and the draft pill don't, so focus lands on the
+    // first field of the form (the name) instead of being dropped on <body>
+    // when the pencil itself unmounts.
+    if (field) setFocusField(field);
+    else setPendingFocus('name');
   }
 
   function handleDiscardClick() {
     clearPendingDebounce();
-    if (isDirty) {
+    if (isDirty || identityDirty) {
       setMode('confirm-discard');
       return;
     }
     // Nothing to protect — "Discard draft" just doubles as "cancel editing".
     setAboutValue(savedAbout);
     setReviewValue(savedReview);
+    resetIdentityFields(place);
     setMode('view');
+    setPendingFocus('edit-btn');
   }
 
   async function handleDiscardConfirmed() {
@@ -295,13 +391,41 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
     await discardPlaceDraft(placeId);
     setAboutValue(savedAbout);
     setReviewValue(savedReview);
+    resetIdentityFields(place);
     setIsDirty(false);
     onDraftChange(placeId, false);
     setMode('view');
+    setPendingFocus('edit-btn');
   }
 
   async function handleSave() {
-    if (!placeId) return;
+    if (!placeId || !place) return;
+
+    // Identity validation happens before anything is written, and reports
+    // through the SAME `.save-error` line the prose save uses — one error
+    // surface for one save button. Focus goes to the field that has to
+    // change, since the message alone doesn't say where to type.
+    const trimmedName = nameValue.trim();
+    if (!trimmedName) {
+      setMode('edit');
+      setSaveError('A place needs a name.');
+      setPendingFocus('name');
+      return;
+    }
+    if (!categoryValue || !cityValue) {
+      setMode('edit');
+      setSaveError(`Pick a ${!categoryValue ? 'category' : 'city'} before saving.`);
+      return;
+    }
+    if (!nextPoint) {
+      setMode('edit');
+      setLocationOpen(true);
+      setSaveError(
+        'Couldn’t read a location from that. Paste a pair like 31.2304, 121.4737, or a full Google Maps link.',
+      );
+      return;
+    }
+
     clearPendingDebounce();
     setMode('saving');
     setSaveError(null);
@@ -328,6 +452,35 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
         await savePlaceDraft(placeId, { description: aboutValue, selfReview: reviewValue });
       }
       const { place: saved, merged } = await commitPlaceDraft(placeId);
+
+      // Identity fields go on top of the place the commit returned, and only
+      // after it — see the note where they're declared. A no-op write is
+      // skipped so an ordinary prose save stays a single round trip.
+      if (identityDirty) {
+        const moved = nextPoint.lat !== saved.lat || nextPoint.lng !== saved.lng;
+        await updatePlace({
+          ...saved,
+          name: trimmedName,
+          category: categoryValue,
+          city: cityValue,
+          lat: nextPoint.lat,
+          lng: nextPoint.lng,
+          // The stored address came from the geocoder for the OLD
+          // coordinate — keeping it beside a hand-moved pin is just a
+          // wrong label.
+          address: moved ? undefined : saved.address,
+        });
+        // A renamed place would otherwise keep its old title on the
+        // itinerary stop created from it (see the store's
+        // assignPlaceToDay), which reads as two different places.
+        if (trimmedName !== saved.name) {
+          const linked = Object.values(itineraryByDay)
+            .flat()
+            .filter((i: ItineraryItem) => i.placeId === placeId);
+          await Promise.all(linked.map((i) => updateItineraryItem({ ...i, title: trimmedName })));
+        }
+      }
+
       setSavedAbout(saved.description ?? '');
       setSavedReview(saved.selfReview ?? '');
       setAboutValue(saved.description ?? '');
@@ -335,6 +488,7 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
       setIsDirty(false);
       onDraftChange(placeId, false);
       setMode('view');
+      setPendingFocus('edit-btn');
       setConflictMessage(merged ? MERGE_NOTICE : null);
       setFlash(true);
       if (flashTimerRef.current != null) window.clearTimeout(flashTimerRef.current);
@@ -376,8 +530,17 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
       setMode('edit');
       return;
     }
+    // Closing stays non-destructive for prose — the draft is already on disk
+    // whatever happens. The identity fields have no draft behind them, so
+    // closing on top of an unsaved one WOULD destroy it: route that through
+    // the confirm step the modal already has rather than adding a second
+    // kind of prompt.
+    if (identityDirty) {
+      setMode('confirm-discard');
+      return;
+    }
     onClose();
-  }, [mode, onClose]);
+  }, [mode, identityDirty, onClose]);
 
   const unassigned = place ? !place.dayId : false;
   const editing = mode === 'edit' || mode === 'saving';
@@ -388,39 +551,208 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
         <div className={flash ? 'flash-confirm' : undefined}>
           <div className="modal-head">
             <div className="modal-title-block">
-              <h2 className="modal-title" id="placeDetailTitle">
-                <span
-                  className={`place-icon${unassigned ? ' unassigned' : ''}`}
-                  style={{ ['--pin-color' as string]: pinColor }}
-                >
-                  <Icon name={categoryIcon(place.category)} />
-                </span>
-                {place.name}
+              {/* The dialog's accessible name comes from this always-rendered
+                  node, never from the visual title: that one is replaced by
+                  the name input in edit mode, and an aria-labelledby target
+                  that goes display:none is honoured inconsistently by real
+                  screen readers. */}
+              <h2 className="visually-hidden" id="placeDetailTitle">
+                {place.name} — place details
               </h2>
-              <div className="modal-tags">
-                {place.category && <span className="tag">{place.category}</span>}
-                <span className="tag city">{place.city}</span>
-                {savedReview.trim() && (
-                  <span className="tag reviewed">
-                    <Icon name="check" className="tag-icon" />
-                    Reviewed
-                  </span>
-                )}
-              </div>
-              <div className="modal-cues">
-                {(mode === 'edit' || mode === 'saving') && <span className="editing-cue">Editing</span>}
-                {isDirty && (
-                  <button type="button" className="draft-pill" onClick={() => enterEditMode()}>
-                    <span className="dot" aria-hidden="true" />
-                    Unsaved changes
-                  </button>
-                )}
-              </div>
+
+              {editing ? (
+                /* The identity fields take over the title/tags slot rather
+                   than adding a section below it — same footprint, one of
+                   the two ever visible, so nothing is pushed between the
+                   header and the prose this modal is really about. */
+                <div className="identity-edit">
+                  <label className="visually-hidden" htmlFor="pd-name">
+                    Name
+                  </label>
+                  <input
+                    className="modal-title-input"
+                    id="pd-name"
+                    ref={nameRef}
+                    type="text"
+                    value={nameValue}
+                    onChange={(e) => setNameValue(e.target.value)}
+                    placeholder="Place name"
+                    disabled={mode === 'saving'}
+                  />
+                  <div className="identity-fields-row">
+                    <div>
+                      <label className="field-label" htmlFor="pd-cat">
+                        Category
+                      </label>
+                      <select
+                        id="pd-cat"
+                        value={categoryValue}
+                        onChange={(e) => setCategoryValue(e.target.value)}
+                        disabled={mode === 'saving'}
+                      >
+                        <option value="">Choose a category&hellip;</option>
+                        {/* A place saved before the categories were
+                            canonicalised can carry a legacy value (e.g.
+                            'Sightseeing') — keep it selectable rather than
+                            silently re-categorising it on open. */}
+                        {categoryValue && !PLACE_CATEGORIES.includes(categoryValue) && (
+                          <option value={categoryValue}>{categoryValue}</option>
+                        )}
+                        {PLACE_CATEGORIES.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="field-label" htmlFor="pd-city">
+                        City
+                      </label>
+                      <select
+                        id="pd-city"
+                        value={cityValue}
+                        onChange={(e) => setCityValue(e.target.value)}
+                        disabled={mode === 'saving'}
+                      >
+                        <option value="">Choose a city&hellip;</option>
+                        {cityValue && !cityNames.includes(cityValue) && (
+                          <option value={cityValue}>{cityValue}</option>
+                        )}
+                        {cityNames.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Collapsed even inside edit mode: a raw coordinate is the
+                      correction path for the rare misplaced pin, not
+                      something to put in front of someone fixing a typo in
+                      the name. */}
+                  <div className="location-field">
+                    <button
+                      type="button"
+                      className="location-toggle"
+                      aria-expanded={locationOpen}
+                      aria-controls="pd-location-editor"
+                      onClick={() => setLocationOpen((v) => !v)}
+                      disabled={mode === 'saving'}
+                    >
+                      <Icon name="pin" />
+                      <span>Location set</span> &middot; <span className="action">Change</span>
+                      <Icon name="chevron-right" className="chev" />
+                    </button>
+                    <div className={`location-editor${locationOpen ? ' open' : ''}`} id="pd-location-editor">
+                      <label className="field-label" htmlFor="pd-coord">
+                        Location
+                      </label>
+                      <input
+                        className="text-input coord-input"
+                        type="text"
+                        id="pd-coord"
+                        value={coordValue}
+                        onChange={(e) => setCoordValue(e.target.value)}
+                        placeholder="31.2304, 121.4737 — or a Google Maps link"
+                        autoComplete="off"
+                        spellCheck={false}
+                        disabled={mode === 'saving'}
+                      />
+                      <div className="coord-status" aria-live="polite">
+                        {nextPoint ? (
+                          <p className="coord-ok">
+                            <Icon name="target" /> Pin sits at {formatCoordinate(nextPoint.lat, nextPoint.lng)}
+                          </p>
+                        ) : (
+                          <p className="coord-hint">
+                            Paste a pair like 31.2304, 121.4737, or a full Google Maps link.
+                          </p>
+                        )}
+                        {shiftAvailable && nextPoint && pastedPoint && (
+                          <p className="coord-note">
+                            {shiftApplied
+                              ? `Moved ${Math.round(haversineMeters(pastedPoint, nextPoint))}m to correct China’s map offset — Google’s coordinates are shifted there, ours aren’t.`
+                              : 'Using these numbers exactly. If you pasted them from Google, the pin may sit a few hundred metres out.'}
+                            <button
+                              type="button"
+                              className="coord-toggle"
+                              onClick={() => setApplyChinaShift((v) => !v)}
+                              disabled={mode === 'saving'}
+                            >
+                              {shiftApplied ? 'Use the pasted numbers instead' : 'Correct the offset'}
+                            </button>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="modal-title" aria-hidden="true">
+                    <span
+                      className={`place-icon${unassigned ? ' unassigned' : ''}`}
+                      style={{ ['--pin-color' as string]: pinColor }}
+                    >
+                      <Icon name={categoryIcon(place.category)} />
+                    </span>
+                    {place.name}
+                  </div>
+                  <div className="modal-tags">
+                    {place.category && <span className="tag">{place.category}</span>}
+                    <span className="tag city">{place.city}</span>
+                    {savedReview.trim() && (
+                      <span className="tag reviewed">
+                        <Icon name="check" className="tag-icon" />
+                        Reviewed
+                      </span>
+                    )}
+                  </div>
+                  {/* Read mode's answer to "where is this?" — a map, not a
+                      number pair. Nobody judges a pin by its decimals. */}
+                  {onViewOnMap && (
+                    <button
+                      type="button"
+                      className="detail-link modal-map-link"
+                      onClick={() => {
+                        onViewOnMap(place.city);
+                        onClose();
+                      }}
+                    >
+                      <Icon name="target" /> View on map <Icon name="chevron-right" className="chev" />
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Rendered only when it has something in it — as a row in the
+                  head's flex column, an empty one still eats a gap. */}
+              {(editing || isDirty) && (
+                <div className="modal-cues">
+                  {editing && <span className="editing-cue">Editing</span>}
+                  {isDirty && (
+                    <button type="button" className="draft-pill" onClick={() => enterEditMode()}>
+                      <span className="dot" aria-hidden="true" />
+                      Unsaved changes
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             {mode !== 'confirm-discard' && (
               <div className="modal-head-actions">
+                {/* The one and only pencil in this modal: it opens the single
+                    edit session covering name, category, city, location,
+                    notes and review. */}
                 {mode === 'view' && (
-                  <button className="modal-edit-btn" aria-label="Edit notes and review" onClick={() => enterEditMode()}>
+                  <button
+                    ref={editBtnRef}
+                    className="modal-edit-btn"
+                    aria-label="Edit this place"
+                    onClick={() => enterEditMode()}
+                  >
                     <Icon name="edit" />
                   </button>
                 )}
@@ -445,6 +777,7 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
               </button>
             </div>
           )}
+
 
           {mode !== 'confirm-discard' && (
             <>
@@ -515,7 +848,8 @@ export function PlaceDetailModal({ place, pinColor, onClose, onDraftChange }: Pl
                 <Icon name="alert" />
                 <span>
                   <strong>Discard this draft?</strong>
-                  It&rsquo;ll be replaced with what&rsquo;s currently saved. This can&rsquo;t be undone.
+                  Any changes to name, category, city, location, notes and review will be replaced with
+                  what&rsquo;s currently saved. This can&rsquo;t be undone.
                 </span>
               </p>
               <div className="discard-confirm-actions">

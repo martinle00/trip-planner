@@ -121,7 +121,13 @@ export function ItineraryPanel() {
                 >
                   <div className="it-day-head">
                     <span className="it-day-dot" style={{ background: color }} />
-                    <span className="it-day-title">{dayLabel(day, nested ? [] : section.ownDays)}</span>
+                    {/* legDays, not ownDays: the day trip occupies a slot in
+                        the count, so the day after it is "Day 3", not "Day 2".
+                        withDayTripCity: these rows sit nested under the parent
+                        city, so "Day trip" on its own never says where to. */}
+                    <span className="it-day-title">
+                      {dayLabel(day, nested ? [] : section.legDays, { withDayTripCity: true })}
+                    </span>
                   </div>
 
                   {items.length === 0 ? (

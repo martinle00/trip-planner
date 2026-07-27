@@ -245,7 +245,11 @@ function App() {
     );
   }
 
-  const baseCities = orderedCities(trip).filter((c) => !c.parentCity);
+  // Every leg, day trips included — they're places you actually go, and
+  // leaving them out meant Wulong/Shenzhen could never be selected, so the
+  // Map had no way to show them either. RouteStrip marks them as day trips
+  // rather than passing them off as overnight stops.
+  const tripLegs = orderedCities(trip);
 
   return (
     <>
@@ -271,7 +275,7 @@ function App() {
               <span className="trip-eyebrow">Personal trip &middot; from Sydney</span>
               <h1 className="trip-title">{trip.name}</h1>
               <span className="trip-sub">
-                {fmtCompactRange(trip.startDate, trip.endDate)} &middot; {baseCities.length} legs &middot;{' '}
+                {fmtCompactRange(trip.startDate, trip.endDate)} &middot; {tripLegs.length} legs &middot;{' '}
                 {trip.tripCurrency} trip / {trip.homeCurrency} home
               </span>
             </div>
@@ -324,7 +328,7 @@ function App() {
             </div>
           </div>
 
-          <RouteStrip cities={baseCities} selectedCity={selectedCity} onSelect={selectCity} pendingCities={pendingCities} />
+          <RouteStrip cities={tripLegs} selectedCity={selectedCity} onSelect={selectCity} pendingCities={pendingCities} />
         </header>
 
         {/* Below 720px this is repositioned into the fixed bottom tab dock
@@ -364,7 +368,7 @@ function App() {
               onJumpToItinerary={(anchorId) => jumpTo('itinerary', anchorId)}
             />
           )}
-          {tab === 'places' && <PlacesPanel onOpenAddPlace={openAddPlace} />}
+          {tab === 'places' && <PlacesPanel onOpenAddPlace={openAddPlace} onViewOnMap={selectCity} />}
           {tab === 'itinerary' && <ItineraryPanel />}
           {tab === 'budget' && <BudgetPanel onOpenSettings={() => setSettingsOpen(true)} />}
         </main>

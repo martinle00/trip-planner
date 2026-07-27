@@ -31,7 +31,7 @@ import { Icon } from '../../components/Icons';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { AddPlaceMode, AddPlacePoint } from '../places/AddPlaceModal';
 import type { Day, ID, Place } from '../../data/schema';
-import { buildDayColorMap, dayColor, dayLabel, daysForCity } from '../../lib/tripView';
+import { buildDayColorMap, dayColor, dayLabel, daysForCity, daysForLeg, suggestPlaceLocation } from '../../lib/tripView';
 import { fmtCompactRange, fmtShortNumeric, parseISODate } from '../../lib/dates';
 import { buildPinIcon } from './markerIcon';
 import { MapSaveBar, MAP_SAVE_BAR_ID } from './MapSaveBar';
@@ -78,6 +78,10 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
 
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
   const cityDays = useMemo(() => daysForCity(days, selectedCity), [days, selectedCity]);
+  // Chips/markers filter on cityDays (a day trip's stops belong to the
+  // day-trip city), but "Day N" counts over legDays so the day trip doesn't
+  // renumber the days after it.
+  const legDays = useMemo(() => daysForLeg(days, selectedCity), [days, selectedCity]);
   const cityPlaces = useMemo(() => places.filter((p) => p.city === selectedCity), [places, selectedCity]);
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const selectedDay = days.find((d) => d.id === selectedDayId) ?? null;
@@ -185,7 +189,7 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
                     carries an aria-label). Desktop shows the full label and
                     hides the short one — pure decorative duplicate there, so
                     display:none is fine for everyone on that viewport. */}
-                <span className="chip-date-full">{dayLabel(d, cityDays)}</span>
+                <span className="chip-date-full">{dayLabel(d, legDays)}</span>
                 <span className="chip-date-short" aria-hidden="true">
                   {fmtShortNumeric(d.date)}
                 </span>
@@ -206,12 +210,14 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
                 <LeafletMap
                   places={cityPlaces}
                   cityDays={cityDays}
+                  legDays={legDays}
                   dayColorMap={dayColorMap}
                   stagedAssignments={stagedAssignments}
                   selectedDayId={selectedDayId}
                   selectedPlaceId={selectedPlaceId}
                   onSelectPlace={handleSelectPlace}
                   onMapClick={handleMapTap}
+                  cityName={selectedCity}
                 />
                 <button
                   type="button"
@@ -235,7 +241,7 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
               {cityDays.map((d) => (
                 <div className="legend-item" key={d.id}>
                   <span className="legend-dot" style={{ background: dayColor(d.id, dayColorMap) }} />
-                  {dayLabel(d, cityDays)}
+                  {dayLabel(d, legDays)}
                 </div>
               ))}
               <div className="legend-item">
@@ -256,6 +262,7 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
           pending={selectedPlacePending}
           selectedDay={selectedDay}
           cityDays={cityDays}
+          legDays={legDays}
           dayColorMap={dayColorMap}
           itineraryByDay={itineraryByDay}
           onAssign={(dayId) => selectedPlace && stagePlaceAssignment(selectedPlace.id, dayId)}
@@ -300,23 +307,29 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
 interface LeafletMapProps {
   places: Place[];
   cityDays: Day[];
+  /** The leg's days incl. its day trips — what "Day N" counts over. */
+  legDays: Day[];
   dayColorMap: Map<string, string>;
   stagedAssignments: StagedAssignments;
   selectedDayId: string | null;
   selectedPlaceId: string | null;
   onSelectPlace: (id: string) => void;
   onMapClick: (lat: number, lng: number) => void;
+  /** The selected city — used to centre the map when it has no pins yet. */
+  cityName: string;
 }
 
 function LeafletMap({
   places,
   cityDays,
+  legDays,
   dayColorMap,
   stagedAssignments,
   selectedDayId,
   selectedPlaceId,
   onSelectPlace,
   onMapClick,
+  cityName,
 }: LeafletMapProps) {
   return (
     <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} className="leaflet-container" scrollWheelZoom>
@@ -324,7 +337,7 @@ function LeafletMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitToPlaces places={places} />
+      <FitToPlaces places={places} cityName={cityName} />
       <ClickToAdd onMapClick={onMapClick} />
       {places.map((p) => {
         const effDayId = getEffectiveDayId(p, stagedAssignments);
@@ -335,7 +348,7 @@ function LeafletMap({
         const emph = selectedDayId ? effDayId === selectedDayId : false;
         const dim = selectedDayId ? effDayId !== selectedDayId : false;
         const badgeText = day ? String(parseISODate(day.date).getDate()) : undefined;
-        const tooltipText = (day ? dayLabel(day, cityDays) : 'Unassigned') + (pending ? ' (unsaved)' : '');
+        const tooltipText = (day ? dayLabel(day, legDays) : 'Unassigned') + (pending ? ' (unsaved)' : '');
         return (
           <Marker
             key={p.id}
@@ -362,11 +375,17 @@ function LeafletMap({
   );
 }
 
-function FitToPlaces({ places }: { places: Place[] }) {
+function FitToPlaces({ places, cityName }: { places: Place[]; cityName: string }) {
   const map = useMap();
   useEffect(() => {
     if (places.length === 0) {
-      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+      // Nothing pinned here yet — show the city itself rather than the whole
+      // country. This is the normal state for a day-trip leg (Wulong,
+      // Shenzhen), which typically has no saved places, and it's what made
+      // those legs look like the map simply didn't have them.
+      const center = cityName ? suggestPlaceLocation(cityName, []) : null;
+      if (center) map.setView([center.lat, center.lng], 11);
+      else map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
       return;
     }
     if (places.length === 1) {
@@ -400,6 +419,8 @@ interface PinDetailPanelProps {
   pending: boolean;
   selectedDay: Day | null;
   cityDays: Day[];
+  /** The leg's days incl. its day trips — what "Day N" counts over. */
+  legDays: Day[];
   dayColorMap: Map<string, string>;
   itineraryByDay: Record<string, { id: string; title: string; startTime?: string; durationMin?: number; note?: string }[]>;
   onAssign: (dayId: string | undefined) => void;
@@ -415,6 +436,7 @@ function PinDetailPanel({
   pending,
   selectedDay,
   cityDays,
+  legDays,
   dayColorMap,
   itineraryByDay,
   onAssign,
@@ -465,7 +487,7 @@ function PinDetailPanel({
           <option value="">Unassigned</option>
           {cityDays.map((d) => (
             <option key={d.id} value={d.id}>
-              {dayLabel(d, cityDays)}
+              {dayLabel(d, legDays)}
             </option>
           ))}
         </select>
@@ -481,7 +503,7 @@ function PinDetailPanel({
   if (selectedDay) {
     const stops = itineraryByDay[selectedDay.id] ?? [];
     const color = dayColor(selectedDay.id, dayColorMap);
-    const label = dayLabel(selectedDay, cityDays);
+    const label = dayLabel(selectedDay, legDays);
     return (
       <div className="pin-detail" id="pinDetail">
         <div className="dayplan-head">

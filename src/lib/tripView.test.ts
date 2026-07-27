@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { buildSeed } from '../data/seed';
+import type { Day } from '../data/schema';
 import {
   PLACE_CATEGORIES,
   categoryGroup,
   categoryIcon,
+  buildItinerarySections,
   cityAccentColor,
+  dayLabel,
+  daysForCity,
+  daysForLeg,
   inferCityFromAddress,
   suggestPlaceLocation,
 } from './tripView';
@@ -110,5 +115,73 @@ describe('cityAccentColor', () => {
     expect(cityAccentColor(1)).toBe(cityAccentColor(1));
     // 8 colors in the palette — order 9 should wrap back to order 1's color.
     expect(cityAccentColor(9)).toBe(cityAccentColor(1));
+  });
+});
+
+// A day trip doesn't pause the leg it belongs to: you slept in Chongqing on
+// the 21st too, so the 22nd is that leg's third day. Counting only the
+// parent city's own days renumbered everything after the day trip.
+describe('dayLabel — day numbering across a day trip', () => {
+  const CHONGQING_LEG: Day[] = [
+    { id: 'd1', tripId: 't', date: '2026-11-20', city: 'Chongqing' },
+    { id: 'd2', tripId: 't', date: '2026-11-21', city: 'Wulong', parentCity: 'Chongqing' },
+    { id: 'd3', tripId: 't', date: '2026-11-22', city: 'Chongqing' },
+    { id: 'd4', tripId: 't', date: '2026-11-23', city: 'Chongqing' },
+  ];
+
+  it('daysForLeg includes the day-trip day; daysForCity deliberately does not', () => {
+    expect(daysForLeg(CHONGQING_LEG, 'Chongqing').map((d) => d.id)).toEqual(['d1', 'd2', 'd3', 'd4']);
+    expect(daysForCity(CHONGQING_LEG, 'Chongqing').map((d) => d.id)).toEqual(['d1', 'd3', 'd4']);
+  });
+
+  it('numbers the days after a day trip by their position in the leg', () => {
+    const legDays = daysForLeg(CHONGQING_LEG, 'Chongqing');
+    expect(dayLabel(CHONGQING_LEG[0], legDays)).toMatch(/^Day 1 · /);
+    expect(dayLabel(CHONGQING_LEG[2], legDays)).toMatch(/^Day 3 · /);
+    expect(dayLabel(CHONGQING_LEG[3], legDays)).toMatch(/^Day 4 · /);
+  });
+
+  it('the day-trip day itself still reads "Day trip", consuming its slot without a number', () => {
+    const legDays = daysForLeg(CHONGQING_LEG, 'Chongqing');
+    expect(dayLabel(CHONGQING_LEG[1], legDays)).toBe('Day trip · Sat 21 Nov');
+  });
+
+  it('buildItinerarySections exposes legDays covering own + day-trip days, in date order', () => {
+    const seed = buildSeed();
+    const sections = buildItinerarySections(seed.trip, seed.days);
+    const chongqing = sections.find((s) => s.city.name === 'Chongqing')!;
+
+    expect(chongqing.legDays.map((d) => d.date)).toEqual(
+      [...chongqing.legDays].sort((a, b) => a.date.localeCompare(b.date)).map((d) => d.date),
+    );
+    expect(chongqing.legDays.some((d) => d.city === 'Wulong')).toBe(true);
+    expect(chongqing.legDays.length).toBe(chongqing.ownDays.length + 1);
+
+    // The seed's real Chongqing leg: 20th, Wulong on the 21st, then the 22nd.
+    const twentySecond = chongqing.legDays.find((d) => d.date === '2026-11-22')!;
+    expect(dayLabel(twentySecond, chongqing.legDays)).toMatch(/^Day 3 · /);
+  });
+});
+
+describe('dayLabel — naming the day trip destination', () => {
+  const WULONG: Day = {
+    id: 'd2',
+    tripId: 't',
+    date: '2026-11-21',
+    city: 'Wulong',
+    parentCity: 'Chongqing',
+  };
+
+  it('names the city when asked — the Itinerary nests these under the parent city', () => {
+    expect(dayLabel(WULONG, [], { withDayTripCity: true })).toBe('Day trip · Wulong · Sat 21 Nov');
+  });
+
+  it('omits it by default — on the Map the day-trip city is already the selected one', () => {
+    expect(dayLabel(WULONG, [])).toBe('Day trip · Sat 21 Nov');
+  });
+
+  it('the option changes nothing for an ordinary day', () => {
+    const day: Day = { id: 'd1', tripId: 't', date: '2026-11-20', city: 'Chongqing' };
+    expect(dayLabel(day, [day], { withDayTripCity: true })).toBe(dayLabel(day, [day]));
   });
 });

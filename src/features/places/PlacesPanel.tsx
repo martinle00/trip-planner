@@ -28,15 +28,20 @@ import {
   dayColor,
   dayLabel,
   daysForCity,
+  daysForLeg,
   groupPlacesByCity,
   orderedCities,
 } from '../../lib/tripView';
 
 interface PlacesPanelProps {
   onOpenAddPlace: (mode: AddPlaceMode) => void;
+  /** "View on map" from a place's detail modal — App switches to the Map
+   *  tab showing that city (the same handoff the timeline's city chips
+   *  use). Optional so tests can render the panel standalone. */
+  onViewOnMap?: (city: string) => void;
 }
 
-export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
+export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
   const trip = useTripStore((s) => s.trip);
   const places = useTripStore((s) => s.places);
   const days = useTripStore((s) => s.days);
@@ -211,6 +216,10 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
           const filtered = cityPlaces.filter(matchesFilters);
           if (filtered.length === 0) return null;
           const cDays = daysForCity(days, c.name);
+          // Options come from this city's own days; the "Day N" labels count
+          // over the leg including its day trips, so a day trip doesn't
+          // renumber the days after it.
+          const cLegDays = daysForLeg(days, c.name);
           const assigned = cityPlaces.filter((p) => p.dayId).length;
           const accent = cityAccentColor(c.order);
           const collapsed = collapsedCities.has(c.name);
@@ -244,6 +253,7 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
                     key={p.id}
                     place={p}
                     cityDays={cDays}
+                    legDays={cLegDays}
                     dayColorMap={dayColorMap}
                     hasDraft={draftPlaceIds.has(p.id)}
                     onAssign={(dayId) => assignPlaceToDay(p.id, dayId)}
@@ -261,6 +271,7 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
         place={selectedPlace}
         pinColor={selectedPlace ? dayColor(selectedPlace.dayId, dayColorMap) : 'var(--d-grey)'}
         onClose={() => setSelectedPlaceId(null)}
+        onViewOnMap={onViewOnMap}
         onDraftChange={markDraft}
       />
       <BackToTop />
@@ -271,6 +282,8 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
 interface PlaceCardProps {
   place: Place;
   cityDays: Day[];
+  /** The leg's days incl. its day trips — what "Day N" counts over. */
+  legDays: Day[];
   dayColorMap: Map<string, string>;
   hasDraft: boolean;
   onAssign: (dayId: string | undefined) => void;
@@ -278,7 +291,7 @@ interface PlaceCardProps {
   onOpenDetail: () => void;
 }
 
-function PlaceCard({ place, cityDays, dayColorMap, hasDraft, onAssign, onDelete, onOpenDetail }: PlaceCardProps) {
+function PlaceCard({ place, cityDays, legDays, dayColorMap, hasDraft, onAssign, onDelete, onOpenDetail }: PlaceCardProps) {
   const color = dayColor(place.dayId, dayColorMap);
   const tintStyle: CSSProperties = { ['--select-tint' as string]: color } as CSSProperties;
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -380,7 +393,7 @@ function PlaceCard({ place, cityDays, dayColorMap, hasDraft, onAssign, onDelete,
               <option value="">Wishlist</option>
               {cityDays.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {dayLabel(d, cityDays)}
+                  {dayLabel(d, legDays)}
                 </option>
               ))}
             </select>
