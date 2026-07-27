@@ -19,6 +19,23 @@ export async function bootstrapMigration(
 ): Promise<void> {
   const [localTrip, remoteTrip] = await Promise.all([local.getTrip(), remote.getTrip()]);
   if (!localTrip || remoteTrip) return;
-  const snapshot = await local.exportSnapshot();
-  await remote.importSnapshot(snapshot);
+
+  // Reaching here means: this device has local data, and the signed-in
+  // account can't see a remote trip. Since migration 0005 there is exactly
+  // one shared trip and it already exists, so "no remote trip" no longer
+  // means "nothing has been created yet" — it means this account isn't a
+  // collaborator on it.
+  //
+  // Pushing the local seed up in that situation is never right: at best it
+  // would overwrite the shared trip with this device's untouched seed data,
+  // and in practice it just fails —
+  //
+  //   409  duplicate key value violates unique constraint "trips_pkey"
+  //
+  // (`trips.id` is a global primary key; `ACTIVE_TRIP_ID` is a constant).
+  // Which is exactly what wedged a phone signed in as a second account.
+  //
+  // So: do nothing. The app surfaces "you're not on this trip yet", and the
+  // fix is a row in `trip_collaborators`, not a second trip. The local Dexie
+  // data stays untouched and unshared on this device.
 }

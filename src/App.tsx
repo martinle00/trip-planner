@@ -228,6 +228,28 @@ function App() {
     [importJson],
   );
 
+  // Signed in, the load has settled, and there's still no trip: since
+  // migration 0005 that has exactly one meaning — this account isn't a
+  // collaborator on the (single, shared) trip. It used to sit on the
+  // cold-start spinner forever while the client tried and failed to create a
+  // trip of its own (409, trips_pkey). There is nothing the user can do from
+  // here, so say so plainly instead of implying it's still loading.
+  if (!loading && !trip) {
+    return (
+      <div className="boot-cold-start" role="alert">
+        <IconSprite />
+        <div className="boot-cold-start-title">You&rsquo;re not on this trip yet</div>
+        <div className="boot-cold-start-hint">
+          Signing in worked, but this account hasn&rsquo;t been added to the trip. Ask whoever set it up to add
+          you, then reload.
+        </div>
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 14 }} onClick={() => void handleSignOut()}>
+          Sign out
+        </button>
+      </div>
+    );
+  }
+
   if (loading || !trip) {
     // The store's init() flips `loading` to false as soon as it has *any*
     // trip to show — from the local Dexie cache almost instantly, or (only

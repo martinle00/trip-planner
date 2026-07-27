@@ -1,8 +1,13 @@
 // ============================================================================
 // Supabase-backed implementation of the frozen `TripRepository` interface.
 // Maps camelCase domain types (schema.ts) to snake_case Postgres rows
-// (supabase/migrations/0001_init.sql). Scoped to a single trip per user
-// (ACTIVE_TRIP_ID / trips_user_id_unique), matching the local Dexie model.
+// (supabase/migrations/0001_init.sql).
+//
+// ONE trip, many accounts (migration 0005): the single trip row is shared by
+// every collaborator and membership-based RLS decides who can see it. This
+// repository therefore never filters by `user_id`, never creates a trip, and
+// never rewrites the trip's creator. `trips_user_id_unique` is gone; a client
+// that can't see a trip is not a collaborator yet.
 // ============================================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -16,7 +21,6 @@ import type {
   TripSnapshot,
 } from './schema';
 import type { TripRepository } from './tripRepository';
-import { buildSeed } from './seed';
 
 // ---- row <-> domain mappers ------------------------------------------------
 
@@ -242,27 +246,44 @@ export class SupabaseTripRepository implements TripRepository {
     this.userId = userId;
   }
 
-  async seedIfEmpty(): Promise<void> {
-    const existing = await this.getTrip();
-    if (existing) return;
-    const snapshot = buildSeed();
-    await this.importSnapshot(snapshot);
-  }
+  /**
+   * Deliberately a no-op.
+   *
+   * There is exactly one trip, shared by every account (migration 0005) — it
+   * already exists, and no client should ever create another. Seeding here is
+   * what produced, for every account that wasn't the creator:
+   *
+   *   409  duplicate key value violates unique constraint "trips_pkey"
+   *
+   * because `trips.id` is a global primary key and `ACTIVE_TRIP_ID` is a
+   * constant. An account that legitimately can't see a trip is not a member
+   * yet; the answer is to add them to `trip_collaborators`, never to
+   * fabricate a second trip. The local Dexie repository still seeds — that's
+   * the offline-first starting point on a fresh device, and it's private to
+   * it.
+   */
+  async seedIfEmpty(): Promise<void> {}
 
   // ---- Trip ----
 
   async getTrip(): Promise<Trip | undefined> {
-    const { data, error } = await this.client
-      .from('trips')
-      .select('*')
-      .eq('user_id', this.userId)
-      .maybeSingle();
+    // No `user_id` filter: with membership-based RLS (0005) the caller can
+    // see exactly the trip they're a collaborator on, so filtering by creator
+    // here would hide the shared trip from everyone but its creator — which
+    // is precisely the bug this replaced.
+    const { data, error } = await this.client.from('trips').select('*').limit(1).maybeSingle();
     if (error) throw error;
     return data ? tripFromRow(data as TripRow) : undefined;
   }
 
   async saveTrip(trip: Trip): Promise<void> {
-    const { error } = await this.client.from('trips').upsert(tripToRow(trip, this.userId));
+    // `update`, not `upsert`: an upsert would write `user_id` on every save,
+    // so whichever member last edited the trip would silently become its
+    // creator. Nothing gates access on that column any more, but it should
+    // still mean what it says. Creating a trip is not a client operation —
+    // see seedIfEmpty above.
+    const { user_id: _ownerIgnored, ...row } = tripToRow(trip, this.userId);
+    const { error } = await this.client.from('trips').update(row).eq('id', trip.id);
     if (error) throw error;
   }
 

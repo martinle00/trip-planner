@@ -62,12 +62,16 @@ function makeRepo(overrides: Partial<TripRepository>): TripRepository {
 }
 
 describe('bootstrapMigration', () => {
-  it('pushes local data to remote when local exists and remote is empty', async () => {
+  // Since migration 0005 there is ONE shared trip and it always exists, so a
+  // remote that looks empty means "this account isn't a collaborator yet" —
+  // not "nothing has been created". Pushing the local seed up then is never
+  // right, and in practice 409s on trips_pkey (the id is a global constant).
+  it('does NOT push local up when the remote looks empty — that account just is not a member', async () => {
     const local = makeRepo({ async getTrip() { return trip; } });
     const importSnapshot = vi.fn(async () => {});
     const remote = makeRepo({ async getTrip() { return undefined; }, importSnapshot });
     await bootstrapMigration(local, remote);
-    expect(importSnapshot).toHaveBeenCalledWith(snapshot);
+    expect(importSnapshot).not.toHaveBeenCalled();
   });
 
   it('does nothing when remote already has a trip, regardless of local', async () => {

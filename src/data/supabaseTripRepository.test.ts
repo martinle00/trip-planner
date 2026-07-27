@@ -39,6 +39,10 @@ function makeFakeClient(seed: Record<string, Row[]> = {}) {
       order(_col: string, _opts?: unknown) {
         return builder;
       },
+      limit(n: number) {
+        filtered = filtered.slice(0, n);
+        return builder;
+      },
       async maybeSingle() {
         return { data: filtered[0] ?? null, error: null };
       },
@@ -69,20 +73,29 @@ function makeFakeClient(seed: Record<string, Row[]> = {}) {
             return updateBuilder;
           },
           select() {
-            const matchedIds = new Set(matchFiltered.map((r) => r.id));
-            const updatedRows: Row[] = [];
-            tables[table] = rows.map((r) => {
-              if (matchedIds.has(r.id)) {
-                const merged = { ...r, ...partial };
-                updatedRows.push(merged);
-                return merged;
-              }
-              return r;
-            });
-            rows = tables[table];
-            return Promise.resolve({ data: updatedRows, error: null });
+            return Promise.resolve({ data: apply(), error: null });
+          },
+          // Awaiting the chain WITHOUT .select() executes it too — that's how
+          // PostgREST behaves, and how saveTrip calls it.
+          then(resolve: (v: { data: null; error: null }) => void) {
+            apply();
+            resolve({ data: null, error: null });
           },
         };
+        function apply(): Row[] {
+          const matchedIds = new Set(matchFiltered.map((r) => r.id));
+          const updatedRows: Row[] = [];
+          tables[table] = rows.map((r) => {
+            if (matchedIds.has(r.id)) {
+              const merged = { ...r, ...partial };
+              updatedRows.push(merged);
+              return merged;
+            }
+            return r;
+          });
+          rows = tables[table];
+          return updatedRows;
+        }
         return updateBuilder;
       },
       // select() without a terminal call resolves as a thenable returning all filtered rows
@@ -118,18 +131,63 @@ const baseTrip: Trip = {
   cities: [],
 };
 
+/** The one shared trip, as it exists in the database before any client
+ *  touches it. Clients never create trips (migration 0005) — saveTrip is an
+ *  update — so anything round-tripping the trip has to start from a row that
+ *  is already there. user_id is deliberately a DIFFERENT account: the
+ *  repository must neither filter on it nor overwrite it. */
+const OTHER_OWNER = 'user-who-created-the-trip';
+function existingTripRow(overrides: Record<string, unknown> = {}) {
+  return {
+    trips: [
+      {
+        id: baseTrip.id,
+        user_id: OTHER_OWNER,
+        name: baseTrip.name,
+        start_date: baseTrip.startDate,
+        end_date: baseTrip.endDate,
+        home_currency: baseTrip.homeCurrency,
+        trip_currency: baseTrip.tripCurrency,
+        rates: baseTrip.rates,
+        rates_updated_at: null,
+        rates_base: null,
+        cities: baseTrip.cities,
+        members: null,
+        ...overrides,
+      },
+    ],
+  };
+}
+
 describe('SupabaseTripRepository', () => {
-  it('getTrip returns undefined when no row exists for the user, filtered by user_id', () => {
-    const { client, calls } = makeFakeClient();
+  it('getTrip returns undefined when there is no trip row at all', async () => {
+    const { client } = makeFakeClient();
     const repo = new SupabaseTripRepository(client, USER_ID);
-    return repo.getTrip().then((trip) => {
-      expect(trip).toBeUndefined();
-      expect(calls.some((c) => c.table === 'trips' && c.op === 'eq' && c.args[0] === 'user_id' && c.args[1] === USER_ID)).toBe(true);
-    });
+    expect(await repo.getTrip()).toBeUndefined();
+  });
+
+  // The single trip is shared by every account (migration 0005) and RLS is
+  // what scopes visibility. Filtering on user_id here would hide it from
+  // everyone but whoever created it — the bug that made a second account
+  // conclude no trip existed, try to create one, and 409 on trips_pkey.
+  it('getTrip does NOT filter by user_id, so a collaborator sees the shared trip', async () => {
+    const { client, calls } = makeFakeClient(existingTripRow());
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const trip = await repo.getTrip();
+    expect(trip).toEqual(baseTrip);
+    expect(calls.some((c) => c.table === 'trips' && c.op === 'eq' && c.args[0] === 'user_id')).toBe(false);
+  });
+
+  it('saveTrip leaves user_id alone — editing must not transfer the trip to the editor', async () => {
+    const { client, tables } = makeFakeClient(existingTripRow());
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    await repo.saveTrip({ ...baseTrip, name: 'Renamed by a collaborator' });
+    expect(tables.trips[0].name).toBe('Renamed by a collaborator');
+    expect(tables.trips[0].user_id).toBe(OTHER_OWNER);
   });
 
   it('saveTrip then getTrip round-trips the trip, mapping snake_case rows back to camelCase', async () => {
-    const { client } = makeFakeClient();
+    const { client } = makeFakeClient(existingTripRow());
     const repo = new SupabaseTripRepository(client, USER_ID);
     await repo.saveTrip(baseTrip);
     const trip = await repo.getTrip();
@@ -143,7 +201,7 @@ describe('SupabaseTripRepository', () => {
   // `tripFromRow`/`tripToRow`'s `members` handling or `expenseFromRow`/
   // `expenseToRow`'s `note`/`paid_by` handling — added explicitly here.
   it('saveTrip then getTrip round-trips Trip.members (Phase 5)', async () => {
-    const { client } = makeFakeClient();
+    const { client } = makeFakeClient(existingTripRow());
     const repo = new SupabaseTripRepository(client, USER_ID);
     const members: TripMember[] = [
       { id: 'member-1', name: 'Alex' },
@@ -155,7 +213,7 @@ describe('SupabaseTripRepository', () => {
   });
 
   it('a trip with no members maps back to `members: undefined`, not an empty-array lie (Phase 5)', async () => {
-    const { client } = makeFakeClient();
+    const { client } = makeFakeClient(existingTripRow());
     const repo = new SupabaseTripRepository(client, USER_ID);
     await repo.saveTrip(baseTrip);
     const trip = await repo.getTrip();
@@ -276,7 +334,7 @@ describe('SupabaseTripRepository', () => {
   });
 
   it('saveTrip/getTrip round-trips TripMember.color (Phase 6)', async () => {
-    const { client } = makeFakeClient();
+    const { client } = makeFakeClient(existingTripRow());
     const repo = new SupabaseTripRepository(client, USER_ID);
     const tripWithColouredMember: Trip = {
       ...baseTrip,
@@ -302,43 +360,36 @@ describe('SupabaseTripRepository', () => {
     expect(rpcCalls).toEqual([{ fn: 'import_trip_snapshot', args: { snapshot } }]);
   });
 
-  it('seedIfEmpty seeds via importSnapshot when no trip exists for the user', async () => {
+  // There is ONE trip, shared by every account (migration 0005), and it
+  // already exists. A client that seeds remotely is the exact code path that
+  // produced `409 duplicate key value violates unique constraint
+  // "trips_pkey"` for every account that wasn't its creator — `trips.id` is a
+  // global primary key and ACTIVE_TRIP_ID is a constant. Not seeing a trip
+  // means "not a collaborator yet", never "create one".
+  it('seedIfEmpty never writes remotely, even when this account can see no trip', async () => {
     const rpcCalls: unknown[] = [];
+    const { client: fake, tables } = makeFakeClient();
     const client = {
-      from: makeFakeClient().client.from,
+      from: fake.from,
       async rpc(fn: string, args: unknown) {
         rpcCalls.push({ fn, args });
         return { data: null, error: null };
       },
     } as unknown as import('@supabase/supabase-js').SupabaseClient;
     const repo = new SupabaseTripRepository(client, USER_ID);
+
     await repo.seedIfEmpty();
-    expect(rpcCalls).toHaveLength(1);
-    expect((rpcCalls[0] as { fn: string }).fn).toBe('import_trip_snapshot');
+
+    expect(rpcCalls).toHaveLength(0);
+    expect(tables.trips ?? []).toHaveLength(0);
   });
 
-  it('seedIfEmpty is a no-op when a trip already exists for the user', async () => {
-    const { client } = makeFakeClient({
-      trips: [
-        {
-          id: baseTrip.id,
-          user_id: USER_ID,
-          name: baseTrip.name,
-          start_date: baseTrip.startDate,
-          end_date: baseTrip.endDate,
-          home_currency: baseTrip.homeCurrency,
-          trip_currency: baseTrip.tripCurrency,
-          rates: baseTrip.rates,
-          rates_updated_at: null,
-          rates_base: null,
-          cities: baseTrip.cities,
-        },
-      ],
-    });
+  it('seedIfEmpty leaves an existing shared trip untouched', async () => {
+    const { client, tables } = makeFakeClient(existingTripRow());
     const repo = new SupabaseTripRepository(client, USER_ID);
     await repo.seedIfEmpty();
-    const trip = await repo.getTrip();
-    expect(trip?.id).toBe(baseTrip.id);
+    expect(tables.trips).toHaveLength(1);
+    expect((await repo.getTrip())?.id).toBe(baseTrip.id);
   });
 });
 
