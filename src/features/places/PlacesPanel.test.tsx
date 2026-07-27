@@ -252,3 +252,46 @@ describe('PlacesPanel — opening the detail modal', () => {
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 });
+
+// These assert the `hidden` attribute, which is as far as jsdom goes — it
+// applies no stylesheet, so it cannot see that `.place-grid`'s `display:grid`
+// out-specifies the UA's `[hidden]{display:none}`. That gap shipped a section
+// that stayed visible when collapsed; `.place-grid[hidden]` in index.css is
+// the fix, and only a real browser can catch a regression of it.
+describe('PlacesPanel — collapsing city sections', () => {
+  it('collapses a single city from its heading toggle, leaving other cities alone', () => {
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const toggle = screen.getByRole('button', { name: /^Shanghai/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('The Bund').closest('.place-grid')).toHaveAttribute('hidden');
+    expect(screen.getByText('Jinli Street').closest('.place-grid')).not.toHaveAttribute('hidden');
+
+    fireEvent.click(toggle);
+    expect(screen.getByText('The Bund').closest('.place-grid')).not.toHaveAttribute('hidden');
+  });
+
+  it('"Collapse all" collapses every visible city, then flips to "Expand all"', () => {
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /Collapse all/ }));
+
+    for (const name of ['Shanghai', 'Chengdu']) {
+      expect(screen.getByRole('button', { name: new RegExp(`^${name}`) })).toHaveAttribute('aria-expanded', 'false');
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand all/ }));
+    for (const name of ['Shanghai', 'Chengdu']) {
+      expect(screen.getByRole('button', { name: new RegExp(`^${name}`) })).toHaveAttribute('aria-expanded', 'true');
+    }
+  });
+
+  it('a city hidden by the filters is not counted by the all-toggle', () => {
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    // Only Chengdu has a Food place, so Shanghai's section disappears and the
+    // toggle (single visible city) goes away with it.
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    expect(screen.queryByRole('button', { name: /Collapse all/ })).not.toBeInTheDocument();
+  });
+});

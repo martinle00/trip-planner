@@ -675,7 +675,10 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
   background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-md);
   padding:10px 10px 10px 14px; margin:0 0 16px;
 }
-.places-add-quicknav-hint{ font-size:12.5px; font-weight:600; color:var(--ink-soft); }
+/* margin-right:auto (rather than the container's space-between alone) keeps
+   the two buttons paired on the right once the collapse-all toggle joins
+   Add place. */
+.places-add-quicknav-hint{ font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-right:auto; }
 .add-form{ display:none; margin-bottom:18px; padding:16px; }
 .add-form.open{ display:block; }
 .add-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
@@ -700,9 +703,20 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
   border-left:4px solid var(--city-accent, var(--line-strong));
   box-shadow:var(--shadow-sm);
 }
-.city-section-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-.city-section-head h3{ font-family:var(--font-display); font-size:1.05rem; font-weight:600; }
-.city-section-head .count{ font-size:12px; color:var(--ink-soft); margin-left:auto; }
+/* The head is the collapse toggle: the <h3> keeps the heading semantics and
+   the <button> inside it is what's clickable (a heading can't live inside a
+   button). Collapsed sections keep their head, so the city list stays a
+   scannable index of the trip. */
+.city-section-head{ margin-bottom:10px; }
+.city-section.is-collapsed .city-section-head{ margin-bottom:0; }
+.city-section-toggle{
+  display:flex; align-items:center; gap:8px; width:100%;
+  background:none; border:none; padding:0; color:inherit; text-align:left; cursor:pointer;
+  font-family:var(--font-display); font-size:1.05rem; font-weight:600;
+}
+.city-section-head .count{ font-size:12px; font-family:var(--font-body); font-weight:400; color:var(--ink-soft); margin-left:auto; }
+.section-chevron{ width:14px; height:14px; flex:none; color:var(--ink-faint); transition:transform 160ms ease; }
+.section-chevron.is-open{ transform:rotate(90deg); }
 .city-dot{ width:9px; height:9px; border-radius:50%; background:var(--city-accent, var(--d-grey)); flex:none; }
 
 /* filters above the city sections */
@@ -720,6 +734,9 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .places-filter-empty svg{ width:26px; height:26px; opacity:.5; }
 
 .place-grid{ display:grid; grid-template-columns:1fr; gap:10px; }
+/* `display:grid` above out-specifies the UA's `[hidden]{display:none}`, so a
+   collapsed city section needs this or it stays fully visible. */
+.place-grid[hidden]{ display:none; }
 @media (min-width:640px){ .place-grid{ grid-template-columns:repeat(2,1fr); } }
 @media (min-width:1000px){ .place-grid{ grid-template-columns:repeat(3,1fr); } }
 
@@ -908,8 +925,18 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    colour, different size for a different density of surrounding chrome —
    not two conventions. */
 .icon-btn.is-danger:hover{ background:var(--accent-soft); color:var(--accent-soft-ink); }
-.stop-move{ display:none; }
-.reorder-mode .stop-move{ display:flex; }
+/* Reorder mode: the stop is dragged by its grip handle. `touch-action:none`
+   is what stops the phone from scrolling the page instead of moving the row.
+   Rows the dragged one passes over are previewed with a transform, so they
+   animate; the dragged row itself must not (it tracks the pointer 1:1). */
+.stop-grip{ cursor:grab; touch-action:none; align-self:center; color:var(--ink-soft); }
+.stop-grip:active{ cursor:grabbing; }
+.stop{ transition:transform 160ms ease; }
+.stop-list.is-dragging{ user-select:none; }
+.stop-list.is-dragging .stop.is-dragged{
+  transition:none; position:relative; z-index:5;
+  box-shadow:var(--shadow-md); border-color:var(--line-strong); cursor:grabbing;
+}
 
 .it-condensed{
   display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;

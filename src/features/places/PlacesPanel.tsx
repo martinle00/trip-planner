@@ -14,6 +14,7 @@ import type { CSSProperties } from 'react';
 import { useTripStore } from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
 import { BackToTop } from '../../components/BackToTop';
+import { citySlug } from '../../components/RouteStrip';
 import type { AddPlaceMode } from './AddPlaceModal';
 import { PlaceDetailModal } from './PlaceDetailModal';
 import type { Day, ID, Place } from '../../data/schema';
@@ -47,6 +48,9 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedPlaceId, setSelectedPlaceId] = useState<ID | null>(null);
   const [draftPlaceIds, setDraftPlaceIds] = useState<Set<ID>>(new Set());
+  // Collapsed-by-exception: a city is expanded unless it's in this set, so a
+  // newly added city shows its places rather than hiding them.
+  const [collapsedCities, setCollapsedCities] = useState<Set<string>>(new Set());
 
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
   const groups = useMemo(() => (trip ? groupPlacesByCity(places, trip.cities) : []), [places, trip]);
@@ -117,6 +121,25 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
     setCategoryFilter('all');
   }
 
+  // Only the sections actually on screen (a city filtered down to nothing
+  // isn't rendered) count towards the all-or-nothing toggle.
+  const visibleCityNames = groups
+    .filter(({ places: cityPlaces }) => cityPlaces.some(matchesFilters))
+    .map(({ city: c }) => c.name);
+  const allCollapsed = visibleCityNames.length > 0 && visibleCityNames.every((n) => collapsedCities.has(n));
+
+  function toggleCity(name: string) {
+    setCollapsedCities((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(name)) next.add(name);
+      return next;
+    });
+  }
+
+  function toggleAllCities() {
+    setCollapsedCities(allCollapsed ? new Set() : new Set(visibleCityNames));
+  }
+
   return (
     <section className="panel" id="panel-places" role="tabpanel" aria-labelledby="tab-places">
       <div className="panel-head">
@@ -134,6 +157,12 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
           `.places-add-quicknav`. */}
       <div className="places-add-quicknav">
         <span className="places-add-quicknav-hint">Save a place you want to visit</span>
+        {visibleCityNames.length > 1 && (
+          <button className="btn btn-ghost btn-sm" onClick={toggleAllCities}>
+            <Icon name="chevron-right" className={`section-chevron${allCollapsed ? '' : ' is-open'}`} />
+            {allCollapsed ? 'Expand all' : 'Collapse all'}
+          </button>
+        )}
         <button className="btn btn-primary btn-sm" onClick={() => onOpenAddPlace('search')}>
           <Icon name="plus" /> Add place
         </button>
@@ -184,17 +213,32 @@ export function PlacesPanel({ onOpenAddPlace }: PlacesPanelProps) {
           const cDays = daysForCity(days, c.name);
           const assigned = cityPlaces.filter((p) => p.dayId).length;
           const accent = cityAccentColor(c.order);
+          const collapsed = collapsedCities.has(c.name);
+          const bodyId = `city-places-${citySlug(c.name)}`;
           return (
-            <div className="city-section" key={c.name} style={{ ['--city-accent' as string]: accent } as CSSProperties}>
-              <div className="city-section-head">
-                <span className="city-dot" />
-                <h3>{c.name}</h3>
-                <span className="count">
-                  {cityPlaces.length} place{cityPlaces.length === 1 ? '' : 's'} &middot;{' '}
-                  {assigned ? `${assigned} assigned` : 'not planned'}
-                </span>
-              </div>
-              <div className="place-grid">
+            <div
+              className={`city-section${collapsed ? ' is-collapsed' : ''}`}
+              key={c.name}
+              style={{ ['--city-accent' as string]: accent } as CSSProperties}
+            >
+              <h3 className="city-section-head">
+                <button
+                  type="button"
+                  className="city-section-toggle"
+                  aria-expanded={!collapsed}
+                  aria-controls={bodyId}
+                  onClick={() => toggleCity(c.name)}
+                >
+                  <span className="city-dot" />
+                  <span className="city-section-name">{c.name}</span>
+                  <span className="count">
+                    {cityPlaces.length} place{cityPlaces.length === 1 ? '' : 's'} &middot;{' '}
+                    {assigned ? `${assigned} assigned` : 'not planned'}
+                  </span>
+                  <Icon name="chevron-right" className={`section-chevron${collapsed ? '' : ' is-open'}`} />
+                </button>
+              </h3>
+              <div className="place-grid" id={bodyId} hidden={collapsed}>
                 {filtered.map((p) => (
                   <PlaceCard
                     key={p.id}

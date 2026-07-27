@@ -1,15 +1,16 @@
 // Itinerary tab — grouped by city, day-trip legs nested under their base
 // city. Sticky quick-nav ("jump to today" + per-city jump), reorder mode
-// with up/down move buttons (ends disabled), add/edit/remove stops.
+// where stops are dragged by their grip handle (toggle reads "Save changes"
+// while active), add/edit/remove stops.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useTripStore } from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
 import { Modal } from '../../components/Modal';
 import { BackToTop } from '../../components/BackToTop';
 import { citySlug } from '../../components/RouteStrip';
-import type { ItineraryItem } from '../../data/schema';
+import type { ID, ItineraryItem } from '../../data/schema';
 import { buildDayColorMap, buildItinerarySections, dayColor, dayLabel } from '../../lib/tripView';
 import { todayISO } from '../../lib/dates';
 
@@ -30,7 +31,6 @@ export function ItineraryPanel() {
   const addItineraryItem = useTripStore((s) => s.addItineraryItem);
   const updateItineraryItem = useTripStore((s) => s.updateItineraryItem);
   const removeItineraryItem = useTripStore((s) => s.removeItineraryItem);
-  const reorderItinerary = useTripStore((s) => s.reorderItinerary);
 
   const [reorderMode, setReorderMode] = useState(false);
   const [flashDayId, setFlashDayId] = useState<string | null>(null);
@@ -73,7 +73,15 @@ export function ItineraryPanel() {
           aria-pressed={reorderMode}
           onClick={() => setReorderMode((v) => !v)}
         >
-          <Icon name="grip" /> Reorder stops
+          {reorderMode ? (
+            <>
+              <Icon name="check" /> Save changes
+            </>
+          ) : (
+            <>
+              <Icon name="grip" /> Reorder stops
+            </>
+          )}
         </button>
       </div>
 
@@ -121,31 +129,13 @@ export function ItineraryPanel() {
                       <span className="it-condensed-text">No stops planned yet.</span>
                     </div>
                   ) : (
-                    <div className="stop-list">
-                      {items.map((item, idx) => (
-                        <StopRow
-                          key={item.id}
-                          item={item}
-                          reorderMode={reorderMode}
-                          isFirst={idx === 0}
-                          isLast={idx === items.length - 1}
-                          onMoveUp={() => {
-                            if (idx === 0) return;
-                            const ids = items.map((i) => i.id);
-                            [ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]];
-                            void reorderItinerary(day.id, ids);
-                          }}
-                          onMoveDown={() => {
-                            if (idx === items.length - 1) return;
-                            const ids = items.map((i) => i.id);
-                            [ids[idx + 1], ids[idx]] = [ids[idx], ids[idx + 1]];
-                            void reorderItinerary(day.id, ids);
-                          }}
-                          onEdit={() => setEditingItem(item)}
-                          onRemove={() => void removeItineraryItem(item.id)}
-                        />
-                      ))}
-                    </div>
+                    <StopList
+                      dayId={day.id}
+                      items={items}
+                      reorderMode={reorderMode}
+                      onEdit={setEditingItem}
+                      onRemove={(item) => void removeItineraryItem(item.id)}
+                    />
                   )}
 
                   <button className="add-stop-row" onClick={() => setAddingToDay(day.id)}>
@@ -182,20 +172,205 @@ export function ItineraryPanel() {
   );
 }
 
+interface StopListProps {
+  dayId: ID;
+  items: ItineraryItem[];
+  reorderMode: boolean;
+  onEdit: (item: ItineraryItem) => void;
+  onRemove: (item: ItineraryItem) => void;
+}
+
+interface DragState {
+  pointerId: number;
+  /** Index the drag started from, into the currently rendered order. */
+  from: number;
+  /** Index the stop would land on if released now. */
+  to: number;
+  /** Pointer travel since pointerdown, in px. */
+  dy: number;
+  startY: number;
+  /** Height the dragged row occupies including the list gap — every row it
+   *  passes shifts by exactly this much, whatever its own height is. */
+  slot: number;
+  rowMids: number[];
+}
+
+/**
+ * The stops of one day, reorderable by dragging the grip handle while
+ * reorder mode is on.
+ *
+ * Pointer Events (not HTML5 drag-and-drop) because this list is read and
+ * edited on a phone, where dragstart never fires. Rows other than the
+ * dragged one are previewed with a transform rather than by re-ordering the
+ * array, so the geometry captured at pointerdown stays valid for the whole
+ * gesture. `pendingOrder` holds the new order locally until the store's
+ * async write lands, so the row doesn't snap back for a frame on drop.
+ */
+function StopList({ dayId, items, reorderMode, onEdit, onRemove }: StopListProps) {
+  const reorderItinerary = useTripStore((s) => s.reorderItinerary);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<ID[] | null>(null);
+
+  const ordered = useMemo(() => {
+    if (!pendingOrder) return items;
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const next = pendingOrder.map((id) => byId.get(id)).filter((i): i is ItineraryItem => Boolean(i));
+    return next.length === items.length ? next : items;
+  }, [items, pendingOrder]);
+
+  // Leaving reorder mode mid-gesture must not strand the drag transform.
+  useEffect(() => {
+    if (!reorderMode) setDrag(null);
+  }, [reorderMode]);
+
+  const commit = useCallback(
+    (from: number, to: number) => {
+      if (from === to) return;
+      const ids = ordered.map((i) => i.id);
+      const [moved] = ids.splice(from, 1);
+      ids.splice(to, 0, moved);
+      setPendingOrder(ids);
+      // A failed write leaves the store order untouched, so clearing the
+      // pending order reverts the row — same last-write-wins behaviour the
+      // rest of the app has.
+      void reorderItinerary(dayId, ids)
+        .finally(() => setPendingOrder(null))
+        .catch(() => {});
+    },
+    [dayId, ordered, reorderItinerary],
+  );
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLElement>, index: number) {
+    if (!reorderMode || drag || e.button !== 0) return;
+    const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>('.stop') ?? []);
+    if (rows.length < 2) return;
+    const rects = rows.map((r) => r.getBoundingClientRect());
+    const gap = rects[1].top - rects[0].bottom;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({
+      pointerId: e.pointerId,
+      from: index,
+      to: index,
+      dy: 0,
+      startY: e.clientY,
+      slot: rects[index].height + gap,
+      rowMids: rects.map((r) => r.top + r.height / 2),
+    });
+  }
+
+  function handlePointerMove(e: ReactPointerEvent<HTMLElement>) {
+    setDrag((d) => {
+      if (!d || d.pointerId !== e.pointerId) return d;
+      const dy = e.clientY - d.startY;
+      const center = d.rowMids[d.from] + dy;
+      let to = d.from;
+      for (let i = 0; i < d.rowMids.length; i++) {
+        if (i < d.from && center < d.rowMids[i]) to = Math.min(to, i);
+        if (i > d.from && center > d.rowMids[i]) to = Math.max(to, i);
+      }
+      return { ...d, dy, to };
+    });
+  }
+
+  function handlePointerUp(e: ReactPointerEvent<HTMLElement>, cancelled = false) {
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    if (!cancelled) commit(drag.from, drag.to);
+    setDrag(null);
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLElement>, index: number) {
+    if (!reorderMode) return;
+    const delta = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+    if (delta === 0) return;
+    e.preventDefault();
+    const to = index + delta;
+    if (to < 0 || to >= ordered.length) return;
+    commit(index, to);
+  }
+
+  function transformFor(index: number): string | undefined {
+    if (!drag) return undefined;
+    if (index === drag.from) return `translateY(${drag.dy}px)`;
+    if (drag.from < drag.to && index > drag.from && index <= drag.to) return `translateY(${-drag.slot}px)`;
+    if (drag.to < drag.from && index >= drag.to && index < drag.from) return `translateY(${drag.slot}px)`;
+    return undefined;
+  }
+
+  return (
+    <div className={`stop-list${drag ? ' is-dragging' : ''}`} ref={listRef}>
+      {ordered.map((item, idx) => (
+        <StopRow
+          key={item.id}
+          item={item}
+          position={idx + 1}
+          total={ordered.length}
+          reorderMode={reorderMode}
+          isDragged={drag?.from === idx}
+          transform={transformFor(idx)}
+          onHandlePointerDown={(e) => handlePointerDown(e, idx)}
+          onHandlePointerMove={handlePointerMove}
+          onHandlePointerUp={(e) => handlePointerUp(e)}
+          onHandlePointerCancel={(e) => handlePointerUp(e, true)}
+          onHandleKeyDown={(e) => handleKeyDown(e, idx)}
+          onEdit={() => onEdit(item)}
+          onRemove={() => onRemove(item)}
+        />
+      ))}
+    </div>
+  );
+}
+
 interface StopRowProps {
   item: ItineraryItem;
+  position: number;
+  total: number;
   reorderMode: boolean;
-  isFirst: boolean;
-  isLast: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
+  isDragged: boolean;
+  transform?: string;
+  onHandlePointerDown: (e: ReactPointerEvent<HTMLElement>) => void;
+  onHandlePointerMove: (e: ReactPointerEvent<HTMLElement>) => void;
+  onHandlePointerUp: (e: ReactPointerEvent<HTMLElement>) => void;
+  onHandlePointerCancel: (e: ReactPointerEvent<HTMLElement>) => void;
+  onHandleKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
   onEdit: () => void;
   onRemove: () => void;
 }
 
-function StopRow({ item, reorderMode, isFirst, isLast, onMoveUp, onMoveDown, onEdit, onRemove }: StopRowProps) {
+function StopRow({
+  item,
+  position,
+  total,
+  reorderMode,
+  isDragged,
+  transform,
+  onHandlePointerDown,
+  onHandlePointerMove,
+  onHandlePointerUp,
+  onHandlePointerCancel,
+  onHandleKeyDown,
+  onEdit,
+  onRemove,
+}: StopRowProps) {
   return (
-    <div className={`stop${reorderMode ? ' reorder-mode' : ''}`}>
+    <div
+      className={`stop${reorderMode ? ' reorder-mode' : ''}${isDragged ? ' is-dragged' : ''}`}
+      style={transform ? { transform } : undefined}
+    >
+      {reorderMode && (
+        <button
+          className="icon-btn stop-grip"
+          aria-label={`Reorder ${item.title}, ${position} of ${total}. Drag, or press the up and down arrow keys.`}
+          onPointerDown={onHandlePointerDown}
+          onPointerMove={onHandlePointerMove}
+          onPointerUp={onHandlePointerUp}
+          onPointerCancel={onHandlePointerCancel}
+          onKeyDown={onHandleKeyDown}
+        >
+          <Icon name="grip" />
+        </button>
+      )}
       <div className="stop-time tabular">{item.startTime ?? '--:--'}</div>
       <div className="stop-body">
         <div className="stop-title">{item.title}</div>
@@ -203,12 +378,6 @@ function StopRow({ item, reorderMode, isFirst, isLast, onMoveUp, onMoveDown, onE
         {item.note && <div className="stop-note">{item.note}</div>}
       </div>
       <div className="stop-actions">
-        <button className="icon-btn stop-move" aria-label="Move stop up" disabled={isFirst} onClick={onMoveUp}>
-          <Icon name="arrow-up" />
-        </button>
-        <button className="icon-btn stop-move" aria-label="Move stop down" disabled={isLast} onClick={onMoveDown}>
-          <Icon name="arrow-down" />
-        </button>
         <button className="icon-btn" aria-label={`Edit ${item.title}`} onClick={onEdit}>
           <Icon name="edit" />
         </button>
