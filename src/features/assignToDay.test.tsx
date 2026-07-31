@@ -173,6 +173,31 @@ describe('Delete place — regression, no orphaned stop', () => {
   });
 });
 
+/**
+ * Waits for the auto-plan draft to finish applying.
+ *
+ * Needs an explicit, generous timeout: `accepted` only flips once
+ * `applyAutoPlan` has resolved, and that writes one itinerary item per
+ * planned stop — the longest step in the flow by far, and every write is a
+ * real (fake-indexeddb) round-trip. testing-library's default is 1000ms,
+ * which is comfortable on a dev machine and not on a shared CI runner: this
+ * is exactly what failed in CI while passing locally. The `Draft preview`
+ * wait above already carries the same kind of allowance.
+ *
+ * Also surfaces the modal's error state rather than letting the failure read
+ * as a bare "couldn't find the text" — if `applyAutoPlan` actually rejected,
+ * that's a different bug and the next person shouldn't have to re-derive it.
+ */
+async function expectDraftApplied() {
+  try {
+    await screen.findByText(/Draft applied/, {}, { timeout: 5000 });
+  } catch (err) {
+    const applyError = screen.queryByText(/Couldn’t save the draft/);
+    if (applyError) throw new Error(`Auto-plan accept FAILED: ${applyError.textContent}`);
+    throw err;
+  }
+}
+
 describe('Auto-plan accept — no duplicate stops, incl. rapid double-click', () => {
   it('accepting a generated draft writes exactly one stop per planned place', async () => {
     render(<App />);
@@ -185,7 +210,7 @@ describe('Auto-plan accept — no duplicate stops, incl. rapid double-click', ()
     await screen.findByText(/Draft preview/, {}, { timeout: 2000 });
 
     fireEvent.click(screen.getByRole('button', { name: /Accept draft/ }));
-    await screen.findByText(/Draft applied/);
+    await expectDraftApplied();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(itineraryTab());
@@ -213,7 +238,7 @@ describe('Auto-plan accept — no duplicate stops, incl. rapid double-click', ()
     // duplicate).
     fireEvent.click(acceptBtn);
     fireEvent.click(acceptBtn);
-    await screen.findByText(/Draft applied/);
+    await expectDraftApplied();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(itineraryTab());
