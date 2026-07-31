@@ -515,11 +515,15 @@ describe('BudgetPanel — By-person totals (Phase 5 item 6)', () => {
     const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
 
     const byPersonCard = container.querySelector('.by-person-card') as HTMLElement;
-    const alexRow = within(byPersonCard).getByText('Alex').closest('.cat-row') as HTMLElement;
+    const alexRow = within(byPersonCard)
+      .getByText('Alex')
+      .closest('.split-legend-row') as HTMLElement;
     expect(within(alexRow).getByText('A$36')).toBeInTheDocument();
     expect(within(alexRow).getByText('1 excl. (no rate)')).toBeInTheDocument();
 
-    const priyaRow = within(byPersonCard).getByText('Priya').closest('.cat-row') as HTMLElement;
+    const priyaRow = within(byPersonCard)
+      .getByText('Priya')
+      .closest('.split-legend-row') as HTMLElement;
     expect(within(priyaRow).getByText('A$0')).toBeInTheDocument();
 
     expect(
@@ -702,35 +706,122 @@ describe('BudgetPanel — breakdown bar semantics (Phase 6 item 7)', () => {
     { id: 'e-2', tripId: 'trip-test', category: 'Food', label: 'Small', amount: 25, currency: 'AUD', paid: true, paidBy: 'm-priya' },
   ];
 
-  it('sizes By-person bars as a share of the trip total, not of the top payer', () => {
+  it('sizes the split segments as a share of what was actually paid', () => {
     resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, expenses: EXPENSES });
     const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
 
     const card = container.querySelector('.by-person-card') as HTMLElement;
-    const widths = Array.from(card.querySelectorAll('.cat-bar-fill')).map(
+    const widths = Array.from(card.querySelectorAll('.split-seg')).map(
       (el) => (el as HTMLElement).style.width,
     );
-    // Total is 100 AUD: Alex 75 -> 75%, Priya 25 -> 25%.
-    // Under the old byPersonMax math these would have been 100% and 33.33%.
     expect(widths).toEqual(['75%', '25%']);
   });
 
-  it('keeps the 4% legibility floor for a tiny-but-nonzero share', () => {
+  it('gives a member who paid nothing no segment at all', () => {
+    // The old form floored every bar at 4% so a tiny payer stayed visible —
+    // which also drew a visible bar next to "A$0". Stacked, a zero share is
+    // simply absent, which is the honest rendering.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS_2 },
+      expenses: [EXPENSES[0]],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    const card = container.querySelector('.by-person-card') as HTMLElement;
+    expect(card.querySelectorAll('.split-seg')).toHaveLength(1);
+    const priyaRow = within(card).getByText('Priya').closest('.split-legend-row') as HTMLElement;
+    expect(within(priyaRow).getByText('A$0')).toBeInTheDocument();
+  });
+
+  it('gives unassigned spending its own segment instead of dropping it', () => {
+    // THE bug this form replaced: an expense with no `paidBy` was skipped
+    // before anything counted it, so the per-person bars were shares of a
+    // total they could never add up to — with nothing on the card saying
+    // where the rest went.
     resetStore({
       trip: { ...BASE_TRIP, members: MEMBERS_2 },
       expenses: [
-        { ...EXPENSES[0], amount: 1000 },
-        { ...EXPENSES[1], amount: 1 },
+        { ...EXPENSES[0], amount: 50 },
+        { ...EXPENSES[1], amount: 25 },
+        // Nobody named — the common case, since the add form leaves it unset.
+        { id: 'e-3', tripId: 'trip-test', category: 'Food', label: 'Shared', amount: 25, currency: 'AUD', paid: true },
       ],
     });
     const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
 
     const card = container.querySelector('.by-person-card') as HTMLElement;
-    const widths = Array.from(card.querySelectorAll('.cat-bar-fill')).map(
-      (el) => (el as HTMLElement).style.width,
+    const unassigned = card.querySelector('.split-seg-unassigned') as HTMLElement;
+    expect(unassigned).not.toBeNull();
+    expect(unassigned.style.width).toBe('25%');
+
+    const row = within(card).getByText(/Not assigned/).closest('.split-legend-row') as HTMLElement;
+    expect(within(row).getByText('A$25')).toBeInTheDocument();
+    expect(within(row).getByText(/1 expense/)).toBeInTheDocument();
+
+    // And the segments account for the whole track.
+    const widths = Array.from(card.querySelectorAll('.split-seg')).map(
+      (el) => parseFloat((el as HTMLElement).style.width),
     );
-    // 1/1001 is ~0.1%, floored to 4% so the bar stays visible at all.
-    expect(widths[1]).toBe('4%');
+    expect(widths.reduce((a, b) => a + b, 0)).toBeCloseTo(100);
+  });
+
+  it('marks a $0 companion recessive so a missing segment doesn’t read as a broken bar', () => {
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, expenses: [EXPENSES[0]] });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    const card = container.querySelector('.by-person-card') as HTMLElement;
+    const priyaRow = within(card).getByText('Priya').closest('.split-legend-row') as HTMLElement;
+    expect(priyaRow.className).toContain('is-zero');
+    const alexRow = within(card).getByText('Alex').closest('.split-legend-row') as HTMLElement;
+    expect(alexRow.className).not.toContain('is-zero');
+  });
+
+  it('paints each segment in that member’s own avatar colour', () => {
+    resetStore({
+      trip: {
+        ...BASE_TRIP,
+        members: [
+          { id: 'm-alex', name: 'Alex', color: 'm-denim' },
+          { id: 'm-priya', name: 'Priya', color: 'm-berry' },
+        ],
+      },
+      expenses: EXPENSES,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    const segs = Array.from(
+      (container.querySelector('.by-person-card') as HTMLElement).querySelectorAll('.split-seg'),
+    ) as HTMLElement[];
+    expect(segs.map((el) => el.style.background)).toEqual(['var(--m-denim)', 'var(--m-berry)']);
+    // Coloured segments must not carry the alternating-lightness fallback,
+    // which would misreport the swatch the member actually picked.
+    expect(segs.some((el) => el.className.includes('split-seg-plain'))).toBe(false);
+  });
+
+  it('falls back to jade for a member with no colour set', () => {
+    // Colour is optional on a member by design — an unset one must look
+    // unset, never get silently auto-assigned a swatch here.
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, expenses: EXPENSES });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    const segs = Array.from(
+      (container.querySelector('.by-person-card') as HTMLElement).querySelectorAll('.split-seg'),
+    ) as HTMLElement[];
+    expect(segs.every((el) => el.className.includes('split-seg-plain'))).toBe(true);
+    expect(segs.every((el) => el.style.background === '')).toBe(true);
+  });
+
+  it('describes the whole track in one sentence for screen readers', () => {
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS_2 }, expenses: EXPENSES });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    const card = container.querySelector('.by-person-card') as HTMLElement;
+    // A stacked bar's segments carry no text of their own — without this a
+    // screen reader walks a row of silent divs.
+    expect(within(card).getByRole('img')).toHaveAttribute(
+      'aria-label',
+      'Who paid: Alex A$75, Priya A$25',
+    );
   });
 });
 
@@ -751,8 +842,10 @@ const FILTER_EXPENSES: Expense[] = [
   { id: 'e1', tripId: 'trip-test', category: 'Food', label: 'Hawker lunch', amount: 100, currency: 'AUD', paid: true, city: 'Singapore', paidBy: 'm1' },
   { id: 'e2', tripId: 'trip-test', category: 'Attractions', label: 'Gardens tickets', amount: 200, currency: 'AUD', paid: false, city: 'Singapore', paidBy: 'm2' },
   { id: 'e3', tripId: 'trip-test', category: 'Food', label: 'Xiaolongbao', amount: 400, currency: 'AUD', paid: true, city: 'Shanghai', paidBy: 'm1' },
-  // No city — the "Whole trip" bucket.
-  { id: 'e4', tripId: 'trip-test', category: 'Transport', label: 'Flights', amount: 1000, currency: 'AUD', paid: false, paidBy: 'm1' },
+  // No city — the "Whole trip" bucket. Also no payer, which is the ordinary
+  // case (the add form leaves `paidBy` unset) and what the By-person card's
+  // "Not assigned" segment reports.
+  { id: 'e4', tripId: 'trip-test', category: 'Transport', label: 'Flights', amount: 1000, currency: 'AUD', paid: false },
   // Category outside EXPENSE_CATEGORIES — imported/legacy data.
   { id: 'e5', tripId: 'trip-test', category: 'Visas', label: 'Visa fee', amount: 50, currency: 'AUD', paid: true, city: 'Shanghai', paidBy: 'm2' },
 ];
@@ -811,6 +904,19 @@ describe('BudgetPanel — filters', () => {
     // that's what replaces a third "Paid & unpaid" chip.
     fireEvent.click(chip('Unpaid'));
     expect(visibleLabels()).toHaveLength(5);
+  });
+
+  it('releases an active category chip when pressed again, matching the payment row', () => {
+    // The two rows are styled identically and stacked — whichever a user
+    // learns first sets their expectation of the other, so "press the active
+    // chip to clear it" has to hold in both.
+    renderWithFilters();
+    fireEvent.click(chip('Food'));
+    expect(visibleLabels()).toEqual(['Xiaolongbao', 'Hawker lunch']);
+
+    fireEvent.click(chip('Food'));
+    expect(visibleLabels()).toHaveLength(5);
+    expect(chip('All categories')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('combines filters with AND', () => {
@@ -930,6 +1036,10 @@ describe('BudgetPanel — filters', () => {
     expect(visibleLabels()).toHaveLength(5);
     expect(screen.queryByText(/Showing 2 of 5/)).not.toBeInTheDocument();
   });
+
+
+
+
 
   it('does not render By-person bars when nothing matches the filters', () => {
     // Bars are floored at 4% width so a small payer stays visible, which

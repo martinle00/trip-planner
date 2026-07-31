@@ -1087,15 +1087,62 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    different boxes. One rule now covers both. */
 .cat-breakdown{ padding:14px 16px; margin-bottom:22px; }
 .cat-row{ display:grid; grid-template-columns:110px 1fr 110px; align-items:center; gap:10px; padding:6px 0; font-size:12.5px; }
-.cat-row .cat-label{ font-weight:600; color:var(--ink-soft); display:flex; align-items:center; gap:6px; min-width:0; }
-.cat-row .cat-label span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* `.split-legend-row` is listed alongside `.cat-row` on every one of these
+   rather than nesting inside it: the By-person legend is a sibling structure
+   (one stacked track above, rows below) but has to render numbers and labels
+   identically to the By-category rows right above it, or the same figure
+   reads two ways one card apart. */
+.cat-row .cat-label, .split-legend-row .cat-label{ font-weight:600; color:var(--ink-soft); display:flex; align-items:center; gap:6px; min-width:0; }
+.cat-row .cat-label span, .split-legend-row .cat-label span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cat-bar-track{ height:8px; border-radius:var(--radius-full); background:var(--paper-sunk); overflow:hidden; }
 .cat-bar-fill{ height:100%; background:var(--jade); border-radius:var(--radius-full); transition:width .25s ease; }
+
+/* By-person split: ONE stacked track, part-to-whole. Replaces a bar per
+   person — see the comment in BudgetPanel.tsx for why (the old form let the
+   unassigned remainder vanish; stacked, it has to take up width).
+
+   Taller than `.cat-bar-track` (14px vs 8px) because this one is read for
+   proportion between segments rather than glanced at as a single fill. */
+.split-track{
+  display:flex; gap:2px; height:14px; border-radius:var(--radius-full);
+  background:var(--paper-sunk); overflow:hidden; margin-bottom:12px;
+}
+/* A payer segment wears that member's own `--m-*` swatch (set inline from
+   `TripMember.color`), so the bar matches the avatar next to their name in
+   the legend. `--jade` below is the FALLBACK for a member with no swatch —
+   colour is optional on a member by design, and an unset one must not be
+   silently auto-assigned. The 2px flex gap separates neighbours. */
+.split-seg{ background:var(--jade); min-width:3px; transition:width .25s ease; }
+/* Only the uncoloured fallback segments alternate lightness: two of those
+   side by side would otherwise be one solid jade block with a hairline in
+   it. Coloured segments already differ by hue and must not be tinted — that
+   would misreport which swatch the person picked. */
+.split-seg-plain:nth-of-type(even){ background:color-mix(in srgb, var(--jade) 72%, var(--paper-sunk)); }
+/* Not a person — deliberately not a colour from any categorical pool. The
+   hatch reads as "missing", which is exactly what it is. */
+.split-seg-unassigned{
+  background:repeating-linear-gradient(
+    135deg, var(--line-strong) 0 3px, var(--paper-sunk) 3px 6px
+  );
+}
+
+.split-legend{ display:flex; flex-direction:column; gap:7px; }
+/* No segment on the track, so the row is recessive rather than looking like a
+   chunk that failed to render. */
+.split-legend-row.is-zero .cat-label, .split-legend-row.is-zero .cat-amt{ color:var(--ink-faint); }
+
+.split-legend-row{ display:flex; align-items:center; gap:10px; justify-content:space-between; }
+.split-swatch-unassigned{
+  width:14px; height:14px; border-radius:var(--radius-sm); flex:none;
+  background:repeating-linear-gradient(
+    135deg, var(--line-strong) 0 3px, var(--paper-sunk) 3px 6px
+  );
+}
 /* .cat-amt is a right-aligned flex column: the amount on its own line, the
    "N currencies" note (when present) wrapped onto the line below it rather
    than inline — inline overflows the 110px amount column and bleeds over
    the bar. */
-.cat-row .cat-amt{ display:flex; flex-direction:column; align-items:flex-end; text-align:right; font-family:var(--font-mono); font-weight:600; }
+.cat-row .cat-amt, .split-legend-row .cat-amt{ display:flex; flex-direction:column; align-items:flex-end; text-align:right; font-family:var(--font-mono); font-weight:600; }
 .cat-amt-value{ white-space:nowrap; }
 .cat-amt-note{ display:block; color:var(--ink-soft); font-weight:500; font-size:10.5px; font-family:var(--font-body); white-space:nowrap; }
 
@@ -1662,6 +1709,49 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
   white-space:nowrap;
 }
 .sync-indicator[data-state="hidden"]{ display:none; }
+
+/* ---- Pending-upload states (Phase 8, offline writes) --------------------
+   A different job from the states below: those report a background refresh
+   that needs nothing from the user, this reports work of theirs that hasn't
+   left the device yet. So it's gold (the app's "owed/outstanding" colour,
+   same vocabulary as the offline banner), it persists rather than settling
+   away, and — unlike every other state of this chip — it's a real button.
+
+   -soft-ink, not --gold: --gold on --gold-soft is ~3.3:1, under the 4.5:1
+   floor for 12px text. See the token block at the top of this file. */
+.sync-indicator.sync-pending{
+  display:inline-flex; cursor:default;
+  background:var(--gold-soft); color:var(--gold-soft-ink); border-color:transparent;
+  /* 44px min target: this is a primary action now, not passive chrome. */
+  min-height:44px; padding:6px 14px;
+}
+.sync-indicator.sync-pending[data-state="uploading"]{
+  background:var(--paper-sunk); color:var(--ink-soft); border-color:var(--line);
+}
+.sync-indicator.sync-pending:not(:disabled){ cursor:pointer; }
+.sync-indicator.sync-pending:not(:disabled):hover{ border-color:var(--gold-soft-ink); }
+.sync-indicator.sync-pending .sync-dot{ background:var(--gold-soft-ink); }
+
+/* The label must NOT collapse the way `.sync-indicator-label` does at narrow
+   widths (see the `.topbar-actions.is-collapsed` rule above). A count of
+   unsaved changes that vanishes on a phone is worse than useless — the phone
+   is where the offline editing actually happens. */
+.sync-pending-label{ display:inline; }
+@media (max-width:480px){
+  /* Keep it readable without letting a long label push the topbar around. */
+  .sync-indicator.sync-pending{ max-width:52vw; overflow:hidden; text-overflow:ellipsis; }
+}
+
+.sync-sheet-lead{ font-size:14px; font-weight:600; color:var(--ink); margin:0 0 8px; }
+.sync-sheet-note{ font-size:12.5px; color:var(--ink-soft); margin:0 0 8px; }
+.sync-sheet-actions{ display:flex; gap:10px; margin-top:16px; }
+/* Both buttons ghost, equal width: a deliberate break from the usual
+   primary/secondary split. "Not now" is the safe choice on one bar of
+   signal, so Upload shouldn't be the thumb's default target. Upload still
+   reads as the affirmative one via its check icon and jade ink. */
+.sync-sheet-actions .btn{ flex:1; justify-content:center; min-height:44px; }
+.sync-sheet-upload{ color:var(--jade-soft-ink); border-color:var(--jade-soft); }
+.sync-sheet-upload:hover{ background:var(--jade-soft); }
 .sync-indicator[data-state="syncing"]{ display:inline-flex; }
 .sync-indicator[data-state="done"]{
   display:inline-flex; color:var(--jade-soft-ink); background:var(--jade-soft); border-color:transparent;

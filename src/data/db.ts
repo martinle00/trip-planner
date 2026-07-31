@@ -69,6 +69,34 @@ const STORES = {
   expenses: 'id, tripId, dayId',
 };
 
+/**
+ * One pending write, held locally because the network couldn't take it — see
+ * `data/outboxRepository.ts` (the only module that touches this table) and
+ * `data/outboxTripRepository.ts` (the only thing that queues into it).
+ *
+ * Local-only and never synced, like `PlaceDraft`/`StagedAssignment` above —
+ * but unlike those two this is not a staging area the user opts into. It is
+ * the record of writes the app already told the user had succeeded, so it is
+ * the one local-only table whose loss means losing real work. `clearLocalCache`
+ * does clear it (queued writes belong to the account that made them and would
+ * be denied by RLS if replayed as anyone else), which is exactly why sign-out
+ * has to refuse while it's non-empty — see `App.tsx handleSignOut`.
+ *
+ * At most ONE entry exists per `[entity+recordId]`: `append` coalesces, so
+ * the row count is "records changed", which is what the UI reports.
+ */
+export interface OutboxEntry {
+  /** Auto-incrementing; also the replay order. */
+  seq?: number;
+  entity: 'trip' | 'place' | 'itinerary' | 'expense';
+  op: 'upsert' | 'delete';
+  recordId: ID;
+  /** The record to write. Absent for a delete. */
+  payload?: Trip | Place | ItineraryItem | Expense;
+  /** ISO date-time this record's pending change was first queued. */
+  queuedAt: string;
+}
+
 export class TripDatabase extends Dexie {
   trips!: Table<Trip, string>;
   days!: Table<Day, string>;
@@ -77,6 +105,7 @@ export class TripDatabase extends Dexie {
   expenses!: Table<Expense, string>;
   placeDrafts!: Table<PlaceDraft, string>;
   stagedAssignments!: Table<StagedAssignment, string>;
+  outbox!: Table<OutboxEntry, number>;
 
   constructor() {
     super('china-trip-planner');
@@ -206,6 +235,21 @@ export class TripDatabase extends Dexie {
             delete raw.itemId;
           });
       });
+
+    // v6 (Phase 8 — offline writes): the `outbox` table. Purely additive —
+    // no existing row changes shape, so there is no `.upgrade()` step. The
+    // compound `[entity+recordId]` index is what lets `append` coalesce by
+    // lookup instead of scanning the queue on every offline keystroke.
+    this.version(6).stores({
+      trips: 'id',
+      days: 'id, tripId, date',
+      places: 'id, tripId, city, status, dayId',
+      itinerary: 'id, dayId, order',
+      expenses: 'id, tripId, city',
+      placeDrafts: 'placeId',
+      stagedAssignments: 'placeId, city',
+      outbox: '++seq, [entity+recordId]',
+    });
   }
 }
 
@@ -214,15 +258,29 @@ export const db = new TripDatabase();
 
 /** Wipes the local cache. Call on sign-out so a previous account's trip data
  *  (including any unsaved place-prose drafts, which are local-only and never
- *  synced) isn't left readable offline on a shared/public device. */
+ *  synced) isn't left readable offline on a shared/public device.
+ *
+ *  This includes the `outbox`: a queued write is authored by, and only
+ *  permitted to, the account that made it. Callers MUST therefore check for
+ *  pending changes first — see `App.tsx handleSignOut`, which refuses to sign
+ *  out while the queue is non-empty rather than silently discarding work. */
 export async function clearLocalCache(): Promise<void> {
   // Tables passed as an ARRAY, not varargs: Dexie's `transaction()` only has
   // explicit overloads up to 5 named tables, and adding `placeDrafts` in v3
-  // made 6 (now 7 with `stagedAssignments` in v4). The varargs form stops
-  // typechecking at that point.
+  // made 6 (now 8 with `stagedAssignments` in v4 and `outbox` in v6). The
+  // varargs form stops typechecking at that point.
   await db.transaction(
     'rw',
-    [db.trips, db.days, db.places, db.itinerary, db.expenses, db.placeDrafts, db.stagedAssignments],
+    [
+      db.trips,
+      db.days,
+      db.places,
+      db.itinerary,
+      db.expenses,
+      db.placeDrafts,
+      db.stagedAssignments,
+      db.outbox,
+    ],
     async () => {
       await Promise.all([
         db.trips.clear(),
@@ -232,6 +290,7 @@ export async function clearLocalCache(): Promise<void> {
         db.expenses.clear(),
         db.placeDrafts.clear(),
         db.stagedAssignments.clear(),
+        db.outbox.clear(),
       ]);
     },
   );

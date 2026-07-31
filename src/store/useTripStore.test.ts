@@ -20,6 +20,10 @@ import { DexieTripRepository } from '../data/dexieTripRepository';
 import type { TripRepository } from '../data/tripRepository';
 import type { Place, Trip } from '../data/schema';
 import { db } from '../data/db';
+import { outboxRepository } from '../data/outboxRepository';
+import { OutboxTripRepository } from '../data/outboxTripRepository';
+import { getActiveRepository } from '../data/tripRepositoryInstance';
+import { ACTIVE_TRIP_ID } from '../data/tripRepository';
 import { stagedAssignmentRepository } from '../data/stagedAssignmentRepository';
 import { splitMergedProse } from '../lib/proseMerge';
 
@@ -2113,5 +2117,204 @@ describe('addItineraryItem — place-side mirror', () => {
     });
 
     expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(dayA.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 8 — the pending-write queue. These run against the plain Dexie
+// repository (writes never fail, so nothing queues by itself); the queue is
+// seeded directly to drive the drain paths.
+// ---------------------------------------------------------------------------
+
+describe('syncOutbox — draining the queue', () => {
+  function queuedPlace(id: string, name: string) {
+    return {
+      entity: 'place' as const,
+      op: 'upsert' as const,
+      recordId: id,
+      payload: {
+        id,
+        tripId: ACTIVE_TRIP_ID,
+        name,
+        city: 'Shanghai',
+        lat: 31.2,
+        lng: 121.4,
+        status: 'wishlist' as const,
+        updatedAt: '2026-07-01T00:00:00.000Z',
+      },
+      queuedAt: new Date().toISOString(),
+    };
+  }
+
+  afterEach(async () => {
+    await outboxRepository.clearAll();
+  });
+
+  it('uploads everything and clears the queue', async () => {
+    await outboxRepository.append(queuedPlace('q1', 'One'));
+    await outboxRepository.append(queuedPlace('q2', 'Two'));
+    await useTripStore.getState().refreshPendingCount();
+    expect(useTripStore.getState().pendingCount).toBe(2);
+
+    await useTripStore.getState().syncOutbox();
+
+    expect(await outboxRepository.count()).toBe(0);
+    expect(useTripStore.getState().pendingCount).toBe(0);
+    expect(useTripStore.getState().uploadFailure).toBeUndefined();
+    const names = useTripStore.getState().places.map((p) => p.name);
+    expect(names).toContain('One');
+    expect(names).toContain('Two');
+  });
+
+  it('stops at the first failure and leaves the rest queued', async () => {
+    // A dead network breaks the next 30 writes too — firing them all costs
+    // battery and data on a phone that has neither to spare.
+    await outboxRepository.append(queuedPlace('q1', 'One'));
+    await outboxRepository.append(queuedPlace('q2', 'Two'));
+    await outboxRepository.append(queuedPlace('q3', 'Three'));
+
+    let calls = 0;
+    const repo = getActiveRepository();
+    const original = repo.upsertPlace.bind(repo);
+    vi.spyOn(repo, 'upsertPlace').mockImplementation(async (place) => {
+      calls++;
+      if (calls === 2) throw new TypeError('Failed to fetch');
+      return original(place);
+    });
+
+    await useTripStore.getState().syncOutbox();
+
+    expect(calls).toBe(2); // stopped, did not attempt the third
+    expect(useTripStore.getState().uploadFailure).toEqual({ uploaded: 1, remaining: 2 });
+    expect(await outboxRepository.count()).toBe(2);
+    vi.restoreAllMocks();
+  });
+
+  it('is safe to re-run after a partial drain', async () => {
+    await outboxRepository.append(queuedPlace('q1', 'One'));
+    await outboxRepository.append(queuedPlace('q2', 'Two'));
+
+    let calls = 0;
+    const repo = getActiveRepository();
+    const original = repo.upsertPlace.bind(repo);
+    vi.spyOn(repo, 'upsertPlace').mockImplementation(async (place) => {
+      calls++;
+      if (calls === 2) throw new TypeError('Failed to fetch');
+      return original(place);
+    });
+    await useTripStore.getState().syncOutbox();
+    vi.restoreAllMocks();
+
+    await useTripStore.getState().syncOutbox();
+
+    expect(await outboxRepository.count()).toBe(0);
+    expect(useTripStore.getState().uploadFailure).toBeUndefined();
+  });
+});
+
+describe('init — suppressed while writes are queued', () => {
+  afterEach(async () => {
+    await outboxRepository.clearAll();
+    setTripRepository(new DexieTripRepository());
+  });
+
+  it('does not revalidate from the repository while anything is pending', async () => {
+    // THE trap this feature turns on: the remote is missing every queued
+    // change, so revalidating from it would paint OLDER data over the user's
+    // own offline edits and then re-upload them. Skip the step entirely.
+    //
+    // Must run against a NON-Dexie repository: init()'s local-only branch
+    // returns before the suppression check, so a plain DexieTripRepository
+    // would make this test pass without exercising anything.
+    const local = new DexieTripRepository();
+    let remoteReads = 0;
+    const remote: TripRepository = {
+      ...local,
+      seedIfEmpty: async () => {},
+      getTrip: async () => {
+        remoteReads++;
+        return local.getTrip();
+      },
+      listPlaces: async (tripId: string) => {
+        remoteReads++;
+        return local.listPlaces(tripId);
+      },
+      listDays: (tripId: string) => local.listDays(tripId),
+      listAllItinerary: (tripId: string) => local.listAllItinerary(tripId),
+      listExpenses: (tripId: string) => local.listExpenses(tripId),
+      upsertPlace: (p: Place) => local.upsertPlace(p),
+      deletePlace: (id: string) => local.deletePlace(id),
+      updatePlaceIfUnchanged: (p: Place, base: string) => local.updatePlaceIfUnchanged(p, base),
+      listItinerary: (dayId: string) => local.listItinerary(dayId),
+      upsertItineraryItem: local.upsertItineraryItem.bind(local),
+      deleteItineraryItem: local.deleteItineraryItem.bind(local),
+      upsertExpense: local.upsertExpense.bind(local),
+      deleteExpense: local.deleteExpense.bind(local),
+      saveTrip: local.saveTrip.bind(local),
+      exportSnapshot: local.exportSnapshot.bind(local),
+      importSnapshot: local.importSnapshot.bind(local),
+    };
+    setTripRepository(new OutboxTripRepository(remote, local));
+
+    await outboxRepository.append({
+      entity: 'place',
+      op: 'upsert',
+      recordId: 'pending-1',
+      payload: {
+        id: 'pending-1',
+        tripId: ACTIVE_TRIP_ID,
+        name: 'Queued place',
+        city: 'Shanghai',
+        lat: 31.2,
+        lng: 121.4,
+        status: 'wishlist',
+        updatedAt: '2026-07-01T00:00:00.000Z',
+      },
+      queuedAt: new Date().toISOString(),
+    });
+
+    remoteReads = 0;
+    await useTripStore.getState().init();
+
+    expect(useTripStore.getState().pendingCount).toBe(1);
+    expect(remoteReads).toBe(0);
+    expect(useTripStore.getState().syncing).toBe(false);
+  });
+
+  it('revalidates normally once the queue is empty', async () => {
+    const local = new DexieTripRepository();
+    let remoteReads = 0;
+    const remote: TripRepository = {
+      ...local,
+      seedIfEmpty: async () => {},
+      getTrip: async () => {
+        remoteReads++;
+        return local.getTrip();
+      },
+      listPlaces: local.listPlaces.bind(local),
+      listDays: local.listDays.bind(local),
+      listAllItinerary: local.listAllItinerary.bind(local),
+      listExpenses: local.listExpenses.bind(local),
+      upsertPlace: local.upsertPlace.bind(local),
+      deletePlace: local.deletePlace.bind(local),
+      updatePlaceIfUnchanged: local.updatePlaceIfUnchanged.bind(local),
+      listItinerary: local.listItinerary.bind(local),
+      upsertItineraryItem: local.upsertItineraryItem.bind(local),
+      deleteItineraryItem: local.deleteItineraryItem.bind(local),
+      upsertExpense: local.upsertExpense.bind(local),
+      deleteExpense: local.deleteExpense.bind(local),
+      saveTrip: local.saveTrip.bind(local),
+      exportSnapshot: local.exportSnapshot.bind(local),
+      importSnapshot: local.importSnapshot.bind(local),
+    };
+    setTripRepository(new OutboxTripRepository(remote, local));
+
+    remoteReads = 0;
+    await useTripStore.getState().init();
+
+    // init() deliberately does NOT await its revalidation when a cached trip
+    // already painted (that's the whole point of stale-while-revalidate), so
+    // wait for the background step rather than assuming it finished.
+    await vi.waitFor(() => expect(remoteReads).toBeGreaterThan(0));
   });
 });

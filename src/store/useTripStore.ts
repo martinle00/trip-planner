@@ -28,6 +28,8 @@ import { draftRepository } from '../data/draftRepository';
 import type { PlaceDraft } from '../data/draftRepository';
 import { stagedAssignmentRepository } from '../data/stagedAssignmentRepository';
 import type { StagedAssignment } from '../data/stagedAssignmentRepository';
+import { onOutboxChange, outboxRepository } from '../data/outboxRepository';
+import { OutboxTripRepository, applyOutboxEntry } from '../data/outboxTripRepository';
 import * as exchangeRates from '../lib/exchangeRates';
 import { appendRemoteIfDifferent } from '../lib/proseMerge';
 import { reconcilePlaceDaysToItinerary } from '../lib/reconcilePlaceDays';
@@ -59,6 +61,27 @@ export interface TripState {
    *  genuine failure (not for the ordinary offline case, which the
    *  repository layer already handles by silently falling back to cache). */
   syncError: string | undefined;
+  /**
+   * How many RECORDS have a change queued for upload (see
+   * `data/outboxRepository.ts` -- the queue coalesces per record, so this is
+   * "things changed", not "times you typed"). 0 means everything the user
+   * has done is on the server. Drives the topbar pill and the sync sheet.
+   */
+  pendingCount: number;
+  /** ISO date-time the oldest still-pending change was queued, or undefined
+   *  when nothing is pending. The sync sheet uses it to say how long the app
+   *  has been showing device-only data. */
+  pendingSince: string | undefined;
+  /** True while `syncOutbox()` is draining the queue. */
+  uploading: boolean;
+  /**
+   * Set when a drain stopped part-way: `{ uploaded, remaining }`. Cleared at
+   * the start of the next attempt and on a clean drain. Deliberately NOT an
+   * error string -- the UI reports progress ("Uploaded 2 of 3"), because the
+   * underlying cause is almost always "still no usable connection", which a
+   * raw Postgrest message describes badly.
+   */
+  uploadFailure: { uploaded: number; remaining: number } | undefined;
   /** True while a `refreshRates()` fetch is in flight. */
   ratesLoading: boolean;
   /** Message from the most recent `refreshRates()` failure, or undefined.
@@ -277,6 +300,17 @@ export interface TripState {
   applyAutoPlan: (plan: DayPlan[]) => Promise<void>;
 
   // ---- portability ----
+  /** Re-read the pending-write count/age from the outbox into state. Called
+   *  after every mutation path that might have queued, and on init. */
+  refreshPendingCount: () => Promise<void>;
+  /**
+   * Upload everything queued, in order, stopping at the first failure. Only
+   * ever called from an explicit user action -- there is no automatic retry
+   * (see the plan/UX notes: silently retrying on a dead network burns battery
+   * and hides real problems). On a clean drain, re-runs `init()` so the reads
+   * that were pinned to the local cache pick the remote back up.
+   */
+  syncOutbox: () => Promise<void>;
   exportJson: () => Promise<string>;
   importJson: (json: string) => Promise<void>;
 }
@@ -554,6 +588,10 @@ export function resetTripStoreForSignOut(): void {
     loading: true,
     syncing: false,
     syncError: undefined,
+    pendingCount: 0,
+    pendingSince: undefined,
+    uploading: false,
+    uploadFailure: undefined,
     stagedAssignments: {},
   });
 }
@@ -610,6 +648,21 @@ export function getStagedAssignmentCountsByCity(
   return counts;
 }
 
+/**
+ * Keeps `pendingCount`/`pendingSince` in step with the queue without every
+ * mutating action having to remember to ask. Subscribed on the first
+ * `init()` and never torn down — the store is a module singleton and this
+ * listener outlives any individual sign-in.
+ */
+let outboxSubscribed = false;
+function subscribeToOutboxOnce(): void {
+  if (outboxSubscribed) return;
+  outboxSubscribed = true;
+  onOutboxChange(() => {
+    void useTripStore.getState().refreshPendingCount();
+  });
+}
+
 export const useTripStore = create<TripState>((set, get) => ({
   trip: undefined,
   places: [],
@@ -619,12 +672,17 @@ export const useTripStore = create<TripState>((set, get) => ({
   loading: true,
   syncing: false,
   syncError: undefined,
+  pendingCount: 0,
+  pendingSince: undefined,
+  uploading: false,
+  uploadFailure: undefined,
   ratesLoading: false,
   ratesError: undefined,
   stagedAssignments: {},
 
   init: async () => {
     const token = ++initToken;
+    subscribeToOutboxOnce();
 
     // Unauthenticated / plain-offline mode: the currently-active repository
     // IS the local Dexie store already (no network involved at all), so a
@@ -728,6 +786,19 @@ export const useTripStore = create<TripState>((set, get) => ({
     // round-trip, not just a few IndexedDB reads, so the window for a write
     // like `saveStagedAssignments()` to land while this is in flight is far
     // wider here than in the cache-first steps above).
+    // TRAP: with writes queued locally, the remote is MISSING them — so this
+    // revalidation would read older data than what's on screen and paint it,
+    // silently reverting the user's own offline edits in front of them, only
+    // for the queue to push them back up later. The remote read isn't racing
+    // anything here (which is what `mutationVersion`/`domainDataInitPatch`
+    // guard); it's legitimately complete and legitimately stale. So skip the
+    // whole step, and let `syncOutbox()` re-run `init()` once it has drained.
+    await get().refreshPendingCount();
+    if (get().pendingCount > 0) {
+      if (token === initToken) set({ loading: false, syncing: false });
+      return;
+    }
+
     if (token === initToken) set({ syncing: true, syncError: undefined });
     const refresh = (async () => {
       try {
@@ -1466,6 +1537,59 @@ export const useTripStore = create<TripState>((set, get) => ({
         }
       }
     }),
+
+  refreshPendingCount: async () => {
+    const [pendingCount, pendingSince] = await Promise.all([
+      outboxRepository.count(),
+      outboxRepository.oldestQueuedAt(),
+    ]);
+    set({ pendingCount, pendingSince });
+  },
+
+  syncOutbox: async () => {
+    if (get().uploading) return;
+    const entries = await outboxRepository.list();
+    if (entries.length === 0) {
+      set({ pendingCount: 0, pendingSince: undefined, uploadFailure: undefined });
+      return;
+    }
+
+    set({ uploading: true, uploadFailure: undefined });
+    // The INNER repository, not `tripRepository`: the active one is the
+    // outbox wrapper, and replaying through it would re-queue every entry
+    // the moment one failed instead of surfacing the failure — a drain
+    // against a still-dead network would silently rewrite the queue and
+    // report success. See `OutboxTripRepository.replayTarget`.
+    const active = getActiveRepository();
+    const target = active instanceof OutboxTripRepository ? active.replayTarget : active;
+    let uploaded = 0;
+
+    for (const entry of entries) {
+      try {
+        await applyOutboxEntry(target, entry);
+      } catch {
+        // Stop, don't continue. Whatever broke this write (almost always
+        // "still no usable connection") will break the next 30 too, and
+        // firing them all costs battery and data on a phone that has
+        // neither to spare. What's left stays queued, in order.
+        set({
+          uploading: false,
+          uploadFailure: { uploaded, remaining: entries.length - uploaded },
+        });
+        await get().refreshPendingCount();
+        return;
+      }
+      if (entry.seq != null) await outboxRepository.remove(entry.seq);
+      uploaded++;
+    }
+
+    set({ uploading: false, uploadFailure: undefined, pendingCount: 0, pendingSince: undefined });
+    // The queue is empty, so reads stop being pinned to the local cache
+    // (see OutboxTripRepository.readLocalIfPending). Re-run init to pull in
+    // everything the collaborator did while this device was offline —
+    // until now it was deliberately invisible.
+    await get().init();
+  },
 
   exportJson: async () => {
     const snapshot = await tripRepository.exportSnapshot();

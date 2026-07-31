@@ -50,6 +50,25 @@ function exclusionNoteShort(count: number): string | null {
   return `${count} excl. (no rate)`;
 }
 
+/** Spoken equivalent of the split track. A stacked bar is `role="img"` — the
+ *  segments carry no text of their own, so the whole shape needs one
+ *  sentence rather than a screen reader walking silent divs. */
+function splitSummary(
+  byPerson: {
+    rows: { member: { name: string }; sum: number }[];
+    unattributed: number;
+  },
+  homeCurrency: string,
+): string {
+  const parts = byPerson.rows
+    .filter((r) => r.sum > 0)
+    .map((r) => `${r.member.name} ${fmtMoney(r.sum, homeCurrency)}`);
+  if (byPerson.unattributed > 0) {
+    parts.push(`not assigned ${fmtMoney(byPerson.unattributed, homeCurrency)}`);
+  }
+  return parts.length > 0 ? `Who paid: ${parts.join(', ')}` : 'Nothing paid yet';
+}
+
 /** City-filter sentinel for expenses with no city — the "Whole trip" bucket
  *  (flights, insurance). Not a real city name, so it can't collide with one. */
 const NO_CITY = '__none__';
@@ -168,7 +187,6 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [paidFilter, setPaidFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
-
   const filtersActive = cityFilter !== 'all' || categoryFilter !== 'all' || paidFilter !== 'all';
 
   function clearFilters() {
@@ -275,15 +293,29 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     const buckets = new Map<string, { sum: number; excluded: number }>();
     for (const m of members) buckets.set(m.id, { sum: 0, excluded: 0 });
     let orphanCount = 0;
+    // Expenses nobody has been named as paying for. `paidBy` is optional and
+    // the add form leaves it unset by default, so this is routinely a large
+    // slice — and it used to be dropped on the floor: the loop skipped it
+    // before counting anything, so the per-person bars were shares of a
+    // trip total they could never add up to, with nothing on the card
+    // saying why. It gets its own segment now.
+    let unattributed = 0;
+    let unattributedCount = 0;
+    let unattributedExcluded = 0;
     if (trip) {
       for (const e of visibleExpenses) {
-        if (!e.paidBy) continue;
+        const converted = convert(e.amount, e.currency, trip);
+        if (!e.paidBy) {
+          unattributedCount += 1;
+          if (converted === undefined) unattributedExcluded += 1;
+          else unattributed += converted;
+          continue;
+        }
         const bucket = buckets.get(e.paidBy);
         if (!bucket) {
           orphanCount += 1;
           continue;
         }
-        const converted = convert(e.amount, e.currency, trip);
         if (converted === undefined) {
           bucket.excluded += 1;
           continue;
@@ -292,7 +324,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
       }
     }
     const rows = members.map((m) => ({ member: m, ...(buckets.get(m.id) ?? { sum: 0, excluded: 0 }) }));
-    return { rows, orphanCount };
+    return { rows, orphanCount, unattributed, unattributedCount, unattributedExcluded };
   }, [visibleExpenses, trip]);
 
   // Sorted by CONVERTED home-currency amount (not raw amount — mixing raw
@@ -513,6 +545,18 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
    *  screen on a phone, leaving "Trip total" and a full-width person bar
    *  looking like trip-wide facts. */
   const filteredTag = filtersActive ? <span className="tag">Filtered</span> : null;
+
+  /**
+   * Denominator for the split track. The SUM OF THE SEGMENTS, not
+   * `budget.total`: no-rate expenses are excluded from every segment (they
+   * have no comparable converted value), so dividing by the trip total would
+   * leave a silent gap at the end of the track meaning "unconvertible" —
+   * visually identical to the "nobody assigned" gap right next to it, and
+   * the whole point of this card is that the two are different. The
+   * exclusion is reported per-row instead, as it already was.
+   */
+  const splitTotal =
+    byPerson.rows.reduce((sum, r) => sum + r.sum, 0) + byPerson.unattributed || 1;
   const hasExpenses = expenses.length > 0;
   const members = trip.members ?? [];
 
@@ -645,7 +689,14 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                   type="button"
                   className={`chip${categoryFilter === c ? ' active' : ''}`}
                   aria-pressed={categoryFilter === c}
-                  onClick={() => setCategoryFilter(c)}
+                  // Pressing the active chip releases it, exactly like the
+                  // Payment row below. The two rows are styled identically and
+                  // sit one above the other, so whichever a user learns first
+                  // sets their expectation of the other — "tap the pressed one
+                  // to clear it" has to be true in both or it's true in
+                  // neither. Harmless here: "All categories" already exists as
+                  // the explicit reset.
+                  onClick={() => setCategoryFilter(categoryFilter === c ? 'all' : c)}
                 >
                   {c}
                 </button>
@@ -800,32 +851,98 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
           </p>
         ) : (
           <>
-            {byPerson.rows.map((r) => {
-              // PHASE6 item 7: share of the TRIP TOTAL, matching "By
-              // category" above (`c.amount / budget.total`). This used to be
-              // `r.sum / byPersonMax` — share of the top payer — which made
-              // the identical bar widget mean two different things one card
-              // apart: someone covering 90% of the trip rendered exactly like
-              // the largest of several small payers. The `Math.max(4, …)`
-              // legibility floor is unchanged.
-              const pct = Math.max(4, budget.total ? (r.sum / budget.total) * 100 : 0);
-              const rowNote = exclusionNoteShort(r.excluded);
-              return (
-                <div className="cat-row" key={r.member.id}>
-                  <span className="cat-label">
-                    <MemberAvatar name={r.member.name} color={r.member.color} size="xs" />
-                    <span>{r.member.name}</span>
-                  </span>
-                  <div className="cat-bar-track">
-                    <div className="cat-bar-fill" style={{ width: `${pct}%` }} />
+            {/* ONE stacked track, not a bar per person.
+
+                This is part-to-whole — a single pot split between two or
+                three people — and the previous form (an independent bar per
+                member, each scaled against the trip total) is exactly the
+                shape that let the unattributed remainder disappear: nothing
+                in the layout was obliged to add up, so two people could each
+                sit at 25% with the missing half unaccounted for anywhere on
+                the card. Stacked, the gap has to occupy width.
+
+                Each segment takes its member's own `--m-*` swatch, so the
+                bar matches the avatar beside that person's name in the
+                legend — colour is doing identity work here, which is what
+                the member palette is for. (This widened DESIGN-SYSTEM §2,
+                which previously reserved `--m-*` to the avatar/chip and held
+                this bar to `--jade`.)
+
+                `TripMember.color` is OPTIONAL by design — a member with no
+                swatch must look unset, never auto-assigned — so an
+                uncoloured member falls back to `--jade`, and those fallback
+                segments alternate lightness so two of them side by side
+                still show a seam. The legend remains the authoritative
+                identity; colour reinforces it. */}
+            <div
+              className="split-track"
+              role="img"
+              aria-label={splitSummary(byPerson, trip.homeCurrency)}
+            >
+              {byPerson.rows.map((r) =>
+                r.sum > 0 ? (
+                  <div
+                    key={r.member.id}
+                    className={`split-seg${r.member.color ? '' : ' split-seg-plain'}`}
+                    style={{
+                      width: `${(r.sum / splitTotal) * 100}%`,
+                      ...(r.member.color ? { background: `var(--${r.member.color})` } : {}),
+                    }}
+                  />
+                ) : null,
+              )}
+              {byPerson.unattributed > 0 && (
+                <div
+                  className="split-seg split-seg-unassigned"
+                  style={{ width: `${(byPerson.unattributed / splitTotal) * 100}%` }}
+                />
+              )}
+            </div>
+
+            <div className="split-legend">
+              {byPerson.rows.map((r) => {
+                const rowNote = exclusionNoteShort(r.excluded);
+                return (
+                  <div
+                    className={`split-legend-row${r.sum === 0 ? ' is-zero' : ''}`}
+                    key={r.member.id}
+                  >
+                    <span className="cat-label">
+                      <MemberAvatar name={r.member.name} color={r.member.color} size="xs" />
+                      <span>{r.member.name}</span>
+                    </span>
+                    <span className="cat-amt tabular">
+                      <span className="cat-amt-value">{fmtMoney(r.sum, trip.homeCurrency)}</span>
+                      {rowNote && <span className="cat-amt-note">{rowNote}</span>}
+                    </span>
                   </div>
+                );
+              })}
+              {byPerson.unattributedCount > 0 && (
+                <div className="split-legend-row">
+                  <span className="cat-label">
+                    <span className="split-swatch-unassigned" aria-hidden="true" />
+                    <span>
+                      Not assigned{' '}
+                      <span className="cat-amt-note">
+                        {byPerson.unattributedCount} expense
+                        {byPerson.unattributedCount === 1 ? '' : 's'}
+                      </span>
+                    </span>
+                  </span>
                   <span className="cat-amt tabular">
-                    <span className="cat-amt-value">{fmtMoney(r.sum, trip.homeCurrency)}</span>
-                    {rowNote && <span className="cat-amt-note">{rowNote}</span>}
+                    <span className="cat-amt-value">
+                      {fmtMoney(byPerson.unattributed, trip.homeCurrency)}
+                    </span>
+                    {exclusionNoteShort(byPerson.unattributedExcluded) && (
+                      <span className="cat-amt-note">
+                        {exclusionNoteShort(byPerson.unattributedExcluded)}
+                      </span>
+                    )}
                   </span>
                 </div>
-              );
-            })}
+              )}
+            </div>
             {byPerson.orphanCount > 0 && (
               <p className="panel-hint" style={{ margin: '10px 0 0' }}>
                 <span className="rate-missing-note">

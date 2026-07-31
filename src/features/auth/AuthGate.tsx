@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { DexieTripRepository } from '../../data/dexieTripRepository';
 import { SupabaseTripRepository } from '../../data/supabaseTripRepository';
 import { SyncedTripRepository } from '../../data/syncedTripRepository';
+import { OutboxTripRepository } from '../../data/outboxTripRepository';
 import { setTripRepository } from '../../data/tripRepositoryInstance';
 import { bootstrapMigration } from '../../data/bootstrapMigration';
 
@@ -16,6 +17,15 @@ type GateState = 'checking-session' | 'signed-out' | 'bootstrapping' | 'bootstra
  *  it's skipped once this flag is set (see the effect below). */
 function bootstrapFlagKey(userId: string): string {
   return `trip-planner:bootstrapped:${userId}`;
+}
+
+/** The full write path: offline queue on the outside, write-through sync in
+ *  the middle, Supabase + the Dexie cache at the bottom. The outbox has to be
+ *  outermost -- it queues on the failure the synced layer would otherwise
+ *  propagate, and it needs the same local cache to mirror into so the app
+ *  keeps reading its own offline edits (see outboxTripRepository.ts). */
+function buildRepository(remote: SupabaseTripRepository, local: DexieTripRepository) {
+  return new OutboxTripRepository(new SyncedTripRepository(remote, local), local);
 }
 
 /** Wraps the app: gates rendering behind a Supabase magic-link sign-in, then
@@ -107,7 +117,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (localStorage.getItem(flagKey) === '1') {
       // Returning session on this device: skip bootstrapMigration's remote
       // round-trip entirely and render right away.
-      setTripRepository(new SyncedTripRepository(remote, local));
+      setTripRepository(buildRepository(remote, local));
       setWiredUserId(userId);
       return;
     }
@@ -122,7 +132,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         await bootstrapMigration(local, remote);
         if (cancelled) return;
         localStorage.setItem(flagKey, '1');
-        setTripRepository(new SyncedTripRepository(remote, local));
+        setTripRepository(buildRepository(remote, local));
         setWiredUserId(userId);
         setBootstrapping(false);
       } catch (err) {

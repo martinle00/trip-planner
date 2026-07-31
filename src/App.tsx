@@ -22,6 +22,7 @@ import { SettingsModal } from './features/settings/SettingsModal';
 import { BudgetPanel } from './features/budget/BudgetPanel';
 import { AutoPlanModal } from './features/autoplan/AutoPlanModal';
 import { AddPlaceModal } from './features/places/AddPlaceModal';
+import { Modal } from './components/Modal';
 import type { AddPlaceMode, AddPlacePoint } from './features/places/AddPlaceModal';
 
 type TabId = 'map' | 'places' | 'itinerary' | 'budget';
@@ -68,6 +69,20 @@ function App() {
   // save-changes spec) — computed here, in the topbar, since the strip is
   // shared across every tab, not just Map.
   const stagedAssignments = useTripStore((s) => s.stagedAssignments);
+  const pendingCount = useTripStore((s) => s.pendingCount);
+  const pendingSince = useTripStore((s) => s.pendingSince);
+  const uploading = useTripStore((s) => s.uploading);
+  const uploadFailure = useTripStore((s) => s.uploadFailure);
+  const syncOutbox = useTripStore((s) => s.syncOutbox);
+  const [syncSheetOpen, setSyncSheetOpen] = useState(false);
+  /* Whether anyone else could plausibly be editing this trip, which gates the
+     overwrite warning in the sync sheet. `trip.members` is the closest signal
+     the app has — but note it means BUDGET COMPANIONS, not accounts
+     (`trip_collaborators` is the account list, and nothing loads it client-
+     side). So the warning stays unnamed: telling someone "Susanna's version
+     will be replaced" when Susanna has no account and never edited anything
+     would be worse than the vaguer sentence. */
+  const sharedTrip = (trip?.members?.length ?? 0) > 1;
   const pendingCities = useMemo(() => citiesWithPendingChanges(stagedAssignments), [stagedAssignments]);
   const online = useOnlineStatus();
 
@@ -93,6 +108,42 @@ function App() {
     const timer = window.setTimeout(() => setSyncDisplay('hidden'), 1600);
     return () => window.clearTimeout(timer);
   }, [syncing]);
+
+  // The pill's pending states, in priority order. `null` hands the slot back
+  // to the existing Syncing…/Synced behaviour, which is unchanged.
+  //
+  // Deliberately NOT tappable while offline: there is nothing tapping could
+  // achieve, and a button that does nothing when pressed is worse than a
+  // label. The count still shows, because "your work is safe on this device
+  // and will go up later" is the thing to communicate at that moment.
+  const pendingState = useMemo((): { label: string; tone: string; tappable: boolean } | null => {
+    if (uploading) {
+      return { label: `Uploading ${pendingCount}…`, tone: 'uploading', tappable: false };
+    }
+    if (uploadFailure) {
+      const n = uploadFailure.remaining;
+      return {
+        label: `${n} change${n === 1 ? '' : 's'} still waiting · couldn't upload`,
+        tone: 'failed',
+        tappable: true,
+      };
+    }
+    if (pendingCount === 0) return null;
+    const n = pendingCount;
+    return online
+      ? { label: `${n} change${n === 1 ? '' : 's'} waiting to upload`, tone: 'pending', tappable: true }
+      : { label: `${n} change${n === 1 ? '' : 's'} waiting · offline`, tone: 'pending', tappable: false };
+  }, [pendingCount, uploading, uploadFailure, online]);
+
+  // The pill is a live region, and a burst of offline edits would otherwise
+  // read out "1 change… 2 changes… 3 changes…" one per keystroke-ish write.
+  // Announce the settled value instead.
+  const [announcedPending, setAnnouncedPending] = useState('');
+  useEffect(() => {
+    const label = pendingState?.label ?? '';
+    const timer = window.setTimeout(() => setAnnouncedPending(label), 1200);
+    return () => window.clearTimeout(timer);
+  }, [pendingState?.label]);
 
   const [tab, setTab] = useState<TabId>(readStoredTab);
   const [theme, setTheme] = useState<Theme>('light');
@@ -197,6 +248,18 @@ function App() {
   }, [exportJson]);
 
   const handleSignOut = useCallback(async () => {
+    // Sign-out wipes the local cache, and the outbox goes with it (queued
+    // writes are only permitted to the account that made them, so they can't
+    // be replayed by whoever signs in next). Anything still queued is work
+    // the app already told the user had saved — destroying it silently is
+    // the worst thing this feature could do, so it takes an explicit yes.
+    if (useTripStore.getState().pendingCount > 0) {
+      const n = useTripStore.getState().pendingCount;
+      const confirmed = window.confirm(
+        `${n} change${n === 1 ? '' : 's'} ${n === 1 ? 'has' : 'have'} not been uploaded yet and will be lost if you sign out now.\n\nSign out anyway?`,
+      );
+      if (!confirmed) return;
+    }
     try {
       // Order matters: invalidate any in-flight init()/background refresh
       // and repoint the repository seam BEFORE clearing the cache, so a
@@ -321,21 +384,42 @@ function App() {
                   already fresh, nothing to report), appears briefly on a
                   returning visit while the store quietly refreshes from the
                   active repository behind the already-rendered cached view,
-                  then settles back to hidden. Forced hidden while offline —
-                  mutually exclusive with the offline banner above so the
-                  user is never told "syncing" and "offline" at once. */}
-              <span
-                className="sync-indicator"
-                data-state={online ? syncDisplay : 'hidden'}
-                role="status"
-                aria-live="polite"
-              >
-                <span className="sync-dot" aria-hidden="true" />
-                <Icon name="check" className="sync-check" />
-                <span className="sync-indicator-label">
-                  {syncDisplay === 'done' ? 'Synced' : 'Syncing…'}
-                </span>
+                  then settles back to hidden.
+                  
+                  The original rule was "forced hidden while offline, so the
+                  user is never told syncing and offline at once". That rule
+                  survives, read precisely: what must never appear offline is
+                  a claim to BE SYNCING. A count of changes waiting to upload
+                  is a different fact, and offline is exactly when it matters
+                  most — so the pending states below render in both. */}
+              <span className="visually-hidden" role="status" aria-live="polite">
+                {announcedPending}
               </span>
+              {pendingState ? (
+                <button
+                  className="sync-indicator sync-pending"
+                  data-state={pendingState.tone}
+                  onClick={() => pendingState.tappable && setSyncSheetOpen(true)}
+                  disabled={!pendingState.tappable}
+                  aria-label={pendingState.label}
+                >
+                  <span className="sync-dot" aria-hidden="true" />
+                  <span className="sync-pending-label">{pendingState.label}</span>
+                </button>
+              ) : (
+                <span
+                  className="sync-indicator"
+                  data-state={online ? syncDisplay : 'hidden'}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="sync-dot" aria-hidden="true" />
+                  <Icon name="check" className="sync-check" />
+                  <span className="sync-indicator-label">
+                    {syncDisplay === 'done' ? 'Synced' : 'Syncing…'}
+                  </span>
+                </span>
+              )}
               <button className="btn autoplan-cta btn-collapsible" onClick={(e) => openAutoPlan(e.currentTarget)}>
                 <Icon name="sparkle" /> <span className="btn-label">Auto-plan</span>
               </button>
@@ -396,6 +480,25 @@ function App() {
         </main>
       </div>
 
+      {/* Only ever opened by tapping the pill. Nothing raises this on its
+          own — a focus-trapping sheet triggered by a background network
+          event arrives mid-expense-form or mid-drag, or while you're walking
+          one-handed out of a metro station, which is precisely the context
+          this whole feature exists for. Connectivity returning changes the
+          pill's label and nothing else. */}
+      <SyncSheet
+        open={syncSheetOpen}
+        onClose={() => setSyncSheetOpen(false)}
+        pendingCount={pendingCount}
+        pendingSince={pendingSince}
+        uploadFailure={uploadFailure}
+        sharedTrip={sharedTrip}
+        onUpload={() => {
+          setSyncSheetOpen(false);
+          void syncOutbox();
+        }}
+      />
+
       <AutoPlanModal open={autoplanOpen} onClose={closeAutoPlan} />
       {/* Sign-out's teardown is order-sensitive (reset store -> repoint the
           repository -> clear Dexie -> sign out; see handleSignOut). Phase 6
@@ -412,6 +515,91 @@ function App() {
       />
       <AddPlaceModal open={addPlaceOpen} mode={addPlaceMode} point={addPlacePoint} defaultCity={selectedCity} onClose={closeAddPlace} />
     </>
+  );
+}
+
+interface SyncSheetProps {
+  open: boolean;
+  onClose: () => void;
+  pendingCount: number;
+  pendingSince: string | undefined;
+  uploadFailure: { uploaded: number; remaining: number } | undefined;
+  /** Whether more than one person is on this trip — gates the overwrite
+   *  warning so a solo traveller isn't handed anxiety about a risk that
+   *  can't happen to them. */
+  sharedTrip: boolean;
+  onUpload: () => void;
+}
+
+/** How long the queue has to have been pending before the app admits the
+ *  user has been reading device-only data. Below this it's a normal blip and
+ *  saying so would just be noise. */
+const STALE_DISCLOSURE_MS = 2 * 60 * 60 * 1000;
+
+function SyncSheet({
+  open,
+  onClose,
+  pendingCount,
+  pendingSince,
+  uploadFailure,
+  sharedTrip,
+  onUpload,
+}: SyncSheetProps) {
+  const stale =
+    pendingSince !== undefined && Date.now() - new Date(pendingSince).getTime() > STALE_DISCLOSURE_MS;
+
+  return (
+    <Modal open={open} onClose={onClose} labelledBy="syncSheetTitle">
+      <div className="modal-head">
+        <h2 className="modal-title" id="syncSheetTitle">
+          {uploadFailure ? 'Upload didn’t finish' : 'Changes waiting to upload'}
+        </h2>
+        <button className="modal-close" aria-label="Close" onClick={onClose}>
+          <Icon name="close" />
+        </button>
+      </div>
+
+      {uploadFailure ? (
+        <p className="sync-sheet-lead">
+          Uploaded {uploadFailure.uploaded} of {uploadFailure.uploaded + uploadFailure.remaining}.{' '}
+          {uploadFailure.remaining} didn&rsquo;t go through.
+        </p>
+      ) : (
+        <p className="sync-sheet-lead">
+          {pendingCount} change{pendingCount === 1 ? '' : 's'} made while offline.
+        </p>
+      )}
+
+      {/* Deliberately not a red warning. This is a normal consequence of the
+          app's last-write-wins model, not an error — and it's stated in plain
+          terms the user can act on (go ask them) rather than "conflict",
+          which offers nothing to do. */}
+      {sharedTrip && !uploadFailure && (
+        <p className="sync-sheet-note">
+          If someone else changed the same thing while you were offline, your version will replace
+          theirs.
+        </p>
+      )}
+
+      {stale && !uploadFailure && (
+        <p className="sync-sheet-note">
+          You&rsquo;re seeing only what&rsquo;s on this device — anyone else&rsquo;s changes
+          won&rsquo;t appear until you upload.
+        </p>
+      )}
+
+      {/* Equal weight, on purpose, against the usual ghost/primary split:
+          "Not now" is the safe choice on one bar of signal, and Upload
+          shouldn't be the button your thumb finds by default. */}
+      <div className="sync-sheet-actions">
+        <button className="btn btn-ghost" onClick={onClose}>
+          Not now
+        </button>
+        <button className="btn btn-ghost sync-sheet-upload" onClick={onUpload}>
+          <Icon name="check" /> {uploadFailure ? 'Try again' : 'Upload'}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

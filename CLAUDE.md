@@ -18,8 +18,36 @@ vite-plugin-pwa, hand-written CSS with design tokens (no Tailwind). Vitest + oxl
 npm run dev      # vite dev server (port 5173)
 npm run build    # tsc -b && vite build  — must pass before shipping
 npm run lint     # oxlint
-npm test         # vitest run  (215 tests as of this writing)
+npm test         # vitest run  (584 tests as of this writing)
+
+npm run changeset          # write an intent file for a change you just made
+npm run changeset:status   # what's pending for the next version
+npm run changeset:version  # roll pending changesets into CHANGELOG.md + bump package.json
 ```
+
+## Versioning
+
+`@changesets/cli`. The package is `private` and never published — changesets is used
+purely for the changelog and the version number.
+
+**Write the changeset as part of the change, not at release time.** That's the whole
+point of the tool over a hand-edited `CHANGELOG.md`: the note is written while you still
+remember why. `npm run changeset` prompts for the bump type and a summary, and drops a
+file in `.changeset/`; commit it alongside the code.
+
+- **patch** — a fix to existing behaviour.
+- **minor** — new capability, or a deliberate change to how something already worked.
+  This app has no external API, so almost everything user-visible is minor.
+- **major** — reserved. Nothing here has consumers to break.
+
+`npm run changeset:version` consumes every pending file, rewrites `CHANGELOG.md` and
+bumps `package.json`. Run it once per release, not per change.
+
+Baseline: **0.7.0** = the app through Phase 7 (retroactive — the repo sat at `0.0.0`
+until Phase 8). **0.8.0** = Phase 8.
+
+Changeset summaries are the user-facing record; `PHASE*.md` holds the reasoning and the
+traps. Don't duplicate one into the other — link.
 
 `src/components/RouteStrip.tsx` has one pre-existing `only-export-components` lint
 warning. It is expected — don't chase it.
@@ -51,25 +79,65 @@ the implementation is swapped at runtime:
   before sign-in.
 - `SupabaseTripRepository` (`supabaseTripRepository.ts`) — remote Postgres via
   supabase-js. Maps camelCase domain types ↔ snake_case rows.
-- `SyncedTripRepository` (`syncedTripRepository.ts`) — composes the two. Installed
-  by `AuthGate` once a session exists.
+- `SyncedTripRepository` (`syncedTripRepository.ts`) — composes the two.
+- `OutboxTripRepository` (`outboxTripRepository.ts`) — wraps the synced one and queues
+  writes the network couldn't take. This is what `AuthGate` installs once a session
+  exists; see the sync model below.
 
-### Sync model: write-through, cloud is source of truth
+### Sync model: queued writes, cloud is source of truth
 
-Deliberate choice — the app has **no merge/conflict-resolution logic** and isn't
-getting any. Matches its pre-existing last-write-wins behaviour.
+Still **no merge/conflict-resolution logic**, and still not getting any — every write
+is last-write-wins, matching the app's pre-existing behaviour. What changed in Phase 8
+is *when* a write is allowed to reach the server.
 
-- **Writes:** remote first; the local Dexie cache is mirrored **only after the remote
-  succeeds**. If the remote write fails, the cache is *not* written — no silent
-  divergence. A mutation while offline therefore fails loudly and the UI must
-  surface it.
-- **Reads:** remote, mirrored down into the cache on success. Falls back to the cache
-  **only when genuinely offline** (`!navigator.onLine`). An RLS/auth error must
-  surface as a real error, not silently read stale data.
-- **`init()` is cache-first (stale-while-revalidate):** paints from local Dexie
-  instantly, then reconciles with the remote in the background. `loading` is only
-  true for a genuine first-ever load with nothing cached; `syncing` drives the
-  topbar pill. See `useTripStore.ts`.
+Three layers, composed in `AuthGate.tsx`:
+
+```
+OutboxTripRepository( SyncedTripRepository( Supabase, Dexie ), Dexie )
+```
+
+- **`SyncedTripRepository` (unchanged, inner):** write-through. Remote first, cache
+  mirrored only on success. Reads remote, mirrors down, falls back to cache only when
+  genuinely offline. An RLS/auth error surfaces as a real error.
+- **`OutboxTripRepository` (outer):** the offline layer, and the one that **inverts the
+  old "no silent divergence" rule** — deliberately. The trip this app exists for is
+  spent somewhere Supabase is unreachable for a day at a time, so a failed write can't
+  just be thrown at the user.
+  - A **connectivity** failure writes the local cache, appends to the `outbox` Dexie
+    table, and returns success. See `isConnectivityFailure` — it defaults to **false**,
+    so anything unrecognised (RLS, expired JWT, constraint violation) still throws.
+    Widening that predicate carelessly is how this feature would start silently eating
+    writes that can never land.
+  - **Never queued:** `importSnapshot` (a destructive whole-trip replace — queued, it
+    would wipe out a day of a collaborator's work) and `updatePlaceIfUnchanged` (a
+    conditional write whose `baseUpdatedAt` is meaningless hours later; the prose stays
+    safe in `draftRepository` instead).
+  - The queue **coalesces per record**, so `pendingCount` means "records changed".
+  - **Reads bypass the remote entirely while the queue is non-empty.** Not an
+    optimisation — the remote is missing every queued change, so reading it would paint
+    older data over the user's own offline edits.
+
+**`init()` is cache-first (stale-while-revalidate)** — paints from local Dexie
+instantly, then reconciles in the background. `loading` is only true for a genuine
+first-ever load with nothing cached.
+
+> **Trap:** that background revalidation is **skipped entirely while the outbox is
+> non-empty**, and `syncOutbox()` re-runs `init()` after a clean drain. Without this,
+> the remote's older snapshot silently reverts the queued edits on screen. This is not
+> the race `mutationVersion`/`domainDataInitPatch` guard — that read is legitimately
+> complete, just legitimately stale.
+
+**Uploading is user-gated.** `syncOutbox()` only ever runs from an explicit tap; there
+is no auto-push and no retry loop. It stops at the first failure (a dead network breaks
+the next 30 too) leaving the remainder queued, and is safe to re-run because every
+replayed write is idempotent by id. The topbar pill shows the pending count — including
+while offline, which does **not** break the old "never say syncing and offline at once"
+rule: a count of unsaved work is a different fact from a claim to be syncing. The sync
+sheet **never opens by itself**; see `App.tsx`.
+
+**Sign-out refuses while changes are queued.** `clearLocalCache()` drops the outbox
+along with everything else (a queued write is only permitted to the account that made
+it), so signing out with pending work would destroy it.
 
 ### Supabase schema
 
@@ -174,6 +242,8 @@ through mockup + review before implementation.
 
 ## Status / next steps
 
+**Phase 8 (offline writes + the By-person split) — see `PHASE8.md`.**
+
 **⚠️ Phase 4 is mid-flight — see `PHASE4.md` before touching anything.** It carries the
 full scope (9 items), the decisions and their rationale, four documented traps, and the
 workstream state. The working tree may not compile: removing `Place.note` was
@@ -193,8 +263,5 @@ Not yet done:
   it. Do the two-user check once before trusting it: sign in as A, confirm a second
   account can't read A's rows. Note RLS misconfiguration fails silently in *both*
   directions — enabled-with-no-policy denies everything, never-enabled is wide open.
-- Offline-write UX: writes now require the network, which is a real behaviour change
-  from the old fully-offline app. The error surfacing on a failed offline mutation
-  hasn't been designed or verified.
 - No test coverage for `AuthGate`'s bootstrap-flag skip path against a real
   supabase-js client (it's mocked).

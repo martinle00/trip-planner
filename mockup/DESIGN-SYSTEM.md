@@ -96,8 +96,15 @@ If you add a categorical colour, respect that constraint.
 
 A **third** categorical pool, added for `TripMember.color?`. Purpose is narrower than
 the day/city palettes above: it colours the **member avatar ring and member chip
-only**. It is never used for the By-person budget bar, which stays `--jade` — see
-§7 and the rule below.
+only**, plus the **By-person split segments** on the Budget tab (widened in Phase 8 —
+it previously excluded them, holding that bar to `--jade`). The segments earn it: on a
+stacked bar, colour is doing identity work, which is exactly what this palette is for,
+and it makes the bar match the avatar beside each name in the legend.
+
+Because `TripMember.color` is **optional** — an unset member must look unset, never be
+silently auto-assigned — a member with no swatch falls back to `--jade` there, and those
+fallback segments alternate lightness so two of them side by side still show a seam.
+The legend stays the authoritative identity; colour reinforces it.
 
 Six fixed swatches, pick-one-of-N (not a free colour picker — an arbitrary user hue
 can't be pre-verified against the `-soft-ink` rule):
@@ -268,6 +275,31 @@ when assigned, `dashed` when unassigned/wishlist. Used by `.city-section` and
 `.assign-select`. This is the app's shorthand for "which day/city does this belong to".
 
 **Confirmation** — `.flash-confirm`, a brief jade box-shadow pulse. Preferred over toasts.
+
+**Sync pill (`.sync-indicator`)** — one slot, first match wins:
+
+| online | queued | Shows |
+|---|---|---|
+| ✗ | none | hidden (offline banner alone) |
+| ✗ | N | `N changes waiting · offline` — gold, **not** tappable (nothing tapping could do) |
+| ✓ | N | `N changes waiting to upload` — gold, tappable |
+| ✓ | uploading | `Uploading N…` — not tappable |
+| ✓ | none | the existing `Syncing…` / `Synced` pulse |
+
+The old rule "never show the pill while offline" survives, read precisely: never claim
+to **be syncing** offline. A count of unsaved work is a different fact, and offline is
+when it matters most. Its label must not collapse at narrow widths the way
+`.sync-indicator-label` does — a count that vanishes on a phone is useless.
+
+**Never auto-raise a modal from a background event.** Connectivity returning changes a
+label; it does not open a sheet. A focus-trapping overlay triggered by the network
+lands mid-form, mid-drag, or while the user is walking one-handed out of a metro.
+
+**Equal-weight actions** — `.sync-sheet-actions` deliberately breaks the usual
+ghost/primary split: both buttons are `.btn-ghost` at equal width, because "Not now" is
+the safe choice on one bar of signal and Upload shouldn't be the thumb's default
+target. Use this only where the destructive-ish option is the one convention would
+emphasise.
 
 ---
 
