@@ -75,8 +75,19 @@ getting any. Matches its pre-existing last-write-wins behaviour.
 
 `supabase/migrations/0001_init.sql` — **already applied** to the live project.
 5 tables (`trips`, `days`, `places`, `itinerary`, `expenses`) mirroring the Dexie
-tables; `cities`/`rates` are JSONB columns on `trips`. `trips_user_id_unique`
-enforces single-trip-per-account at the DB level.
+tables; `cities`/`rates` are JSONB columns on `trips`. Later migrations add
+prose fields, expense members/sharing, and collaborators.
+
+**Access is membership, not ownership** (`0005_trip_collaborators.sql`): every
+policy asks `is_trip_member(trip_id)`, so an account with no row in
+`trip_collaborators` sees zero rows and no error — the app renders "You're not
+on this trip yet" (`App.tsx`). `trips.user_id` now only records who created it;
+`trips_user_id_unique` is gone.
+
+`0006_auto_grant_trip_access.sql` adds a trigger on `auth.users` that enrols
+every new account automatically. **It is only safe with public sign-ups turned
+off** (Supabase → Authentication → Sign In / Providers → "Allow new users to
+sign up"). Leave that off; adding someone = inviting them from the dashboard.
 
 - **RLS** is on for all 5 tables. `trips` checks `auth.uid() = user_id` directly;
   `days`/`places`/`expenses` join back via `trip_id`; `itinerary` joins through
