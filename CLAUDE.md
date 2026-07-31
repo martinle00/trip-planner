@@ -41,7 +41,28 @@ file in `.changeset/`; commit it alongside the code.
 - **major** — reserved. Nothing here has consumers to break.
 
 `npm run changeset:version` consumes every pending file, rewrites `CHANGELOG.md` and
-bumps `package.json`. Run it once per release, not per change.
+bumps `package.json`. Run it once per release, not per change — **or let CI do it**.
+
+### Releasing
+
+`.github/workflows/release.yml` (changesets/action) on push to `master`:
+
+1. Push a commit carrying a changeset → the workflow opens/updates a **"Version
+   Packages" PR** that runs `changeset:version` for you.
+2. Merge that PR → the workflow finds no pending changesets, runs `npm run release`
+   (`changeset tag`), and the action turns the new tag into a **GitHub Release** with
+   the changelog entry as the body.
+
+So a Release is never cut from an unreviewed push; it takes the deliberate act of
+merging the version PR. `npm run build` and `npm test` both gate it.
+
+- Tag format is **`v0.8.0`** — single-package repos tag `v{version}` (a monorepo would
+  get `{name}@{version}`).
+- `changeset tag`, **not** `changeset publish`: the package is `private` and has never
+  been on npm. The release artifact is the Cloudflare deploy, not a package.
+- The repo needs **Settings → Actions → General → "Allow GitHub Actions to create and
+  approve pull requests"** enabled, or step 1 fails with a permissions error.
+- Deployment is still separate — this workflow tags and releases, it does not deploy.
 
 Baseline: **0.7.0** = the app through Phase 7 (retroactive — the repo sat at `0.0.0`
 until Phase 8). **0.8.0** = Phase 8.

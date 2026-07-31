@@ -1,0 +1,64 @@
+# Cuts a GitHub Release from the changesets sitting on master.
+#
+# The flow, end to end:
+#   1. You commit a changeset alongside your code and push to master.
+#   2. This workflow opens (or updates) a "Version Packages" PR that runs
+#      `changeset version` — consuming every pending changeset into
+#      CHANGELOG.md and bumping package.json.
+#   3. You merge that PR. This workflow runs again, finds no pending
+#      changesets, and instead runs the `release` script — which tags the
+#      commit. The changesets action then creates the GitHub Release from
+#      that tag, with the changelog entry as the body.
+#
+# So a Release is never cut from an unreviewed push: it takes the deliberate
+# act of merging the version PR.
+#
+# `changeset tag`, NOT `changeset publish`: the package is `private` and has
+# never been on npm. Publishing would fail, and there is nothing to publish —
+# the artifact is a Cloudflare deploy, not a package.
+
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create tags + releases, push the version commit
+  pull-requests: write # open/update the "Version Packages" PR
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Changesets compares against the base branch and needs tag history
+          # to work out what's already been released.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # A release that doesn't build is worse than no release. Both run before
+      # anything is tagged or published.
+      - run: npm run build
+      - run: npm test
+
+      - uses: changesets/action@v1
+        with:
+          version: npm run changeset:version
+          publish: npm run release
+          commit: 'chore: version packages'
+          title: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

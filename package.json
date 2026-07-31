@@ -11,7 +11,8 @@
     "test": "vitest run",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:status": "changeset status"
+    "changeset:status": "changeset status",
+    "release": "changeset tag"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
