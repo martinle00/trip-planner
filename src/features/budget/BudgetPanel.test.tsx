@@ -733,3 +733,227 @@ describe('BudgetPanel — breakdown bar semantics (Phase 6 item 7)', () => {
     expect(widths[1]).toBe('4%');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Filters. The summary/By-category/By-person cards deliberately REBASE onto
+// the filtered set — "Trip total" answers "what does this selection cost?"
+// while a filter is on, which is the whole point of filtering by city. The
+// rates card is the one thing that must not move: it reports the rates being
+// applied, not a subtotal.
+// ---------------------------------------------------------------------------
+
+const FILTER_MEMBERS: TripMember[] = [
+  { id: 'm1', name: 'Martin', color: '--m-1' },
+  { id: 'm2', name: 'Sam', color: '--m-2' },
+];
+
+const FILTER_EXPENSES: Expense[] = [
+  { id: 'e1', tripId: 'trip-test', category: 'Food', label: 'Hawker lunch', amount: 100, currency: 'AUD', paid: true, city: 'Singapore', paidBy: 'm1' },
+  { id: 'e2', tripId: 'trip-test', category: 'Attractions', label: 'Gardens tickets', amount: 200, currency: 'AUD', paid: false, city: 'Singapore', paidBy: 'm2' },
+  { id: 'e3', tripId: 'trip-test', category: 'Food', label: 'Xiaolongbao', amount: 400, currency: 'AUD', paid: true, city: 'Shanghai', paidBy: 'm1' },
+  // No city — the "Whole trip" bucket.
+  { id: 'e4', tripId: 'trip-test', category: 'Transport', label: 'Flights', amount: 1000, currency: 'AUD', paid: false, paidBy: 'm1' },
+  // Category outside EXPENSE_CATEGORIES — imported/legacy data.
+  { id: 'e5', tripId: 'trip-test', category: 'Visas', label: 'Visa fee', amount: 50, currency: 'AUD', paid: true, city: 'Shanghai', paidBy: 'm2' },
+];
+
+function renderWithFilters() {
+  resetStore({ days: DAYS, expenses: FILTER_EXPENSES, trip: { ...BASE_TRIP, members: FILTER_MEMBERS } });
+  return render(<BudgetPanel onOpenSettings={() => {}} />);
+}
+
+function visibleLabels(): string[] {
+  return Array.from(document.querySelectorAll('.expense-label')).map((n) => n.textContent ?? '');
+}
+
+function tripTotal(): string {
+  return document.querySelector('.summary-card .home')?.textContent ?? '';
+}
+
+/** A filter chip. They're `role="radio"` (single-choice), not plain buttons —
+ *  see the radiogroup comment in BudgetPanel.tsx. */
+/** Filter chips are `aria-pressed` buttons in a labelled group, never radios
+ *  — see the ARIA comment in BudgetPanel.tsx. */
+function chip(name: string): HTMLElement {
+  return screen.getByRole('button', { name });
+}
+
+describe('BudgetPanel — filters', () => {
+  it('filters by city, and rebases the totals onto that city', () => {
+    renderWithFilters();
+    expect(tripTotal()).toBe('A$1,750');
+
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Singapore' } });
+
+    expect(visibleLabels()).toEqual(['Gardens tickets', 'Hawker lunch']);
+    expect(tripTotal()).toBe('A$300');
+  });
+
+  it('reaches city-less expenses through the "Whole trip" option', () => {
+    renderWithFilters();
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: '__none__' } });
+
+    expect(visibleLabels()).toEqual(['Flights']);
+    expect(tripTotal()).toBe('A$1,000');
+  });
+
+  it('filters by category and by paid status', () => {
+    renderWithFilters();
+
+    fireEvent.click(chip('Food'));
+    expect(visibleLabels()).toEqual(['Xiaolongbao', 'Hawker lunch']);
+
+    fireEvent.click(chip('All categories'));
+    fireEvent.click(chip('Unpaid'));
+    expect(visibleLabels()).toEqual(['Flights', 'Gardens tickets']);
+
+    // Pressing the active payment chip again releases it back to everything —
+    // that's what replaces a third "Paid & unpaid" chip.
+    fireEvent.click(chip('Unpaid'));
+    expect(visibleLabels()).toHaveLength(5);
+  });
+
+  it('combines filters with AND', () => {
+    renderWithFilters();
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Shanghai' } });
+    fireEvent.click(chip('Food'));
+
+    expect(visibleLabels()).toEqual(['Xiaolongbao']);
+    expect(tripTotal()).toBe('A$400');
+  });
+
+  it('offers a chip for a category outside EXPENSE_CATEGORIES, so no expense is unreachable', () => {
+    renderWithFilters();
+    // Built from the constant alone, 'Visas' would have no chip and that row
+    // could never be isolated.
+    fireEvent.click(chip('Visas'));
+    expect(visibleLabels()).toEqual(['Visa fee']);
+  });
+
+  it('offers no chip for a canonical category nothing is filed under', () => {
+    renderWithFilters();
+    // 'Accommodation' is in EXPENSE_CATEGORIES but unused here — a chip for
+    // it could only ever return an empty list.
+    expect(screen.queryByRole('button', { name: 'Accommodation' })).not.toBeInTheDocument();
+    expect(chip('Food')).toBeInTheDocument();
+  });
+
+  it('rebases the By-person bars too, so the cards never disagree with the list', () => {
+    const { container } = renderWithFilters();
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Shanghai' } });
+
+    const byPerson = container.querySelector('.by-person-card') as HTMLElement;
+    // Shanghai only: Martin A$400 (e3), Sam A$50 (e5).
+    expect(within(byPerson).getByText('A$400')).toBeInTheDocument();
+    expect(within(byPerson).getByText('A$50')).toBeInTheDocument();
+  });
+
+  it('leaves the rates card alone — it reports rates, not a subtotal', () => {
+    resetStore({
+      days: DAYS,
+      expenses: [
+        ...FILTER_EXPENSES,
+        { id: 'e6', tripId: 'trip-test', category: 'Food', label: 'Street food', amount: 90, currency: 'CNY', paid: true, city: 'Shanghai' },
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const rateChipText = () =>
+      Array.from(container.querySelectorAll('.rate-chip')).map((n) => n.textContent ?? '').join(' ');
+    expect(rateChipText()).toContain('CNY');
+
+    // Filtering to a city with no CNY expense must not drop the CNY rate.
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Singapore' } });
+    expect(rateChipText()).toContain('CNY');
+  });
+
+  it('marks every rebased card as filtered, so a card read on its own can’t mislead', () => {
+    const { container } = renderWithFilters();
+    // `.tag` is also the expense rows' category pill, so match on the text.
+    const filteredTags = () =>
+      Array.from(container.querySelectorAll('.tag')).filter((t) => t.textContent === 'Filtered');
+    expect(filteredTags()).toHaveLength(0);
+
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Shanghai' } });
+
+    // The "Showing N of M" strip scrolls away on a phone long before the
+    // By-person card is on screen, so each rebased card carries its own tag.
+    const tagged = filteredTags().map((t) => t.parentElement?.textContent ?? '');
+    expect(tagged.some((t) => t.includes('Trip total'))).toBe(true);
+    expect(tagged.some((t) => t.includes('Paid / booked'))).toBe(true);
+    expect(tagged.some((t) => t.includes('Still to pay'))).toBe(true);
+    expect(tagged.some((t) => t.includes('By category'))).toBe(true);
+    expect(tagged.some((t) => t.includes('By person'))).toBe(true);
+  });
+
+  it('announces the filtered count in a live region', () => {
+    const { container } = renderWithFilters();
+    const live = container.querySelector('[role="status"][aria-live="polite"]') as HTMLElement;
+    // Present and empty before any filter, so the region is already in the
+    // a11y tree when its content changes (announcements are unreliable when
+    // the live element itself is inserted at the same time).
+    expect(live).not.toBeNull();
+    expect(live.textContent).toBe('');
+
+    fireEvent.click(chip('Food'));
+    expect(live.textContent).toMatch(/Showing 2 of 5 expenses/);
+  });
+
+  it('exposes both chip rows as labelled groups of toggle buttons, not radios', () => {
+    const { container } = renderWithFilters();
+    // role="radiogroup"/"radio" would promise roving tabindex + Arrow-key
+    // navigation that chips (individually tabbable buttons) don't implement.
+    expect(container.querySelectorAll('[role="radiogroup"]')).toHaveLength(0);
+    expect(container.querySelectorAll('.expense-filter-bar [role="group"]')).toHaveLength(2);
+
+    // Visible labels, not just aria-label: the two rows are styled
+    // identically, so "Paid & unpaid" would otherwise read as one more
+    // category chip.
+    const bar = container.querySelector('.places-filter-bar') as HTMLElement;
+    expect(within(bar).getByText('Category')).toBeInTheDocument();
+    expect(within(bar).getByText('Payment')).toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: 'Paid & unpaid' })).not.toBeInTheDocument();
+
+    expect(chip('Unpaid')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(chip('Unpaid'));
+    expect(chip('Unpaid')).toHaveAttribute('aria-pressed', 'true');
+    expect(chip('Paid')).toHaveAttribute('aria-pressed', 'false');
+    expect(chip('All categories')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows a count and clears back to everything', () => {
+    renderWithFilters();
+    fireEvent.click(chip('Food'));
+    expect(screen.getByText(/Showing 2 of 5 expenses/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(visibleLabels()).toHaveLength(5);
+    expect(screen.queryByText(/Showing 2 of 5/)).not.toBeInTheDocument();
+  });
+
+  it('does not render By-person bars when nothing matches the filters', () => {
+    // Bars are floored at 4% width so a small payer stays visible, which
+    // means an empty selection would otherwise draw every companion a stub
+    // bar — reading as "they paid something" when nothing matched at all.
+    // The card sits outside the summary block, so it needs its own guard.
+    const { container } = renderWithFilters();
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Singapore' } });
+    fireEvent.click(chip('Transport'));
+
+    const byPerson = container.querySelector('.by-person-card') as HTMLElement;
+    expect(byPerson.querySelectorAll('.cat-row')).toHaveLength(0);
+    expect(within(byPerson).getByText(/nothing to split/)).toBeInTheDocument();
+  });
+
+  it('offers a way out when a combination matches nothing', () => {
+    renderWithFilters();
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Singapore' } });
+    fireEvent.click(chip('Transport'));
+
+    expect(visibleLabels()).toEqual([]);
+    expect(screen.getByText('No expenses match these filters.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(visibleLabels()).toHaveLength(5);
+  });
+});

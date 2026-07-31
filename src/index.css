@@ -767,6 +767,26 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
   background:var(--paper-sunk); border:1px solid var(--line); border-radius:var(--radius-md);
 }
 .places-filter-bar select{ min-width:170px; }
+
+/* Budget's variant: three stacked controls (one select + two chip rows)
+   rather than Places' one-and-one. `.chiprow`'s 14px bottom margin was
+   written for chips sitting directly on the page; inside the bar it fights
+   the container's own 2px gap, so rows land at 16px, 14px and a stray 14px
+   of trailing space under the last one. Scoped to this modifier so the
+   Places tab's bar keeps the spacing it was tuned with. */
+.expense-filter-bar{ gap:12px; }
+.expense-filter-bar .chiprow{ margin-bottom:0; }
+
+/* Label ABOVE its control, never beside it (same shape as `.knob`). Beside
+   only works while the control is one line: a label with a reserved side
+   column costs every wrapped chip line ~70px that only the first line
+   needs, and on a 375px screen the chips wrap constantly — so a short row
+   sits inline while a long one jumps its label onto its own line, and the
+   three rows in one bar stop sharing any rhythm. Stacked is the same at
+   every width. */
+.filter-field{ display:flex; flex-direction:column; gap:6px; }
+.filter-field .field-label{ display:block; }
+
 .chip-icon{ width:12px; height:12px; margin-right:4px; vertical-align:-1px; }
 .places-filter-empty{
   display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center;
@@ -1335,6 +1355,26 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 }
 .manual-toggle svg{ width:13px; height:13px; }
 .manual-toggle:hover{ color:var(--accent); }
+
+/* Switching the Add-stop modal between the place picker and free text.
+   `.manual-toggle` (borderless text, 2px of side padding) reads as a
+   footnote under the results list rather than the second of two real
+   choices — this is the same action given an actual target: dashed border
+   to mark it as the secondary path, full-width so it can't be mistaken for
+   a list row, and a line of supporting text saying what it's for. */
+.stop-mode-switch{
+  display:flex; align-items:flex-start; gap:10px; width:100%; text-align:left;
+  margin-top:12px; padding:12px 14px;
+  background:var(--paper-sunk); border:1px dashed var(--line-strong);
+  border-radius:var(--radius-md); color:var(--ink-soft);
+}
+.stop-mode-switch:hover, .stop-mode-switch:focus-visible{
+  border-color:var(--accent); border-style:solid; color:var(--ink);
+}
+.stop-mode-switch svg{ width:16px; height:16px; flex:none; margin-top:1px; color:var(--accent); }
+.stop-mode-switch-body{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.stop-mode-switch-body strong{ font-size:13px; font-weight:700; color:var(--ink); }
+.stop-mode-switch-body span{ font-size:11.5px; color:var(--ink-soft); }
 
 .add-place-details{ margin-top:6px; padding-top:16px; border-top:1px solid var(--line); }
 .add-place-details label{ display:block; font-size:11.5px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }

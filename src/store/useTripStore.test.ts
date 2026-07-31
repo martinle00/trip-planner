@@ -2065,3 +2065,53 @@ describe('updateItineraryItem — a moved stop takes its place with it', () => {
     expect(useTripStore.getState().places.find((p) => p.id === place.id)).toBe(before);
   });
 });
+
+describe('addItineraryItem — place-side mirror', () => {
+  it('a stop created from a place marks that place planned on the day', async () => {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => !p.dayId)!;
+    const day = days.find((d) => d.city === place.city)!;
+
+    await useTripStore.getState().addItineraryItem({
+      dayId: day.id,
+      placeId: place.id,
+      title: place.name,
+    });
+
+    const after = useTripStore.getState().places.find((p) => p.id === place.id)!;
+    expect(after.dayId).toBe(day.id);
+    expect(after.status).toBe('planned');
+  });
+
+  it('a free-text stop touches no place', async () => {
+    const { days, places } = useTripStore.getState();
+    const before = places.map((p) => ({ id: p.id, dayId: p.dayId, status: p.status }));
+
+    await useTripStore.getState().addItineraryItem({ dayId: days[0].id, title: 'Hotel check-in' });
+
+    const after = useTripStore.getState().places.map((p) => ({
+      id: p.id,
+      dayId: p.dayId,
+      status: p.status,
+    }));
+    expect(after).toEqual(before);
+  });
+
+  it('a second stop elsewhere does not steal a place from the day it is already on', async () => {
+    // Matches reconcilePlaceDaysToItinerary: a place linked on several days
+    // keeps pointing at the one it already points at, rather than jumping to
+    // whichever stop was written last.
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => days.filter((d) => d.city === p.city).length > 1)!;
+    const [dayA, dayB] = days.filter((d) => d.city === place.city);
+
+    await useTripStore.getState().assignPlaceToDay(place.id, dayA.id);
+    await useTripStore.getState().addItineraryItem({
+      dayId: dayB.id,
+      placeId: place.id,
+      title: place.name,
+    });
+
+    expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBe(dayA.id);
+  });
+});

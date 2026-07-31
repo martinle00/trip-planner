@@ -225,6 +225,33 @@ universal container.
 **`.tag`** — 11px/700 non-interactive metadata label.
 **`.status-pill`** — state with a leading dot.
 
+**Filter chips are `aria-pressed` buttons in a `role="group"` — never a `radiogroup`.**
+Tempting as `role="radio"` looks for a pick-one-of-N row, that role promises roving
+tabindex and Arrow-key navigation between its radios. Chips are individually tabbable
+buttons, so the role would announce an interaction contract the code doesn't honour
+(WCAG 4.1.2) — worse than the slight imprecision of `aria-pressed`. Carry "pick one" in a
+visible "All …" reset chip instead. (`.covers-mode` predates this rule and has the same
+gap; fix it there before copying it.)
+
+**`.places-filter-bar`** — the filter container: sunk panel, one control per row, every
+one carrying a **visible** `.field-label`. Two chip rows styled alike are
+indistinguishable without one. `.expense-filter-bar` is Budget's modifier for a taller
+stack (kills `.chiprow`'s bottom margin in favour of the container gap).
+
+**`.filter-field`** — label stacked **above** its control. Label-beside-control only
+survives while the control is one line: a reserved label column costs every wrapped chip
+line the same ~70px that only the first line needs, so on a phone a short row sits inline
+while a long one throws its label onto its own line and the rows stop sharing any rhythm.
+
+**Filtered-view honesty** — when a filter rebases a total, every affected card carries its
+own `Filtered` `.tag`. A single "showing N of M" line at the top is not enough: it scrolls
+away on a phone, leaving a subtotal reading as a trip-wide fact.
+
+**`.stop-mode-switch`** — a full-width dashed-border block for switching a form between two
+real modes (the Add-stop modal's picker ↔ free text), with a bold line and a supporting
+line. Distinct from `.manual-toggle`, which is borderless text for a genuine footnote
+action. If the alternative is a first-class choice, give it a border.
+
 **Modal** — `.overlay` + `.modal`. **Mobile-first bottom sheet:** below 720px it's
 bottom-anchored, full-width, rounded top corners only, sliding up. At ≥720px it becomes
 a centred dialog with `max-width:620px`. `src/components/Modal.tsx` handles overlay

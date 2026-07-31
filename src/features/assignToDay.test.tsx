@@ -224,3 +224,53 @@ describe('Auto-plan accept — no duplicate stops, incl. rapid double-click', ()
     expect(titles.filter((t) => t === 'Gardens by the Bay')).toHaveLength(1);
   });
 });
+
+describe('Add stop picker — Itinerary tab -> Places tab', () => {
+  it('adding a stop from the place picker shows that place as assigned in the Places tab', async () => {
+    // The reverse of every case above: they prove Places -> Itinerary, this
+    // proves the new picker closes the loop the other way, including the
+    // place-side write in addItineraryItem.
+    render(<App />);
+    await screen.findByRole('tablist');
+
+    fireEvent.click(itineraryTab());
+    const addButtons = await screen.findAllByRole('button', { name: /Add stop/ });
+    fireEvent.click(addButtons[0]);
+
+    const option = await screen.findByText('Marina Bay Sands');
+    fireEvent.click(option.closest('button') as HTMLElement);
+    fireEvent.click(document.querySelector('form button[type="submit"]') as HTMLElement);
+
+    // It's on the itinerary...
+    await waitFor(() =>
+      expect(document.querySelector('.stop-title')?.textContent).toBe('Marina Bay Sands'),
+    );
+
+    // ...and the Places tab agrees, because the stop took the place with it.
+    fireEvent.click(placesTab());
+    const select = (await screen.findByLabelText(
+      /Assign day for Marina Bay Sands/,
+    )) as HTMLSelectElement;
+    await waitFor(() => {
+      const selected = select.options[select.selectedIndex];
+      expect(selected.textContent).toMatch(/Day 1/);
+    });
+  });
+
+  it('does not re-offer a place that is already on the itinerary', async () => {
+    render(<App />);
+    await screen.findByRole('tablist');
+
+    await assignViaPlacesTab('Marina Bay Sands', /Day 1/);
+
+    fireEvent.click(itineraryTab());
+    const addButtons = await screen.findAllByRole('button', { name: /Add stop/ });
+    fireEvent.click(addButtons[0]);
+
+    await waitFor(() => expect(document.querySelector('.search-results')).not.toBeNull());
+    const offered = Array.from(document.querySelectorAll('.search-result-name')).map(
+      (n) => n.textContent,
+    );
+    expect(offered).not.toContain('Marina Bay Sands');
+  });
+});

@@ -50,6 +50,10 @@ function exclusionNoteShort(count: number): string | null {
   return `${count} excl. (no rate)`;
 }
 
+/** City-filter sentinel for expenses with no city — the "Whole trip" bucket
+ *  (flights, insurance). Not a real city name, so it can't collide with one. */
+const NO_CITY = '__none__';
+
 type RatesState = 'loading' | 'error' | 'offline' | 'never' | 'stale' | 'fresh';
 
 /** Rates older than this (but not "never refreshed") are flagged stale —
@@ -158,6 +162,51 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     [],
   );
 
+  // ---- filters -------------------------------------------------------
+  // Plain useState, not persisted — same as every other filter in the app
+  // (PlacesPanel, MapPanel); only the active tab survives a reload.
+  const [cityFilter, setCityFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [paidFilter, setPaidFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
+
+  const filtersActive = cityFilter !== 'all' || categoryFilter !== 'all' || paidFilter !== 'all';
+
+  function clearFilters() {
+    setCityFilter('all');
+    setCategoryFilter('all');
+    setPaidFilter('all');
+  }
+
+  const visibleExpenses = useMemo(
+    () =>
+      expenses.filter((e) => {
+        // NO_CITY is its own bucket, not a variant of 'all': `Expense.city`
+        // is optional and undefined means trip-wide (flights, insurance), so
+        // without a sentinel those rows are unreachable by any city filter.
+        const cityOk =
+          cityFilter === 'all' ||
+          (cityFilter === NO_CITY ? !e.city?.trim() : e.city === cityFilter);
+        const categoryOk = categoryFilter === 'all' || e.category === categoryFilter;
+        const paidOk = paidFilter === 'all' || (paidFilter === 'paid' ? e.paid : !e.paid);
+        return cityOk && categoryOk && paidOk;
+      }),
+    [expenses, cityFilter, categoryFilter, paidFilter],
+  );
+
+  // `Expense.category` is free text — EXPENSE_CATEGORIES is only the picker
+  // list, and imported or legacy rows can carry anything. Chips built from
+  // the constant alone would leave those rows unreachable by every filter,
+  // so the options are the union of both.
+  //
+  // Only categories actually present get a chip: a chip that can only ever
+  // return "no expenses match" is a dead control.
+  const categoryOptions = useMemo(() => {
+    const present = new Set(expenses.map((e) => e.category).filter(Boolean));
+    const canonical = EXPENSE_CATEGORIES.filter((c) => present.has(c));
+    const extras = [...present].filter((c) => !EXPENSE_CATEGORIES.includes(c)).sort();
+    return [...canonical, ...extras];
+  }, [expenses]);
+
   const budget = useMemo(() => {
     const byCurrency = new Map<string, number>();
     const byCategory = new Map<string, { amt: number; currencies: Set<string> }>();
@@ -167,7 +216,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     let excludedPaid = 0;
     let excludedUnpaid = 0;
     if (trip) {
-      for (const e of expenses) {
+      for (const e of visibleExpenses) {
         byCurrency.set(e.currency, (byCurrency.get(e.currency) ?? 0) + e.amount);
         const converted = convert(e.amount, e.currency, trip);
         if (converted === undefined) {
@@ -187,13 +236,6 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     const categories = [...byCategory.entries()]
       .map(([cat, v]) => ({ category: cat, amount: v.amt, currencyCount: v.currencies.size }))
       .sort((a, b) => b.amount - a.amount);
-    const rateChips = trip
-      ? [...byCurrency.keys()]
-          .filter((c) => c !== trip.homeCurrency)
-          .sort()
-          .map((c) => ({ currency: c, value: convert(1, c, trip) }))
-          .filter((c): c is { currency: string; value: number } => c.value !== undefined)
-      : [];
     return {
       total,
       paid,
@@ -203,8 +245,21 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
       excludedUnpaid,
       byCurrency,
       categories,
-      rateChips,
     };
+  }, [visibleExpenses, trip]);
+
+  // Deliberately over ALL expenses, not the filtered view: the rates card
+  // reports the exchange rates the trip is being converted at, not a
+  // subtotal. Filtering to one city must not make a rate disappear from the
+  // legend while it's still being applied everywhere else.
+  const rateChips = useMemo(() => {
+    if (!trip) return [];
+    const currencies = new Set(expenses.map((e) => e.currency));
+    return [...currencies]
+      .filter((c) => c !== trip.homeCurrency)
+      .sort()
+      .map((c) => ({ currency: c, value: convert(1, c, trip) }))
+      .filter((c): c is { currency: string; value: number } => c.value !== undefined);
   }, [expenses, trip]);
 
   // Phase 5 item 6 — per-person totals. Reuses `convert()` exactly like the
@@ -221,7 +276,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     for (const m of members) buckets.set(m.id, { sum: 0, excluded: 0 });
     let orphanCount = 0;
     if (trip) {
-      for (const e of expenses) {
+      for (const e of visibleExpenses) {
         if (!e.paidBy) continue;
         const bucket = buckets.get(e.paidBy);
         if (!bucket) {
@@ -238,14 +293,14 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     }
     const rows = members.map((m) => ({ member: m, ...(buckets.get(m.id) ?? { sum: 0, excluded: 0 }) }));
     return { rows, orphanCount };
-  }, [expenses, trip]);
+  }, [visibleExpenses, trip]);
 
   // Sorted by CONVERTED home-currency amount (not raw amount — mixing raw
   // amounts across currencies isn't a meaningful order). No-rate expenses
   // sort to the end since they have no comparable converted value.
   const sortedExpenses = useMemo(() => {
-    if (!trip) return expenses;
-    return [...expenses].sort((a, b) => {
+    if (!trip) return visibleExpenses;
+    return [...visibleExpenses].sort((a, b) => {
       const ca = convert(a.amount, a.currency, trip);
       const cb = convert(b.amount, b.currency, trip);
       if (ca === undefined && cb === undefined) return 0;
@@ -253,7 +308,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
       if (cb === undefined) return -1;
       return cb - ca;
     });
-  }, [expenses, trip]);
+  }, [visibleExpenses, trip]);
 
   if (!trip) return null;
 
@@ -452,6 +507,12 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   const paidNote = exclusionNote(budget.excludedPaid);
   const toPayNote = exclusionNote(budget.excludedUnpaid);
   const summaryCardClass = `card summary-card${flash ? ' flash-confirm' : ''}`;
+  /** Marks every card whose figures have rebased onto the filtered set. The
+   *  "Showing N of M" strip alone isn't enough: it sits at the top of the
+   *  tab and scrolls away long before the By-category/By-person cards are on
+   *  screen on a phone, leaving "Trip total" and a full-width person bar
+   *  looking like trip-wide facts. */
+  const filteredTag = filtersActive ? <span className="tag">Filtered</span> : null;
   const hasExpenses = expenses.length > 0;
   const members = trip.members ?? [];
 
@@ -509,9 +570,9 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
           </button>
         </div>
 
-        {budget.rateChips.length > 0 && (
+        {rateChips.length > 0 && (
           <div className="rate-chip-row" aria-label="Current exchange rates used for conversion">
-            {budget.rateChips.map((r) => (
+            {rateChips.map((r) => (
               <span className="rate-chip" key={r.currency}>
                 1 {r.currency} &asymp; {fmtRate(r.value, trip.homeCurrency)}
               </span>
@@ -520,11 +581,125 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
         )}
       </div>
 
+      {/* Sits ABOVE the summary cards on purpose: every total below it
+          recomputes over the filtered set, so the control has to come first
+          for "Trip total: A$1,240" to read as the answer to the filter
+          rather than a contradiction of the trip's real total. The rates
+          card above is deliberately outside this — it reports rates, not a
+          subtotal. */}
       {hasExpenses && (
+        <div className="places-filter-bar expense-filter-bar" aria-label="Filter expenses">
+          <div className="filter-field">
+            <label className="field-label" htmlFor="ex-city-filter">
+              City
+            </label>
+            <select
+              id="ex-city-filter"
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+            >
+              <option value="all">All cities &middot; {expenses.length}</option>
+              {orderedCities(trip).map((c) => {
+                const count = expenses.filter((e) => e.city === c.name).length;
+                return (
+                  <option key={c.name} value={c.name}>
+                    {c.name} &middot; {count}
+                  </option>
+                );
+              })}
+              <option value={NO_CITY}>
+                Whole trip &middot; {expenses.filter((e) => !e.city?.trim()).length}
+              </option>
+            </select>
+          </div>
+
+          {/* Both chiprows carry a VISIBLE label, not just an aria-label on
+              the wrapper: they're styled identically, so without one
+              "Paid & unpaid / Paid / Unpaid" reads as three more category
+              chips rather than a second, orthogonal filter axis.
+
+              Both rows are aria-pressed buttons, NOT a radiogroup. That role
+              promises roving tabindex and Arrow-key navigation between its
+              radios; without them a screen reader announces "radio, 1 of 7"
+              and then Tab, not the arrows, is what actually moves — a role
+              that lies about its own keyboard contract (WCAG 4.1.2). These
+              are chips with individual tab stops, so aria-pressed is the
+              honest description. "Pick one of N" is carried by the visible
+              "All categories" reset instead. */}
+          <div className="filter-field">
+            <span className="field-label" id="ex-cat-filter-label">
+              Category
+            </span>
+            <div className="chiprow" role="group" aria-labelledby="ex-cat-filter-label">
+              <button
+                type="button"
+                className={`chip${categoryFilter === 'all' ? ' active' : ''}`}
+                aria-pressed={categoryFilter === 'all'}
+                onClick={() => setCategoryFilter('all')}
+              >
+                All categories
+              </button>
+              {categoryOptions.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`chip${categoryFilter === c ? ' active' : ''}`}
+                  aria-pressed={categoryFilter === c}
+                  onClick={() => setCategoryFilter(c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="filter-field">
+            <span className="field-label" id="ex-paid-filter-label">
+              Payment
+            </span>
+            <div className="chiprow" role="group" aria-labelledby="ex-paid-filter-label">
+              {(['paid', 'unpaid'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`chip${paidFilter === v ? ' active' : ''}`}
+                  aria-pressed={paidFilter === v}
+                  onClick={() => setPaidFilter(paidFilter === v ? 'all' : v)}
+                >
+                  {v === 'paid' ? 'Paid' : 'Unpaid'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Announced, not just shown: changing a chip silently rewrites
+              every total below, and a screen-reader user gets no other
+              signal that it happened. Same construction as the rates-status
+              live region above. */}
+          <p className="panel-hint" style={{ margin: 0 }} role="status" aria-live="polite">
+            {filtersActive && (
+              <>
+                Showing {visibleExpenses.length} of {expenses.length} expenses &mdash; totals below
+                cover this selection only.{' '}
+                {/* When nothing matches, the empty state further down owns the
+                    reset — two identical Clear buttons on one screen isn't a
+                    second chance, it's a question about which one you pressed. */}
+                {visibleExpenses.length > 0 && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>
+                    Clear filters
+                  </button>
+                )}
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      {hasExpenses && visibleExpenses.length > 0 && (
         <>
           <div className="summary-grid">
             <div className={summaryCardClass}>
-              <div className="label">Trip total</div>
+              <div className="label">Trip total {filteredTag}</div>
               <div className="home tabular">{fmtMoney(budget.total, trip.homeCurrency)}</div>
               <div className="summary-sub">
                 {`from ${currencyCount} currenc${currencyCount === 1 ? 'y' : 'ies'}`}
@@ -537,14 +712,14 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
               </div>
             </div>
             <div className={summaryCardClass}>
-              <div className="label">Paid / booked</div>
+              <div className="label">Paid / booked {filteredTag}</div>
               <div className="home tabular" style={{ color: 'var(--jade)' }}>
                 {fmtMoney(budget.paid, trip.homeCurrency)}
               </div>
               <div className="summary-sub">{paidNote && <span className="rate-missing-note">{paidNote}</span>}</div>
             </div>
             <div className={summaryCardClass}>
-              <div className="label">Still to pay</div>
+              <div className="label">Still to pay {filteredTag}</div>
               <div className="home tabular" style={{ color: 'var(--gold)' }}>
                 {fmtMoney(budget.toPay, trip.homeCurrency)}
               </div>
@@ -556,7 +731,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
               against the converted figures above without doing the mental
               math. */}
           <div className="currency-subtotals" aria-label="Subtotal by original currency">
-            <span className="field-label">By currency</span>
+            <span className="field-label">By currency {filteredTag}</span>
             {[...budget.byCurrency.keys()].sort().map((cur) => {
               const noRate = trip.rates[cur] === undefined;
               return (
@@ -570,7 +745,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
           {budget.categories.length > 0 && (
             <div className="card cat-breakdown">
               <div className="field-label" style={{ marginBottom: 10 }}>
-                By category
+                By category {filteredTag}
               </div>
               {budget.categories.map((c) => (
                 <div className="cat-row" key={c.category}>
@@ -605,12 +780,21 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
           comment on `.members-card`/`.by-person-card`). */}
       <div className="card cat-breakdown by-person-card">
         <div className="field-label" style={{ marginBottom: 10 }}>
-          By person{' '}
+          By person {filteredTag}{' '}
           <span style={{ textTransform: 'none', fontWeight: 600, color: 'var(--ink-faint)' }}>
             &middot; who paid, converted to {trip.homeCurrency}
           </span>
         </div>
-        {byPerson.rows.length === 0 ? (
+        {/* Bars are floored at 4% so a small payer is still visible — which
+            means an empty selection would render every companion with a
+            stub bar, reading as "they paid something" when nothing matched
+            at all. This card sits outside the summary block above, so it
+            needs its own guard. */}
+        {filtersActive && visibleExpenses.length === 0 ? (
+          <p className="panel-hint" style={{ margin: '4px 0 2px' }}>
+            No expenses match these filters, so there&rsquo;s nothing to split.
+          </p>
+        ) : byPerson.rows.length === 0 ? (
           <p className="panel-hint" style={{ margin: '4px 0 2px' }}>
             No companions yet &mdash; add one above to see who paid what.
           </p>
@@ -877,7 +1061,16 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
         </div>
       )}
 
-      {hasExpenses && (
+      {hasExpenses && visibleExpenses.length === 0 && (
+        <div className="places-filter-empty">
+          <span>No expenses match these filters.</span>
+          <button className="btn btn-ghost btn-sm" onClick={clearFilters}>
+            Clear filters
+          </button>
+        </div>
+      )}
+
+      {hasExpenses && visibleExpenses.length > 0 && (
         <div className="expense-list" id="expenseList">
           {sortedExpenses.map((e) => {
             const converted = convert(e.amount, e.currency, trip);

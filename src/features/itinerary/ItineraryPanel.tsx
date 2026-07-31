@@ -10,12 +10,24 @@ import { Icon } from '../../components/Icons';
 import { Modal } from '../../components/Modal';
 import { BackToTop } from '../../components/BackToTop';
 import { citySlug } from '../../components/RouteStrip';
-import type { ID, ItineraryItem } from '../../data/schema';
-import { buildDayColorMap, buildItinerarySections, dayColor, dayLabel } from '../../lib/tripView';
+import type { Day, ID, ItineraryItem, Place } from '../../data/schema';
+import {
+  buildDayColorMap,
+  buildItinerarySections,
+  categoryIcon,
+  dayColor,
+  dayLabel,
+} from '../../lib/tripView';
 import { todayISO } from '../../lib/dates';
+
+/** Below this many candidates the search field is dead weight — a filter
+ *  box above six names costs more attention than scanning them does. */
+const SEARCH_THRESHOLD = 8;
 
 interface StopFormValues {
   title: string;
+  /** Set when the stop came from an existing Place rather than free text. */
+  placeId?: ID;
   startTime?: string;
   durationMin?: number;
   note?: string;
@@ -27,6 +39,7 @@ interface StopFormValues {
 export function ItineraryPanel() {
   const trip = useTripStore((s) => s.trip);
   const days = useTripStore((s) => s.days);
+  const places = useTripStore((s) => s.places);
   const itineraryByDay = useTripStore((s) => s.itineraryByDay);
   const addItineraryItem = useTripStore((s) => s.addItineraryItem);
   const updateItineraryItem = useTripStore((s) => s.updateItineraryItem);
@@ -34,10 +47,33 @@ export function ItineraryPanel() {
 
   const [reorderMode, setReorderMode] = useState(false);
   const [flashDayId, setFlashDayId] = useState<string | null>(null);
-  const [addingToDay, setAddingToDay] = useState<string | null>(null);
+  // The whole Day, not just its id: the add form needs `day.city` to work
+  // out which places it can offer.
+  const [addingToDay, setAddingToDay] = useState<Day | null>(null);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
   const sections = useMemo(() => (trip ? buildItinerarySections(trip, days) : []), [trip, days]);
+
+  // Places already linked to a stop on ANY day. `place.dayId` would be the
+  // tempting test, but a place with stops on two days points at the earliest
+  // only (see reconcilePlaceDays.ts) — so it would re-offer something that is
+  // already scheduled elsewhere. The itinerary is the source of truth.
+  const scheduledPlaceIds = useMemo(() => {
+    const ids = new Set<ID>();
+    for (const items of Object.values(itineraryByDay)) {
+      for (const item of items) if (item.placeId) ids.add(item.placeId);
+    }
+    return ids;
+  }, [itineraryByDay]);
+
+  // Exact `day.city` match, never `parentCity`: a day trip offers its own
+  // city's places, not the base leg's — the same rule autoplan uses.
+  const candidatePlaces = useMemo(() => {
+    if (!addingToDay) return [];
+    return places
+      .filter((p) => p.city === addingToDay.city && !scheduledPlaceIds.has(p.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [addingToDay, places, scheduledPlaceIds]);
 
   const jumpToToday = useCallback(() => {
     if (days.length === 0) return;
@@ -144,7 +180,7 @@ export function ItineraryPanel() {
                     />
                   )}
 
-                  <button className="add-stop-row" onClick={() => setAddingToDay(day.id)}>
+                  <button className="add-stop-row" onClick={() => setAddingToDay(day)}>
                     <Icon name="plus" /> Add stop
                   </button>
                 </div>
@@ -158,8 +194,9 @@ export function ItineraryPanel() {
 
       <StopFormModal
         open={addingToDay !== null || editingItem !== null}
-        dayId={addingToDay ?? editingItem?.dayId ?? null}
+        dayId={addingToDay?.id ?? editingItem?.dayId ?? null}
         item={editingItem}
+        candidates={candidatePlaces}
         onClose={() => {
           setAddingToDay(null);
           setEditingItem(null);
@@ -168,7 +205,7 @@ export function ItineraryPanel() {
           if (editingItem) {
             await updateItineraryItem({ ...editingItem, ...values });
           } else if (addingToDay) {
-            await addItineraryItem({ dayId: addingToDay, ...values });
+            await addItineraryItem({ dayId: addingToDay.id, ...values });
           }
           setAddingToDay(null);
           setEditingItem(null);
@@ -399,31 +436,94 @@ interface StopFormModalProps {
   open: boolean;
   dayId: string | null;
   item: ItineraryItem | null;
+  /** Places in this day's city that aren't on the itinerary yet. Empty when
+   *  editing — the picker only applies to a new stop. */
+  candidates: Place[];
   onClose: () => void;
   onSubmit: (values: StopFormValues) => void;
 }
 
-function StopFormModal({ open, dayId, item, onClose, onSubmit }: StopFormModalProps) {
+/**
+ * Add/edit a stop. Adding starts from the places already collected in the
+ * Places tab (filtered to this day's city, minus anything already scheduled)
+ * so the research done there isn't retyped and the stop links back to its
+ * pin. Free text stays available behind a toggle for the stops that aren't
+ * map pins at all — hotel check-in, a train transfer, a dinner booking — and
+ * is the only mode when there are no candidates left to offer.
+ */
+function StopFormModal({ open, dayId, item, candidates, onClose, onSubmit }: StopFormModalProps) {
   const [title, setTitle] = useState('');
+  const [placeId, setPlaceId] = useState<ID | undefined>(undefined);
   const [startTime, setStartTime] = useState('');
   const [durationMin, setDurationMin] = useState('');
   const [note, setNote] = useState('');
+  const [search, setSearch] = useState('');
+  /** Free-text mode: chosen explicitly, or forced when there's nothing to pick. */
+  const [freeText, setFreeText] = useState(false);
+
+  const titleRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  /** Which control to focus once the mode swap below has rendered. Swapping
+   *  between the picker and the free-text field unmounts whatever the user
+   *  was on, and <Modal/> only manages focus when it OPENS — so without
+   *  this, every toggle drops focus to <body> and a keyboard user has to
+   *  tab in from the top of the dialog again. */
+  const [focusAfterSwap, setFocusAfterSwap] = useState<'search' | 'title' | null>(null);
+
+  useEffect(() => {
+    if (!focusAfterSwap) return;
+    // The search field only renders for a long candidate list, so returning
+    // to the picker falls back to the first place in it — never nothing.
+    const el =
+      focusAfterSwap === 'title'
+        ? titleRef.current
+        : (searchRef.current ?? document.querySelector<HTMLElement>('.search-result'));
+    el?.focus();
+    setFocusAfterSwap(null);
+  }, [focusAfterSwap]);
 
   useEffect(() => {
     if (!open) return;
     setTitle(item?.title ?? '');
+    setPlaceId(item?.placeId);
     setStartTime(item?.startTime ?? '');
     setDurationMin(item?.durationMin != null ? String(item.durationMin) : '');
     setNote(item?.note ?? '');
-  }, [open, item]);
+    setSearch('');
+    // Editing a stop that has no place behind it is free text by definition;
+    // adding falls back to it only when the picker would be empty.
+    setFreeText(item ? !item.placeId : candidates.length === 0);
+  }, [open, item, candidates.length]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return candidates;
+    return candidates.filter((p) => p.name.toLowerCase().includes(q));
+  }, [candidates, search]);
+
+  const selectedPlace = placeId ? candidates.find((p) => p.id === placeId) : undefined;
+  const showSearch = candidates.length >= SEARCH_THRESHOLD;
 
   if (!dayId) return null;
+
+  // The picker is for new stops only. Re-picking a place on an existing stop
+  // would have to move the old place back to wishlist and the new one onto
+  // this day — a second write path for something the Places tab already does
+  // properly. Editing stays what it is: time, duration, note, and the title
+  // of a free-text stop.
+  const showPicker = !item && !freeText;
+
+  function handleSelect(place: Place) {
+    setPlaceId(place.id);
+    setTitle(place.name);
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
     onSubmit({
       title: title.trim(),
+      placeId,
       startTime: startTime || undefined,
       durationMin: durationMin ? Number(durationMin) : undefined,
       note: note.trim() || undefined,
@@ -441,18 +541,125 @@ function StopFormModal({ open, dayId, item, onClose, onSubmit }: StopFormModalPr
         </button>
       </div>
       <form onSubmit={handleSubmit}>
+        {showPicker &&
+          (selectedPlace ? (
+            <div className="selected-card on">
+              <Icon name="check" />
+              <div>
+                <strong>{selectedPlace.name}</strong>
+                <span>{selectedPlace.category ?? 'Place'}</span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ marginLeft: 'auto' }}
+                aria-label={`Change selected place (${selectedPlace.name})`}
+                onClick={() => {
+                  setPlaceId(undefined);
+                  setTitle('');
+                  setFocusAfterSwap('search');
+                }}
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <>
+              {showSearch && (
+                <div className="search-field">
+                  <Icon name="search" className="search-field-icon" />
+                  <input
+                    ref={searchRef}
+                    className="text-input"
+                    type="search"
+                    aria-label="Filter places"
+                    placeholder="Search your places…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="search-panel">
+                {filtered.length === 0 ? (
+                  <p className="search-hint">
+                    No places match &ldquo;{search}&rdquo;.
+                  </p>
+                ) : (
+                  <div className="search-results">
+                    {filtered.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="search-result"
+                        onClick={() => handleSelect(p)}
+                      >
+                        <Icon name={categoryIcon(p.category)} className="search-result-icon" />
+                        <span className="search-result-body">
+                          <span className="search-result-name">{p.name}</span>
+                          {p.category && <span className="search-result-addr">{p.category}</span>}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="stop-mode-switch"
+                onClick={() => {
+                  setFreeText(true);
+                  setFocusAfterSwap('title');
+                }}
+              >
+                <Icon name="plus" />
+                <span className="stop-mode-switch-body">
+                  <strong>Type a custom stop instead</strong>
+                  <span>For anything that isn&rsquo;t a place &mdash; check-in, a train, dinner</span>
+                </span>
+              </button>
+            </>
+          ))}
+
+        {!item && freeText && candidates.length > 0 && (
+          <button
+            type="button"
+            className="stop-mode-switch"
+            onClick={() => {
+              setFreeText(false);
+              setTitle('');
+              setFocusAfterSwap('search');
+            }}
+          >
+            <Icon name="pin" />
+            <span className="stop-mode-switch-body">
+              <strong>Pick from your places instead</strong>
+              <span>Choose one of the {candidates.length} places you saved for this city</span>
+            </span>
+          </button>
+        )}
+
+        {!item && freeText && candidates.length === 0 && (
+          <p className="search-hint">
+            No unscheduled places in this city yet &mdash; add them in the Places tab to pick them
+            here.
+          </p>
+        )}
+
         <div className="add-form-grid">
-          <div className="full">
-            <label htmlFor="s-title">Title</label>
-            <input
-              className="text-input"
-              style={{ width: '100%' }}
-              id="s-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-            />
-          </div>
+          {!showPicker && (
+            <div className="full">
+              <label htmlFor="s-title">Title</label>
+              <input
+                ref={titleRef}
+                className="text-input"
+                style={{ width: '100%' }}
+                id="s-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+            </div>
+          )}
           <div>
             <label htmlFor="s-time">Start time</label>
             <input
@@ -488,7 +695,7 @@ function StopFormModal({ open, dayId, item, onClose, onSubmit }: StopFormModalPr
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="submit" className="btn btn-primary btn-sm">
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!title.trim()}>
             {item ? 'Save' : 'Add stop'}
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>

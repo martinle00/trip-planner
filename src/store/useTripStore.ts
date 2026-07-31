@@ -1120,6 +1120,42 @@ export const useTripStore = create<TripState>((set, get) => ({
         [input.dayId]: sortByOrder([...(s.itineraryByDay[input.dayId] ?? []), item]),
       },
     }));
+
+    // A stop created FROM a place takes the place with it: the itinerary is
+    // the source of truth and `place.dayId`/`status` are its cache (see
+    // reconcilePlaceDays.ts), so leaving them behind means the map keeps
+    // showing a wishlist pin for something that is now scheduled — until the
+    // next load's reconcile silently corrects it. Write it here instead.
+    //
+    // Inlined rather than delegating to assignPlaceToDay for the same reason
+    // as updateItineraryItem/removeItineraryItem below: that action runs
+    // inside runExclusive and its assign branch calls back into this one.
+    if (!item.placeId) return item;
+    const place = get().places.find((p) => p.id === item.placeId);
+    // Already pointing at this day (e.g. assignPlaceToDay wrote the place
+    // before calling this) — nothing to write, and no reason to bump
+    // updatedAt.
+    if (!place || place.dayId === item.dayId) return item;
+    // A stop on some OTHER day already links this place: that assignment
+    // owns it and this is a second stop (the shape auto-plan and a moved
+    // assignment both leave behind). Stealing the place here would undo a
+    // newer, deliberate assignment — and would contradict
+    // reconcilePlaceDaysToItinerary, which keeps a multi-day place on the
+    // day it already points at. Checked against the itinerary rather than
+    // `place.dayId` alone so a stale dayId doesn't block a legitimate claim.
+    const linkedElsewhere = Object.entries(get().itineraryByDay).some(
+      ([dayId, items]) => dayId !== item.dayId && items.some((i) => i.placeId === item.placeId),
+    );
+    if (linkedElsewhere) return item;
+    const planned: Place = {
+      ...place,
+      dayId: item.dayId,
+      status: 'planned',
+      updatedAt: new Date().toISOString(),
+    };
+    await tripRepository.upsertPlace(planned);
+    mutationVersion++;
+    set((s) => ({ places: s.places.map((p) => (p.id === planned.id ? planned : p)) }));
     return item;
   },
 
