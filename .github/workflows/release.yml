@@ -51,8 +51,26 @@ jobs:
 
       # A release that doesn't build is worse than no release. Both run before
       # anything is tagged or published.
+      #
+      # The env vars are deliberately FAKE. `src/lib/supabaseClient.ts` throws
+      # at import time when they're missing, and enough tests reach it through
+      # <App/> that the whole suite fails without them — but no test ever
+      # talks to Supabase (supabase-js is mocked, or the repository layer is a
+      # fake), so real credentials would buy nothing and would put a live key
+      # in CI for no reason. `.env.local` is gitignored via `*.local`, which is
+      # why CI has nothing to read.
+      #
+      # NOTE: if a deploy step is ever added here it must NOT reuse these —
+      # Vite inlines `import.meta.env` at build time, so a bundle built with
+      # these values is permanently pointed at nothing.
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://ci.invalid.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-not-a-real-key
       - run: npm test
+        env:
+          VITE_SUPABASE_URL: https://ci.invalid.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-not-a-real-key
 
       - uses: changesets/action@v1
         with:
