@@ -7,6 +7,7 @@ import { SyncedTripRepository } from '../../data/syncedTripRepository';
 import { OutboxTripRepository } from '../../data/outboxTripRepository';
 import { setTripRepository } from '../../data/tripRepositoryInstance';
 import { bootstrapMigration } from '../../data/bootstrapMigration';
+import { attemptDevAutoSignIn, isDevAutoSignInEnabled } from './devAutoSignIn';
 
 type GateState = 'checking-session' | 'signed-out' | 'bootstrapping' | 'bootstrap-failed' | 'ready';
 
@@ -96,6 +97,28 @@ export function AuthGate({ children }: { children: ReactNode }) {
       subscription.subscription.unsubscribe();
     };
   }, []);
+
+  // Dev-only (local builds, local origins — see devAutoSignIn.ts for the two
+  // guards): trade the magic-link round-trip for a password sign-in, so the
+  // PWA can be tested on a phone over the LAN without an email detour.
+  //
+  // Deliberately its own fire-and-forget effect that writes NONE of the state
+  // above. All it does is cause an ordinary SIGNED_IN event, which the
+  // listener already handles — so the derived-state invariant documented below
+  // holds unchanged, and removing this block leaves the gate exactly as it was.
+  // Runs only after the session has resolved to "signed out", so it never
+  // races the persisted-session check and never re-signs-in a live session.
+  const devSignInAttempted = useRef(false);
+  useEffect(() => {
+    if (!isDevAutoSignInEnabled()) return;
+    if (devSignInAttempted.current) return;
+    if (!sessionResolved || userId) return;
+    // Latched, not keyed on a retry counter: one attempt per page load. A
+    // failing credential must not become a sign-in request loop against the
+    // auth endpoint, which is rate-limited and shared with the real flow.
+    devSignInAttempted.current = true;
+    void attemptDevAutoSignIn();
+  }, [sessionResolved, userId]);
 
   // Wire the repository for whoever is signed in. Keyed on the user id (not
   // the session object), so a token refresh doesn't reconstruct it or re-run

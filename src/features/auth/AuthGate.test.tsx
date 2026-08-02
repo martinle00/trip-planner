@@ -42,6 +42,15 @@ vi.mock('../../data/bootstrapMigration', () => ({
   bootstrapMigration: () => bootstrapMigrationMock(),
 }));
 
+// Off by default, matching a build with no dev credentials — so every test
+// above this point exercises the normal magic-link path untouched.
+const devAutoSignInEnabled = vi.fn<() => boolean>(() => false);
+const attemptDevAutoSignInMock = vi.fn<() => Promise<boolean>>();
+vi.mock('./devAutoSignIn', () => ({
+  isDevAutoSignInEnabled: () => devAutoSignInEnabled(),
+  attemptDevAutoSignIn: () => attemptDevAutoSignInMock(),
+}));
+
 beforeEach(() => {
   authListener = undefined;
   getSessionGate = undefined;
@@ -49,6 +58,9 @@ beforeEach(() => {
   localStorage.clear();
   bootstrapMigrationMock.mockReset();
   bootstrapMigrationMock.mockResolvedValue(undefined);
+  devAutoSignInEnabled.mockReturnValue(false);
+  attemptDevAutoSignInMock.mockReset();
+  attemptDevAutoSignInMock.mockResolvedValue(true);
   localStorage.setItem('trip-planner:bootstrapped:user-1', '1');
 });
 
@@ -223,5 +235,64 @@ describe('AuthGate — bootstrap failure', () => {
     await waitFor(() => expect(screen.getByTestId('app-marker')).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(localStorage.getItem('trip-planner:bootstrapped:user-1')).toBe('1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dev auto sign-in. The guards themselves live in devAutoSignIn.test.ts; what
+// matters here is that the wiring can't erode the derived-state invariant --
+// it must only ever *cause* a normal SIGNED_IN event, never gate rendering
+// itself, and never fire when it shouldn't.
+// ---------------------------------------------------------------------------
+describe('AuthGate — dev auto sign-in', () => {
+  it('does not attempt a dev sign-in when disabled', async () => {
+    currentSession = null;
+    render(<AuthGate><div data-testid="app-marker">app content</div></AuthGate>);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send magic link' })).toBeInTheDocument());
+    expect(attemptDevAutoSignInMock).not.toHaveBeenCalled();
+  });
+
+  it('attempts a dev sign-in once the session resolves to signed-out', async () => {
+    currentSession = null;
+    devAutoSignInEnabled.mockReturnValue(true);
+
+    render(<AuthGate><div data-testid="app-marker">app content</div></AuthGate>);
+
+    await waitFor(() => expect(attemptDevAutoSignInMock).toHaveBeenCalledTimes(1));
+
+    // The gate is not rendering the app off the back of the *attempt* -- it
+    // still needs a real session, delivered the ordinary way.
+    expect(screen.queryByTestId('app-marker')).not.toBeInTheDocument();
+
+    authListener?.('SIGNED_IN', { user: { id: 'user-1' } });
+    await waitFor(() => expect(screen.getByTestId('app-marker')).toBeInTheDocument());
+  });
+
+  it('does not attempt a dev sign-in when a session already exists', async () => {
+    devAutoSignInEnabled.mockReturnValue(true);
+
+    render(<AuthGate><div data-testid="app-marker">app content</div></AuthGate>);
+
+    await waitFor(() => expect(screen.getByTestId('app-marker')).toBeInTheDocument());
+    expect(attemptDevAutoSignInMock).not.toHaveBeenCalled();
+  });
+
+  // A failing credential must not turn into a sign-in loop against a
+  // rate-limited endpoint shared with the real magic-link flow.
+  it('attempts at most once per page load, even after a failure', async () => {
+    currentSession = null;
+    devAutoSignInEnabled.mockReturnValue(true);
+    attemptDevAutoSignInMock.mockResolvedValue(false);
+
+    render(<AuthGate><div data-testid="app-marker">app content</div></AuthGate>);
+
+    await waitFor(() => expect(attemptDevAutoSignInMock).toHaveBeenCalledTimes(1));
+
+    // Further auth churn (a token event, a re-render) must not re-trigger it.
+    authListener?.('TOKEN_REFRESHED', null);
+    authListener?.('SIGNED_OUT', null);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send magic link' })).toBeInTheDocument());
+    expect(attemptDevAutoSignInMock).toHaveBeenCalledTimes(1);
   });
 });

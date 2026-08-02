@@ -12,7 +12,8 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "changeset:status": "changeset status",
-    "release": "changeset tag"
+    "release": "changeset tag",
+    "build:local": "tsc -b && vite build --mode localdev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",

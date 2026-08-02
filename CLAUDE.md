@@ -198,6 +198,24 @@ Supabase magic link (passwordless email). `src/features/auth/AuthGate.tsx` wraps
   remote wins and local is treated as a stale cache. Never merges.
 - Sign-out (`App.tsx handleSignOut`) resets the store, repoints the repository at a
   fresh `DexieTripRepository`, clears the Dexie cache, then signs out. Order matters.
+- `devAutoSignIn.ts` swaps the magic link for `signInWithPassword` when testing on a
+  phone over the LAN. **Two independent guards, both required:** credentials injected
+  at build time *and* a local/RFC-1918 hostname at runtime. It produces a **real**
+  session; nothing downstream is mocked. Don't relax either guard to make it work
+  somewhere new — that's a different threat model, not a wider regex.
+  - `DEV_AUTH_EMAIL`/`DEV_AUTH_PASSWORD` carry **no `VITE_` prefix on purpose**, so
+    Vite cannot auto-inline them. They reach the bundle only via the `__DEV_AUTH__`
+    `define` in `vite.config.ts`, which populates it for the dev server and
+    `--mode localdev` (`npm run build:local`) and nothing else. **Plain `npm run build`
+    structurally cannot carry them** — which matters because that build *is* the
+    deploy artifact (`npx wrangler deploy` straight from `dist/`, see DEPLOY.md).
+    Re-adding the prefix would publish a working Supabase password. `mode !== 'test'`
+    is also excluded, so the suite never depends on a developer's `.env.local`.
+  - Credentials are **build-time**: editing `.env.local` does nothing until a rebuild.
+    This is the first thing to check when "the bypass isn't working".
+  - Its `AuthGate` wiring is a deliberately isolated fire-and-forget effect that writes
+    none of the gate's state (see the invariant below) — deleting it leaves the gate
+    exactly as it was. README documents the Supabase-side setup.
 
 ### AuthGate: the invariant that keeps biting
 
