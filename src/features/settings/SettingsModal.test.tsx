@@ -62,6 +62,7 @@ function renderSettings(props: Partial<React.ComponentProps<typeof SettingsModal
       onExport={() => {}}
       onImportClick={() => {}}
       onSignOut={() => {}}
+      onEditJourney={() => {}}
       {...props}
     />,
   );
@@ -69,6 +70,23 @@ function renderSettings(props: Partial<React.ComponentProps<typeof SettingsModal
 
 beforeEach(() => {
   resetStore();
+});
+
+describe('SettingsModal — journey (Phase 10)', () => {
+  it('summarises the journey on the entry-point row', () => {
+    renderSettings();
+    expect(screen.getByRole('button', { name: /Edit journey/ })).toHaveTextContent('1 city · 6 nights');
+  });
+
+  // The handoff, not just the callback: Settings and the sheet are both
+  // <Modal>s, so App has to close this one before opening that one. If they
+  // ever stack, focus is trapped in the wrong dialog.
+  it('asks its caller to open the sheet', () => {
+    const onEditJourney = vi.fn();
+    renderSettings({ onEditJourney });
+    fireEvent.click(screen.getByRole('button', { name: /Edit journey/ }));
+    expect(onEditJourney).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('SettingsModal — trip companions (moved from the Budget tab in Phase 6)', () => {

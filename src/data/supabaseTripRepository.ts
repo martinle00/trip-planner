@@ -93,6 +93,16 @@ function dayFromRow(row: DayRow): Day {
   };
 }
 
+function dayToRow(day: Day): DayRow {
+  return {
+    id: day.id,
+    trip_id: day.tripId,
+    date: day.date,
+    city: day.city,
+    parent_city: day.parentCity ?? null,
+  };
+}
+
 interface PlaceRow {
   id: string;
   trip_id: string;
@@ -351,6 +361,21 @@ export class SupabaseTripRepository implements TripRepository {
       .order('date', { ascending: true });
     if (error) throw error;
     return (data as DayRow[]).map(dayFromRow);
+  }
+
+  async upsertDay(day: Day): Promise<Day> {
+    const { error } = await this.client.from('days').upsert(dayToRow(day));
+    if (error) throw error;
+    return day;
+  }
+
+  // Postgres cascades this to `itinerary` and nulls `places.day_id` (see
+  // 0001_init.sql). That is a safety net, NOT the app's cascade — Dexie does
+  // neither, so callers delete the stops and unassign the places themselves
+  // or the two backends diverge. See `TripRepository.deleteDay`.
+  async deleteDay(id: ID): Promise<void> {
+    const { error } = await this.client.from('days').delete().eq('id', id);
+    if (error) throw error;
   }
 
   // ---- Itinerary ----

@@ -94,6 +94,19 @@ export class DexieTripRepository implements TripRepository {
     return days.sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  async upsertDay(day: Day): Promise<Day> {
+    await db.days.put(day);
+    return day;
+  }
+
+  // Dexie has no foreign keys, so this deletes exactly one row — the stops on
+  // it and the places pointing at it are the caller's to handle (see
+  // `TripRepository.deleteDay`). That asymmetry with Postgres, which does
+  // cascade, is why the cascade lives in `planJourneyEdit` instead.
+  async deleteDay(id: ID): Promise<void> {
+    await db.days.delete(id);
+  }
+
   // ---- Itinerary ----
 
   async listItinerary(dayId: ID): Promise<ItineraryItem[]> {

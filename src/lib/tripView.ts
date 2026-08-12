@@ -85,15 +85,51 @@ export function dayLabel(day: Day, legDays: Day[], options?: { withDayTripCity?:
 export interface CityGroup {
   city: City;
   places: Place[];
+  /** True for the synthetic trailing group holding places whose city is no
+   *  longer a leg of the trip. Its `city` is not a real `Trip.cities` entry —
+   *  don't look it up, and don't offer day assignment against it. */
+  orphaned?: boolean;
 }
 
-/** Places grouped by every trip leg (incl. day-trip legs), in `City.order`. */
+/** The section header for places left behind by a removed leg. Not a city
+ *  name the user can ever have typed: it must not collide with a real leg. */
+export const ORPHANED_PLACES_GROUP = 'Not on this trip';
+
+/**
+ * Places grouped by every trip leg (incl. day-trip legs), in `City.order`,
+ * followed by one synthetic group for places belonging to no current leg.
+ *
+ * That last group is not cosmetic. `Place.city` is a plain name string, and
+ * removing a leg does NOT delete its places (the user is shortening a trip,
+ * not throwing away the research, and they may put the leg back). Without a
+ * home to render in, those places would still exist in Dexie and Postgres
+ * while being invisible everywhere in the UI — the worst of both outcomes.
+ * `Expense.city` has always been orphan-tolerant this way and the Budget tab
+ * already shows such expenses as "Whole trip"; this is the same courtesy.
+ */
 export function groupPlacesByCity(places: Place[], cities: City[]): CityGroup[] {
   const ordered = [...cities].sort((a, b) => a.order - b.order);
-  return ordered.map((city) => ({
+  const groups: CityGroup[] = ordered.map((city) => ({
     city,
     places: places.filter((p) => p.city === city.name),
   }));
+
+  const legNames = new Set(cities.map((c) => c.name));
+  const orphans = places.filter((p) => !legNames.has(p.city));
+  if (orphans.length > 0) {
+    groups.push({
+      city: {
+        name: ORPHANED_PLACES_GROUP,
+        order: ordered.length + 1,
+        nights: 0,
+        arrive: '',
+        depart: '',
+      },
+      places: orphans,
+      orphaned: true,
+    });
+  }
+  return groups;
 }
 
 export interface ItineraryDayRow {

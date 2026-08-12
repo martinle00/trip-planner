@@ -21,6 +21,35 @@ export function todayISO(): string {
   return toISODate(new Date());
 }
 
+/** `iso` shifted by `n` calendar days (negative shifts backwards). Goes
+ *  through the local-date convention above rather than adding milliseconds,
+ *  so a DST boundary can't land the result on the previous evening. */
+export function addDaysISO(iso: string, n: number): string {
+  const d = parseISODate(iso);
+  d.setDate(d.getDate() + n);
+  return toISODate(d);
+}
+
+/** Whole calendar days from `from` to `to` (negative if `to` is earlier).
+ *  Computed on UTC-normalised midnights so a DST transition inside the range
+ *  can't produce a 23- or 25-hour day and round the count off by one. */
+export function daysBetweenISO(from: string, to: string): number {
+  const a = parseISODate(from);
+  const b = parseISODate(to);
+  const utcA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const utcB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((utcB - utcA) / 86_400_000);
+}
+
+/** Every ISO date in `[from, to)`, ascending. Empty when `to <= from`. */
+export function datesBetweenISO(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let i = 0, n = daysBetweenISO(from, to); i < n; i++) {
+    out.push(addDaysISO(from, i));
+  }
+  return out;
+}
+
 /** "Mon 10" */
 export function fmtWeekdayDay(iso: string): string {
   const d = parseISODate(iso);

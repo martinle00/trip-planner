@@ -761,6 +761,19 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .section-chevron.is-open{ transform:rotate(90deg); }
 .city-dot{ width:9px; height:9px; border-radius:50%; background:var(--city-accent, var(--d-grey)); flex:none; }
 
+/* "Not on this trip" — places whose city was removed from the journey. They
+   are kept, not deleted (the wishlist research outlives the leg, and the leg
+   may come back), so this section is deliberately quiet: dashed and greyed to
+   read as "set aside", never as an error. Grey is already the vocabulary for
+   "unassigned" on the day palette, so it carries over cleanly here. */
+.city-section.is-orphaned{
+  border-style:dashed; border-left-style:dashed;
+  border-color:var(--line-strong); border-left-color:var(--d-grey);
+  background:var(--paper);
+}
+.city-section.is-orphaned .city-dot{ background:var(--d-grey); }
+.city-section.is-orphaned .city-section-name{ color:var(--ink-soft); }
+
 /* filters above the city sections */
 .places-filter-bar{
   display:flex; flex-direction:column; gap:2px; margin-bottom:16px; padding:12px 14px;
@@ -966,7 +979,12 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 .stop-meta{ font-size:11.5px; color:var(--ink-soft); margin-top:1px; }
 .stop-note{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
 .stop-actions{ flex:none; display:flex; align-items:flex-start; gap:2px; }
-.icon-btn{ width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--ink-faint); }
+/* padding:0 is load-bearing. The class is a FIXED-SIZE square with a fixed-size
+   svg in it, so any padding — the UA's 1px 6px included — eats the icon's
+   content box rather than the button's. Composing it with a `.btn` size
+   modifier (`.btn-sm`, padding 6px 12px) crushed the icon to ~2px wide and
+   read as "the icons don't render"; don't do that, size it here instead. */
+.icon-btn{ width:26px; height:26px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--ink-faint); }
 .icon-btn:hover{ background:var(--paper-sunk); color:var(--ink); }
 .icon-btn svg{ width:14px; height:14px; }
 .icon-btn:disabled{ opacity:.32; cursor:not-allowed; }
@@ -2100,3 +2118,114 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    <Modal>'s, deliberately not redeclared. */
 .payer-choices{ display:flex; flex-direction:column; gap:6px; margin:10px 0; }
 .payer-choices .btn{ justify-content:flex-start; }
+
+/* ===========================================================================
+   EDIT JOURNEY (Phase 10) — the trip's legs and dates.
+   Renders inside the shared <Modal> and reuses `.settings-section` for its
+   section rhythm, so only the leg list itself is declared here.
+   =========================================================================== */
+.journey-legs{ display:flex; flex-direction:column; gap:8px; }
+
+.journey-leg{
+  border:1px solid var(--line); border-radius:var(--radius-sm);
+  background:var(--paper); padding:8px 10px;
+}
+.journey-leg-main{ display:flex; align-items:center; gap:8px; }
+
+/* Up/down instead of drag: the whole sheet is a scrolling container inside a
+   modal on a touch device, where a drag handle competes with the scroll it
+   sits in. Two buttons are unambiguous, reachable by keyboard, and the leg
+   count here is small enough that repeated taps never get tedious. */
+/* 30×28 each, NOT the 26px `.icon-btn` baseline. DESIGN-SYSTEM.md §4 accepts
+   26px "for secondary destructive actions in dense lists" and explicitly not
+   for a primary action — and reordering is the primary action here, tapped
+   up to n−1 times to walk a leg across a ten-leg trip, on a phone. An earlier
+   22×18 was below the floor outright. */
+.journey-leg-reorder{ display:flex; flex-direction:column; gap:2px; flex:none; }
+.journey-leg-reorder .icon-btn{ width:30px; height:28px; }
+.journey-leg-reorder svg{ width:14px; height:14px; }
+.journey-arrow-up{ transform:rotate(-90deg); }
+.journey-arrow-down{ transform:rotate(90deg); }
+
+.journey-leg-id{ display:flex; flex-direction:column; min-width:0; flex:1; }
+/* Truncates rather than pushing the row wide. The name used to be one of ten
+   known cities; it's now whatever the user typed into "Add a city". */
+.journey-leg-name{
+  font-weight:600; font-size:.95rem;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+/* Dates are DERIVED from the nights stepper and the trip start — shown, never
+   typed. See `chainLegDates`: legs are contiguous, so an editable per-leg date
+   would mostly produce states the model immediately overwrites. */
+.journey-leg-dates{ font-size:12px; color:var(--ink-soft); }
+
+.journey-nights{ display:flex; align-items:center; gap:4px; flex:none; }
+.journey-nights .icon-btn{ width:26px; height:26px; }
+.journey-nights .icon-btn svg{ width:13px; height:13px; }
+/* A real input, so a long stay can be typed instead of tapped ~20 times.
+   Sized to two digits and styled to read as a value first and a field second —
+   it sits between two buttons that already carry the affordance. */
+.journey-nights-value{
+  width:2.4em; text-align:center; font-size:12.5px; font-weight:700; color:var(--ink);
+  padding:4px 2px; border-radius:6px; border:1px solid var(--line);
+  background:var(--paper-sunk); flex:none;
+}
+.journey-nights-unit{ font-weight:400; color:var(--ink-soft); font-size:12.5px; min-width:3.2em; }
+.journey-leg-remove{ flex:none; color:var(--ink-faint); }
+.journey-leg-remove:hover{ color:var(--accent); background:var(--accent-soft); }
+
+/* A day trip is a leg OF its parent, so it is indented under it rather than
+   listed alongside — and it has no nights stepper, because it consumes none. */
+.journey-leg-children{
+  margin:6px 0 0 30px; padding-left:10px; border-left:2px solid var(--line);
+  display:flex; flex-direction:column; gap:4px;
+}
+.journey-daytrip{ display:flex; align-items:center; gap:8px; }
+.journey-daytrip-label{ font-size:12px; color:var(--ink-soft); flex:1; min-width:0; }
+/* The day trip's own date — free within its parent, so it's an input rather
+   than the derived text every base leg shows. Sized down to sit inside the
+   indented child row without out-weighing the leg above it. */
+.journey-daytrip-date{
+  flex:none; font-size:12px; padding:3px 6px; border-radius:6px;
+  border:1px solid var(--line); background:var(--paper-sunk); color:var(--ink);
+}
+.journey-daytrip-date:disabled{ opacity:.5; }
+/* Gold, not red: nothing is broken, there's just a step to do first. */
+.journey-daytrip-blocked{ color:var(--gold-soft-ink); font-weight:600; }
+
+/* Add a city. Deliberately quieter than the leg rows above it — it's the least
+   used control in the sheet, and the list is the thing being read. */
+.journey-add{ display:flex; gap:8px; margin-top:10px; }
+.journey-add-name{
+  flex:1; min-width:0; font-size:13px; padding:7px 10px; border-radius:var(--radius-sm);
+  border:1px solid var(--line); background:var(--paper-sunk); color:var(--ink);
+}
+.journey-add-name::placeholder{ color:var(--ink-faint); }
+.journey-add-name[aria-invalid="true"]{ border-color:var(--accent); }
+.journey-add-hint{ margin-top:6px; }
+.journey-add-error{ margin-top:6px; font-size:12.5px; color:var(--accent-soft-ink); }
+
+/* The blast radius. Gold is the app's "pending / needs your attention" colour
+   (see DESIGN-SYSTEM.md); this is a warning to read, not an error state. */
+.journey-confirm{
+  margin-top:8px; padding:10px; border-radius:var(--radius-sm);
+  background:var(--gold-soft); color:var(--gold-soft-ink);
+}
+.journey-confirm-title{ display:block; font-size:13.5px; margin-bottom:6px; }
+.journey-confirm-list{ margin:0 0 8px; padding-left:18px; font-size:12.5px; line-height:1.5; }
+.journey-confirm-actions{ display:flex; justify-content:flex-end; gap:8px; }
+
+.journey-summary{
+  margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
+  font-size:13px; color:var(--ink-soft);
+}
+.journey-summary strong{ color:var(--ink); font-size:14px; }
+.journey-summary-delta{ color:var(--gold-soft-ink); font-weight:600; }
+
+/* The entry point, in Settings. A full-width row rather than a plain button:
+   the leading icon and trailing chevron say "this opens something", and the
+   summary carries the current journey so the row states a fact about the trip
+   instead of just naming a destination. */
+.settings-journey-btn{ justify-content:flex-start; gap:10px; text-align:left; }
+.settings-journey-label{ font-weight:700; }
+.settings-journey-meta{ margin-left:auto; color:var(--ink-soft); font-weight:400; font-size:12.5px; }

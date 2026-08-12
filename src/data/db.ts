@@ -88,11 +88,11 @@ const STORES = {
 export interface OutboxEntry {
   /** Auto-incrementing; also the replay order. */
   seq?: number;
-  entity: 'trip' | 'place' | 'itinerary' | 'expense';
+  entity: 'trip' | 'day' | 'place' | 'itinerary' | 'expense';
   op: 'upsert' | 'delete';
   recordId: ID;
   /** The record to write. Absent for a delete. */
-  payload?: Trip | Place | ItineraryItem | Expense;
+  payload?: Trip | Day | Place | ItineraryItem | Expense;
   /** ISO date-time this record's pending change was first queued. */
   queuedAt: string;
 }

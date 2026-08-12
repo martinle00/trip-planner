@@ -30,7 +30,6 @@ import {
   daysForCity,
   daysForLeg,
   groupPlacesByCity,
-  orderedCities,
 } from '../../lib/tripView';
 
 interface PlacesPanelProps {
@@ -178,9 +177,13 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
           <label className="field-label" htmlFor="placeCityFilter">City</label>
           <select id="placeCityFilter" value={cityFilter} onChange={(e) => setCityFilter(e.target.value)}>
             <option value="all">All cities &middot; {totalPlaces}</option>
-            {orderedCities(trip).map((c) => (
+            {/* Built from `groups`, not `orderedCities(trip)`, so the
+                "Not on this trip" bucket is filterable too — otherwise the
+                only way to reach those places would be to scroll past every
+                other section with the filter cleared. */}
+            {groups.map(({ city: c, places: cityPlaces }) => (
               <option key={c.name} value={c.name}>
-                {c.name} &middot; {places.filter((p) => p.city === c.name).length}
+                {c.name} &middot; {cityPlaces.length}
               </option>
             ))}
           </select>
@@ -212,9 +215,12 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
           </button>
         </div>
       ) : (
-        groups.map(({ city: c, places: cityPlaces }) => {
+        groups.map(({ city: c, places: cityPlaces, orphaned }) => {
           const filtered = cityPlaces.filter(matchesFilters);
           if (filtered.length === 0) return null;
+          // An orphaned group's city isn't a leg, so it has no days — the
+          // day dropdown on each card correctly comes up empty rather than
+          // offering to assign a place to a trip it isn't on any more.
           const cDays = daysForCity(days, c.name);
           // Options come from this city's own days; the "Day N" labels count
           // over the leg including its day trips, so a day trip doesn't
@@ -226,7 +232,7 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
           const bodyId = `city-places-${citySlug(c.name)}`;
           return (
             <div
-              className={`city-section${collapsed ? ' is-collapsed' : ''}`}
+              className={`city-section${collapsed ? ' is-collapsed' : ''}${orphaned ? ' is-orphaned' : ''}`}
               key={c.name}
               style={{ ['--city-accent' as string]: accent } as CSSProperties}
             >
@@ -242,7 +248,11 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
                   <span className="city-section-name">{c.name}</span>
                   <span className="count">
                     {cityPlaces.length} place{cityPlaces.length === 1 ? '' : 's'} &middot;{' '}
-                    {assigned ? `${assigned} assigned` : 'not planned'}
+                    {orphaned
+                      ? 'city no longer on the trip'
+                      : assigned
+                        ? `${assigned} assigned`
+                        : 'not planned'}
                   </span>
                   <Icon name="chevron-right" className={`section-chevron${collapsed ? '' : ' is-open'}`} />
                 </button>

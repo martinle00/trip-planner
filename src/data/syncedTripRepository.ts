@@ -97,14 +97,42 @@ export class SyncedTripRepository implements TripRepository {
 
   // ---- Days ----
 
+  /**
+   * Mirrors DELETIONS as well as writes, unlike the other list methods here.
+   *
+   * Those only ever upsert what the remote returned, so a row deleted on
+   * another device lingers in this device's cache — a long-standing gap that
+   * is survivable for a place (one stale pin) but not for a day: a day the
+   * trip no longer has renders an entire phantom section in the Itinerary tab
+   * and a phantom target in every assign-to-day dropdown, and it would come
+   * back on every offline read. Now that legs are editable that is a routine
+   * outcome rather than a corner case, so the day list is reconciled properly.
+   */
   async listDays(tripId: ID): Promise<Day[]> {
     try {
       const days = await this.remote.listDays(tripId);
+      const cached = await this.cache.listDays(tripId).catch(() => [] as Day[]);
+      const remoteIds = new Set(days.map((d) => d.id));
+      await Promise.all([
+        ...days.map((d) => this.cache.upsertDay(d)),
+        ...cached.filter((d) => !remoteIds.has(d.id)).map((d) => this.cache.deleteDay(d.id)),
+      ]);
       return days;
     } catch (err) {
       if (isOffline()) return this.cache.listDays(tripId);
       throw err;
     }
+  }
+
+  async upsertDay(day: Day): Promise<Day> {
+    const saved = await this.remote.upsertDay(day);
+    await this.cache.upsertDay(saved);
+    return saved;
+  }
+
+  async deleteDay(id: ID): Promise<void> {
+    await this.remote.deleteDay(id);
+    await this.cache.deleteDay(id);
   }
 
   // ---- Itinerary ----
