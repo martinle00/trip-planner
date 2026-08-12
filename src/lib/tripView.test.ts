@@ -10,6 +10,8 @@ import {
   dayLabel,
   daysForCity,
   daysForLeg,
+  groupPlacesByCity,
+  ORPHANED_PLACES_GROUP,
   inferCityFromAddress,
   suggestPlaceLocation,
 } from './tripView';
@@ -183,5 +185,40 @@ describe('dayLabel — naming the day trip destination', () => {
   it('the option changes nothing for an ordinary day', () => {
     const day: Day = { id: 'd1', tripId: 't', date: '2026-11-20', city: 'Chongqing' };
     expect(dayLabel(day, [day], { withDayTripCity: true })).toBe(dayLabel(day, [day]));
+  });
+});
+
+describe('groupPlacesByCity — orphaned places', () => {
+  const seed = buildSeed();
+  const cities = seed.trip.cities;
+  const places = seed.places;
+
+  it('groups by leg in trip order and adds no orphan group when every city is a leg', () => {
+    const groups = groupPlacesByCity(places, cities);
+    expect(groups).toHaveLength(cities.length);
+    expect(groups.some((g) => g.orphaned)).toBe(false);
+    expect(groups.map((g) => g.city.order)).toEqual(cities.map((_, i) => i + 1));
+  });
+
+  it('collects places whose city is no longer a leg into a trailing group', () => {
+    // Exactly what removing a leg leaves behind: the places survive, the leg
+    // doesn't. Without this group they would be invisible in the UI while
+    // still occupying rows in Dexie and Postgres.
+    const withoutChengdu = cities.filter((c) => c.name !== 'Chengdu');
+    const groups = groupPlacesByCity(places, withoutChengdu);
+
+    const last = groups[groups.length - 1];
+    expect(last.orphaned).toBe(true);
+    expect(last.city.name).toBe(ORPHANED_PLACES_GROUP);
+    expect(last.places.map((p) => p.city)).toEqual(['Chengdu', 'Chengdu']);
+    // Nothing is lost or double-counted.
+    expect(groups.flatMap((g) => g.places)).toHaveLength(places.length);
+  });
+
+  it('sorts the orphan group after every real leg', () => {
+    const groups = groupPlacesByCity(places, cities.filter((c) => c.name !== 'Singapore'));
+    const orphan = groups.find((g) => g.orphaned)!;
+    expect(orphan.city.order).toBeGreaterThan(Math.max(...cities.map((c) => c.order)) - 1);
+    expect(groups.indexOf(orphan)).toBe(groups.length - 1);
   });
 });

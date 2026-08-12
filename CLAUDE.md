@@ -279,7 +279,34 @@ the React app is built to match; design tokens in `src/index.css` are ported fro
 backend-impl → code-reviewer → qa-tester. Non-trivial UI work is expected to go
 through mockup + review before implementation.
 
+### The journey is editable (Phase 10)
+
+`Trip.cities` (the legs) and the `Day` rows are no longer write-once — see
+`PHASE10.md`. Three rules that are easy to break:
+
+- **Days are DIFFED against what exists, never rebuilt.** `Day.id` is referenced by
+  both `ItineraryItem.dayId` and `Place.dayId`, so regenerating them orphans the
+  whole itinerary. `reconcileDaysToCities` matches by `(city, ordinal within that
+  city)` — *not* by date, which would delete and recreate every day after any leg
+  whose length changed.
+- **The day cascade is explicit and client-side.** Postgres cascades
+  (`itinerary.day_id on delete cascade`, `places.day_id on delete set null`); Dexie
+  has no foreign keys and does nothing. Relying on either leaves the cache and the
+  remote holding different data. `planJourneyEdit` computes the cascade; the store
+  applies it before deleting the day.
+- **Never implement a journey edit as "rebuild the snapshot and `importSnapshot`".**
+  That's never queued offline, and it's a destructive whole-trip replace.
+
+`sortForReplay` (outboxTripRepository) means the outbox drains in **dependency
+order, not queue order** — coalescing moves a re-edited record to the back, which
+could otherwise put a day behind the place that references it.
+
 ## Status / next steps
+
+**Phase 10 (editable journey) — see `PHASE10.md`.** P0 plus add-a-leg done; **rename**
+a leg not yet (the city name is the foreign key — see PHASE10 §P1). An added leg is
+missing from `tripView.ts`'s two hardcoded per-city tables; PHASE10 records what that
+costs.
 
 **Phase 8 (offline writes + the By-person split) — see `PHASE8.md`.**
 

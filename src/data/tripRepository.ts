@@ -60,6 +60,25 @@ export interface TripRepository {
 
   // Days
   listDays(tripId: ID): Promise<Day[]>;
+  /**
+   * Create or replace one day. Days used to be written only by `seedIfEmpty`/
+   * `importSnapshot`; they became individually writable when the journey
+   * (leg list + dates) became editable — see `lib/journey.ts`.
+   */
+  upsertDay(day: Day): Promise<Day>;
+  /**
+   * Remove one day.
+   *
+   * CALLERS MUST CASCADE FIRST. A day is referenced by `ItineraryItem.dayId`
+   * and `Place.dayId`, and the two backends disagree about what happens to
+   * those: Postgres cascades (`itinerary.day_id ... on delete cascade`,
+   * `places.day_id ... on delete set null`), Dexie has no foreign keys and
+   * does nothing. Leaving it to the backend therefore leaves the local cache
+   * and the remote holding different data after the same edit. Delete the
+   * day's itinerary items and unassign its places explicitly — see
+   * `planJourneyEdit`, which computes exactly that set.
+   */
+  deleteDay(id: ID): Promise<void>;
 
   // Itinerary
   listItinerary(dayId: ID): Promise<ItineraryItem[]>;

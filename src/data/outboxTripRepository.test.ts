@@ -63,6 +63,10 @@ function makeFakeRepo(overrides: Partial<TripRepository> = {}): TripRepository {
     async listDays() {
       return [];
     },
+    async upsertDay(d) {
+      return d;
+    },
+    async deleteDay() {},
     async listItinerary() {
       return [];
     },

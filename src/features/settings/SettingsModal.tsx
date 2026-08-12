@@ -26,6 +26,7 @@ import { useTripStore } from '../../store/useTripStore';
 import type { TripMember } from '../../data/schema';
 import { MEMBER_COLOURS } from '../../lib/tripView';
 import { CURRENCIES } from '../../lib/exchangeRates';
+import { baseLegs, totalNights } from '../../lib/journey';
 import type { Theme } from '../../lib/theme';
 
 interface SettingsModalProps {
@@ -36,6 +37,9 @@ interface SettingsModalProps {
   onExport: () => void;
   onImportClick: () => void;
   onSignOut: () => void;
+  /** Hands off to the Edit journey sheet. Settings closes first — the two are
+   *  both <Modal>s and stacking them would trap focus in the wrong one. */
+  onEditJourney: () => void;
 }
 
 export function SettingsModal({
@@ -46,6 +50,7 @@ export function SettingsModal({
   onExport,
   onImportClick,
   onSignOut,
+  onEditJourney,
 }: SettingsModalProps) {
   const trip = useTripStore((s) => s.trip);
   const setHomeCurrency = useTripStore((s) => s.setHomeCurrency);
@@ -133,6 +138,12 @@ export function SettingsModal({
     void setMemberColor(member.id, colour);
   }
 
+  // Legs, not cities: day trips consume no nights and would inflate the count
+  // into something that doesn't match the sheet the button opens.
+  const legs = baseLegs(trip?.cities ?? []);
+  const nights = totalNights(trip?.cities ?? []);
+  const journeySummary = `${legs.length} ${legs.length === 1 ? 'city' : 'cities'} · ${nights} ${nights === 1 ? 'night' : 'nights'}`;
+
   return (
     <Modal open={open} onClose={onClose} labelledBy="settingsTitle">
       <div className="modal-head">
@@ -141,6 +152,26 @@ export function SettingsModal({
           <Icon name="close" />
         </button>
       </div>
+
+      {/* --- Journey (Phase 10) ---
+          First section on purpose: it's the only one that changes the SHAPE of
+          the trip, and everything below it (companions, currency, export) is a
+          detail hung off that shape. The route strip carried this affordance
+          first and it went unfound — a dashed node at the end of a row of
+          cities reads as another city, not as a control. */}
+      <section className="settings-section">
+        <h4 className="settings-section-title">Journey</h4>
+        <p className="panel-hint">
+          Where you&rsquo;re going and for how long. Change the nights in a city, reorder
+          the legs, drop one, or move the whole trip on the calendar.
+        </p>
+        <button className="btn btn-ghost btn-block settings-journey-btn" onClick={onEditJourney}>
+          <Icon name="map" />
+          <span className="settings-journey-label">Edit journey</span>
+          <span className="settings-journey-meta">{journeySummary}</span>
+          <Icon name="chevron-right" />
+        </button>
+      </section>
 
       {/* --- Trip companions (moved here from the Budget tab) --- */}
       <section className="settings-section">

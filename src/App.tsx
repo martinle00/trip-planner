@@ -19,6 +19,7 @@ import { MapPanel } from './features/map/MapPanel';
 import { PlacesPanel } from './features/places/PlacesPanel';
 import { ItineraryPanel } from './features/itinerary/ItineraryPanel';
 import { SettingsModal } from './features/settings/SettingsModal';
+import { EditJourneyModal } from './features/journey/EditJourneyModal';
 import { BudgetPanel } from './features/budget/BudgetPanel';
 import { AutoPlanModal } from './features/autoplan/AutoPlanModal';
 import { AddPlaceModal } from './features/places/AddPlaceModal';
@@ -149,6 +150,7 @@ function App() {
   const [theme, setTheme] = useState<Theme>('light');
   const [autoplanOpen, setAutoplanOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editJourneyOpen, setEditJourneyOpen] = useState(false);
   const autoplanTriggerRef = useRef<HTMLElement | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -512,7 +514,12 @@ function App() {
         onExport={() => void handleExport()}
         onImportClick={handleImportClick}
         onSignOut={() => void handleSignOut()}
+        onEditJourney={() => {
+          setSettingsOpen(false);
+          setEditJourneyOpen(true);
+        }}
       />
+      <EditJourneyModal open={editJourneyOpen} onClose={() => setEditJourneyOpen(false)} />
       <AddPlaceModal open={addPlaceOpen} mode={addPlaceMode} point={addPlacePoint} defaultCity={selectedCity} onClose={closeAddPlace} />
     </>
   );

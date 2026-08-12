@@ -18,7 +18,7 @@ import type { DayPlan } from '../lib/autoplan';
 import { setTripRepository, tripRepository } from '../data/tripRepositoryInstance';
 import { DexieTripRepository } from '../data/dexieTripRepository';
 import type { TripRepository } from '../data/tripRepository';
-import type { Place, Trip } from '../data/schema';
+import type { Day, Place, Trip } from '../data/schema';
 import { db } from '../data/db';
 import { outboxRepository } from '../data/outboxRepository';
 import { OutboxTripRepository } from '../data/outboxTripRepository';
@@ -870,6 +870,10 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
       async listDays() {
         return [];
       },
+      async upsertDay(d) {
+        return d;
+      },
+      async deleteDay() {},
       async listItinerary() {
         return [];
       },
@@ -914,6 +918,10 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
       async listDays() {
         return useTripStore.getState().days;
       },
+      async upsertDay(d) {
+        return d;
+      },
+      async deleteDay() {},
       async listAllItinerary() {
         return Object.values(useTripStore.getState().itineraryByDay).flat();
       },
@@ -1094,6 +1102,10 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
       async listDays() {
         return useTripStore.getState().days;
       },
+      async upsertDay(d) {
+        return d;
+      },
+      async deleteDay() {},
       async listAllItinerary() {
         return Object.values(useTripStore.getState().itineraryByDay).flat();
       },
@@ -1192,6 +1204,10 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
         async listDays() {
           return useTripStore.getState().days;
         },
+        async upsertDay(d) {
+          return d;
+        },
+        async deleteDay() {},
         async listAllItinerary() {
           return Object.values(useTripStore.getState().itineraryByDay).flat();
         },
@@ -1248,6 +1264,10 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
       async listDays() {
         return useTripStore.getState().days;
       },
+      async upsertDay(d) {
+        return d;
+      },
+      async deleteDay() {},
       async listAllItinerary() {
         // Captured immediately (mirroring the real staleness hazard: the
         // read observes pre-write data but doesn't settle until later) --
@@ -1378,6 +1398,10 @@ describe('commitPlaceDraft — pathological repeated-conflict bound (fake, alway
       async listDays() {
         return [];
       },
+      async upsertDay(d) {
+        return d;
+      },
+      async deleteDay() {},
       async listItinerary() {
         return [];
       },
@@ -1452,6 +1476,10 @@ describe('commitPlaceDraft — pathological repeated-conflict bound (fake, alway
       async listDays() {
         return [];
       },
+      async upsertDay(d) {
+        return d;
+      },
+      async deleteDay() {},
       async listItinerary() {
         return [];
       },
@@ -1743,6 +1771,8 @@ describe('saveStagedAssignments', () => {
       deletePlace: (id) => baseRepo.deletePlace(id),
       updatePlaceIfUnchanged: (p, b) => baseRepo.updatePlaceIfUnchanged(p, b),
       listDays: (id) => baseRepo.listDays(id),
+      upsertDay: (d) => baseRepo.upsertDay(d),
+      deleteDay: (id) => baseRepo.deleteDay(id),
       listItinerary: (id) => baseRepo.listItinerary(id),
       listAllItinerary: (id) => baseRepo.listAllItinerary(id),
       upsertItineraryItem: (i) => baseRepo.upsertItineraryItem(i),
@@ -2240,6 +2270,8 @@ describe('init — suppressed while writes are queued', () => {
         return local.listPlaces(tripId);
       },
       listDays: (tripId: string) => local.listDays(tripId),
+      upsertDay: (d: Day) => local.upsertDay(d),
+      deleteDay: (id: string) => local.deleteDay(id),
       listAllItinerary: (tripId: string) => local.listAllItinerary(tripId),
       listExpenses: (tripId: string) => local.listExpenses(tripId),
       upsertPlace: (p: Place) => local.upsertPlace(p),
@@ -2293,6 +2325,8 @@ describe('init — suppressed while writes are queued', () => {
       },
       listPlaces: local.listPlaces.bind(local),
       listDays: local.listDays.bind(local),
+      upsertDay: local.upsertDay.bind(local),
+      deleteDay: local.deleteDay.bind(local),
       listAllItinerary: local.listAllItinerary.bind(local),
       listExpenses: local.listExpenses.bind(local),
       upsertPlace: local.upsertPlace.bind(local),

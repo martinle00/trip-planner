@@ -11,6 +11,7 @@
 
 import { create } from 'zustand';
 import type {
+  City,
   Day,
   Expense,
   ID,
@@ -19,6 +20,8 @@ import type {
   Trip,
   TripMember,
 } from '../data/schema';
+import type { JourneyEditPlan } from '../lib/journey';
+import { planJourneyEdit, tripSpan } from '../lib/journey';
 import type { DayPlan } from '../lib/autoplan';
 import { ACTIVE_TRIP_ID } from '../data/tripRepository';
 import { getActiveRepository, tripRepository } from '../data/tripRepositoryInstance';
@@ -29,7 +32,7 @@ import type { PlaceDraft } from '../data/draftRepository';
 import { stagedAssignmentRepository } from '../data/stagedAssignmentRepository';
 import type { StagedAssignment } from '../data/stagedAssignmentRepository';
 import { onOutboxChange, outboxRepository } from '../data/outboxRepository';
-import { OutboxTripRepository, applyOutboxEntry } from '../data/outboxTripRepository';
+import { OutboxTripRepository, applyOutboxEntry, sortForReplay } from '../data/outboxTripRepository';
 import * as exchangeRates from '../lib/exchangeRates';
 import { appendRemoteIfDifferent } from '../lib/proseMerge';
 import { reconcilePlaceDaysToItinerary } from '../lib/reconcilePlaceDays';
@@ -298,6 +301,28 @@ export interface TripState {
   // ---- auto-plan ----
   /** Commit an accepted auto-plan draft: writes items, assigns place days. */
   applyAutoPlan: (plan: DayPlan[]) => Promise<void>;
+
+  // ---- journey (legs + dates) ----
+  /**
+   * Replace the trip's leg list, reconciling the `Day` rows to match.
+   *
+   * `nextCities` is a whole leg list, not a patch — build it with the pure
+   * operations in `lib/journey.ts` (`removeLeg`, `setLegNights`,
+   * `setTripStart`, `moveLeg`), which keep the legs contiguous and re-chain
+   * the dates. The days are DIFFED against the ones that exist, never
+   * rebuilt, so a surviving day keeps its id and therefore its itinerary.
+   *
+   * Applies the whole edit as ONE batch: the caller computes the final leg
+   * list, and only that lands. Never call this per keystroke — an
+   * intermediate state would queue a write per record for a journey the user
+   * never asked for.
+   */
+  editJourney: (nextCities: City[]) => Promise<JourneyEditPlan>;
+  /**
+   * What `editJourney(nextCities)` would do, without doing it — for the
+   * confirm dialog's blast radius. Pure; reads current state only.
+   */
+  previewJourneyEdit: (nextCities: City[]) => JourneyEditPlan;
 
   // ---- portability ----
   /** Re-read the pending-write count/age from the outbox into state. Called
@@ -1538,6 +1563,82 @@ export const useTripStore = create<TripState>((set, get) => ({
       }
     }),
 
+  previewJourneyEdit: (nextCities) => {
+    const s = get();
+    return planJourneyEdit({
+      nextCities,
+      tripId: s.trip?.id ?? ACTIVE_TRIP_ID,
+      days: s.days,
+      places: s.places,
+      itinerary: Object.values(s.itineraryByDay).flat(),
+      expenses: s.expenses,
+      // Fresh ids every call. A plan built for the confirm dialog is thrown
+      // away and its ids with it; `editJourney` re-plans and persists ITS
+      // OWN plan, so the ids that land are the ones minted at write time.
+      // Don't cache a preview and pass it back in expecting the same days.
+      newId: () => newId('day'),
+    });
+  },
+
+  editJourney: (nextCities) =>
+    runExclusive(async () => {
+      const trip = get().trip;
+      if (!trip) throw new Error('editJourney: no trip loaded');
+      const plan = get().previewJourneyEdit(nextCities);
+
+      // ORDER MATTERS, and it is the reverse of the read order: children go
+      // before the parent day is removed. Writing the day deletions first
+      // would leave a window (and, on a failure part-way, a permanent state)
+      // where a stop points at a day that no longer exists — invisible
+      // rather than broken, because `listAllItinerary` filters by the day
+      // ids it can see, so the row would simply never load again.
+      for (const item of plan.itineraryToDelete) {
+        await tripRepository.deleteItineraryItem(item.id);
+      }
+      for (const place of plan.placesToUnassign) {
+        await tripRepository.upsertPlace(place);
+      }
+      for (const day of plan.days.delete) {
+        await tripRepository.deleteDay(day.id);
+      }
+      for (const day of [...plan.days.create, ...plan.days.update]) {
+        await tripRepository.upsertDay(day);
+      }
+
+      // The trip's own span is always just its first and last leg's edges —
+      // derived here rather than stored independently, so the two can't drift.
+      const span = tripSpan(plan.cities, trip.startDate);
+      const nextTrip: Trip = { ...trip, cities: plan.cities, ...span };
+      await tripRepository.saveTrip(nextTrip);
+
+      mutationVersion++;
+      const deletedDayIds = new Set(plan.days.delete.map((d) => d.id));
+      const deletedItemIds = new Set(plan.itineraryToDelete.map((i) => i.id));
+      const updatedDays = new Map(plan.days.update.map((d) => [d.id, d]));
+      const unassigned = new Map(plan.placesToUnassign.map((p) => [p.id, p]));
+
+      set((s) => {
+        const itineraryByDay: Record<ID, ItineraryItem[]> = {};
+        for (const [dayId, items] of Object.entries(s.itineraryByDay)) {
+          if (deletedDayIds.has(dayId)) continue;
+          itineraryByDay[dayId] = items.filter((i) => !deletedItemIds.has(i.id));
+        }
+        for (const day of plan.days.create) itineraryByDay[day.id] = [];
+        return {
+          trip: nextTrip,
+          days: [
+            ...s.days.filter((d) => !deletedDayIds.has(d.id)).map((d) => updatedDays.get(d.id) ?? d),
+            ...plan.days.create,
+          ].sort((a, b) => a.date.localeCompare(b.date)),
+          places: s.places.map((p) => unassigned.get(p.id) ?? p),
+          itineraryByDay,
+        };
+      });
+
+      await get().refreshPendingCount();
+      return plan;
+    }),
+
   refreshPendingCount: async () => {
     const [pendingCount, pendingSince] = await Promise.all([
       outboxRepository.count(),
@@ -1548,7 +1649,8 @@ export const useTripStore = create<TripState>((set, get) => ({
 
   syncOutbox: async () => {
     if (get().uploading) return;
-    const entries = await outboxRepository.list();
+    // Not queue order — foreign-key-safe order. See `sortForReplay`.
+    const entries = sortForReplay(await outboxRepository.list());
     if (entries.length === 0) {
       set({ pendingCount: 0, pendingSince: undefined, uploadFailure: undefined });
       return;

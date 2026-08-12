@@ -195,6 +195,22 @@ export class OutboxTripRepository implements TripRepository {
     );
   }
 
+  async upsertDay(day: Day): Promise<Day> {
+    return this.writeOrQueue(
+      { entity: 'day', op: 'upsert', recordId: day.id, payload: day, queuedAt: nowISO() },
+      () => this.inner.upsertDay(day),
+      () => this.cache.upsertDay(day),
+    );
+  }
+
+  async deleteDay(id: ID): Promise<void> {
+    await this.writeOrQueue(
+      { entity: 'day', op: 'delete', recordId: id, queuedAt: nowISO() },
+      () => this.inner.deleteDay(id),
+      () => this.cache.deleteDay(id),
+    );
+  }
+
   // ---- Itinerary ----
 
   async listItinerary(dayId: ID): Promise<ItineraryItem[]> {
@@ -279,6 +295,49 @@ function nowISO(): string {
 }
 
 /**
+ * Replay rank. Lower goes first; entries that tie keep their queue order.
+ *
+ * Queue order alone is NOT safe to replay once days are queueable, because
+ * Postgres has real foreign keys and the queue coalesces by moving a re-edited
+ * record to the BACK. Concretely: create a day offline, assign a place to it,
+ * then edit the journey again — the day's entry is rewritten and now sits
+ * after the place that references it, so replaying in order inserts a place
+ * whose `day_id` doesn't exist yet. That's a constraint violation, which
+ * `isConnectivityFailure` (correctly) refuses to treat as queueable, so the
+ * whole drain stops dead with no way for the user to clear it.
+ *
+ * So: parents are written before children, and children are deleted before
+ * parents. Coalescing guarantees at most one entry per record, so reordering
+ * across records can't change any record's final value — only whether the
+ * intermediate states are legal.
+ *
+ * Ordering is a pure function of `(entity, op, seq)`, so a drain that stops
+ * half-way resumes in exactly the same order next time.
+ */
+function replayRank(entry: { entity: string; op: string }): number {
+  const key = `${entry.op}:${entry.entity}`;
+  switch (key) {
+    case 'upsert:trip': return 0; // days/places/expenses all reference it
+    case 'upsert:day': return 1; // before anything that can point at a day
+    case 'delete:itinerary': return 2; // children first, going down
+    case 'delete:place': return 3;
+    case 'delete:day': return 4;
+    case 'upsert:place': return 5; // after its day exists
+    case 'upsert:itinerary': return 6; // after both its day and its place
+    default: return 7; // expenses reference only the trip
+  }
+}
+
+/** Queued writes in a foreign-key-safe replay order. See `replayRank`. */
+export function sortForReplay<T extends { entity: string; op: string; seq?: number }>(
+  entries: T[],
+): T[] {
+  return [...entries].sort(
+    (a, b) => replayRank(a) - replayRank(b) || (a.seq ?? 0) - (b.seq ?? 0),
+  );
+}
+
+/**
  * Send one queued write to `target`. Every branch is idempotent by record id
  * (upserts overwrite, deletes of an already-deleted row are a no-op), which
  * is what makes a partially-completed drain safe to simply re-run.
@@ -291,6 +350,8 @@ export async function applyOutboxEntry(
 ): Promise<void> {
   if (entry.op === 'delete') {
     switch (entry.entity) {
+      case 'day':
+        return target.deleteDay(entry.recordId);
       case 'place':
         return target.deletePlace(entry.recordId);
       case 'itinerary':
@@ -306,6 +367,9 @@ export async function applyOutboxEntry(
   switch (entry.entity) {
     case 'trip':
       return target.saveTrip(entry.payload as Trip);
+    case 'day':
+      await target.upsertDay(entry.payload as Day);
+      return;
     case 'place':
       await target.upsertPlace(entry.payload as Place);
       return;
