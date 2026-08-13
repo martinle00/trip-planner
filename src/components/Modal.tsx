@@ -25,6 +25,15 @@ export function Modal({ open, onClose, labelledBy, children }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  // Read through a ref so the effect below keys on `open` alone. Callers
+  // routinely pass an inline/rebuilt `onClose`; with it in the dep array the
+  // effect re-ran on every render of the parent, and its initial-focus call
+  // yanked focus back to the close button on every keystroke inside the modal.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     previouslyFocused.current = document.activeElement as HTMLElement | null;
@@ -37,7 +46,7 @@ export function Modal({ open, onClose, labelledBy, children }: ModalProps) {
     function onKeydown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab' || !modal) return;
@@ -58,7 +67,7 @@ export function Modal({ open, onClose, labelledBy, children }: ModalProps) {
       document.removeEventListener('keydown', onKeydown);
       previouslyFocused.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
