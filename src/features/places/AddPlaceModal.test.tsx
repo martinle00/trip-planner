@@ -232,7 +232,7 @@ describe('AddPlaceModal — search state machine', () => {
 });
 
 describe('AddPlaceModal — category selector', () => {
-  it('offers exactly the canonical 8 categories, in order, with nothing pre-selected — and "Neighbourhood" is gone', async () => {
+  it('offers exactly the canonical 9 categories, in order, with nothing pre-selected — and "Neighbourhood" is gone', async () => {
     render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
 
     const select = screen.getByLabelText('Category') as HTMLSelectElement;
@@ -242,6 +242,7 @@ describe('AddPlaceModal — category selector', () => {
     expect(optionLabels.slice(1)).toEqual(PLACE_CATEGORIES);
     expect(optionLabels.slice(1)).toEqual([
       'Landmark', 'Nature', 'Garden', 'Museum', 'Street / Market', 'Shopping', 'Food', 'Entertainment',
+      'Transport',
     ]);
     expect(optionLabels).not.toContain('Neighbourhood');
     expect(select.value).toBe('');

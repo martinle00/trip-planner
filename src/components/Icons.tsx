@@ -90,6 +90,11 @@ export function IconSprite() {
           <path d="M4 8a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 100 4v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2a2 2 0 100-4V8z" />
           <path d="M12 6v3M12 15v3" />
         </symbol>
+        <symbol id="i-cat-transport" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 3h10a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
+          <path d="M5 9h14" /><path d="M9 13h.01M15 13h.01" />
+          <path d="M8 17l-2.5 4M16 17l2.5 4" />
+        </symbol>
         <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
         </symbol>

@@ -193,6 +193,16 @@ const CATEGORY_ICON: Record<string, string> = {
   'theme park': 'cat-entertainment',
   entertainment: 'cat-entertainment',
   food: 'cat-food',
+  transport: 'cat-transport',
+  transit: 'cat-transport',
+  airport: 'cat-transport',
+  station: 'cat-transport',
+  'train station': 'cat-transport',
+  'bus station': 'cat-transport',
+  metro: 'cat-transport',
+  subway: 'cat-transport',
+  ferry: 'cat-transport',
+  port: 'cat-transport',
 };
 
 export function categoryIcon(category?: string): string {
@@ -211,13 +221,14 @@ const ICON_TO_CANONICAL_CATEGORY: Record<string, string> = {
   'cat-nature': 'Nature',
   'cat-entertainment': 'Entertainment',
   'cat-food': 'Food',
+  'cat-transport': 'Transport',
 };
 
 /**
  * Canonical category group for a (possibly legacy/free-text) place category,
  * via the same icon-alias mapping `categoryIcon` uses — e.g. 'Sightseeing'
  * and 'Wildlife' group under 'Landmark' and 'Nature' respectively. Lets the
- * Places-tab category filter (which only offers the canonical 8) still match
+ * Places-tab category filter (which only offers the canonical 9) still match
  * pre-canonical seeded/imported data instead of silently omitting it.
  * Returns undefined for a missing or unrecognized category (never matches a
  * specific filter chip, same as `categoryIcon`'s 'pin' fallback).
@@ -228,13 +239,14 @@ export function categoryGroup(category?: string): string | undefined {
   return icon ? ICON_TO_CANONICAL_CATEGORY[icon] : undefined;
 }
 
-/** The canonical 8 place categories offered anywhere the user picks one (the
+/** The canonical 9 place categories offered anywhere the user picks one (the
  * Add Place modal, the Places-tab category filter). Older seeded/imported
  * places may carry a free-text category outside this list (e.g.
  * 'Sightseeing', 'Wildlife') — `categoryIcon` still resolves an icon for
  * those via aliasing, they just won't match a specific filter chip. */
 export const PLACE_CATEGORIES = [
   'Landmark', 'Nature', 'Garden', 'Museum', 'Street / Market', 'Shopping', 'Food', 'Entertainment',
+  'Transport',
 ];
 
 /** Per-city accent palette for the Places tab (section left-border + dot),
