@@ -1,5 +1,52 @@
 # ctpapp
 
+## 0.10.0
+
+### Minor Changes
+
+- b6e2822: Find a pin on the Map tab, and land on the right one coming from Places.
+
+  - **New search box above the map.** Type a name, category or city and pick a
+    saved place to have the map fly to it, select it and flash the marker. It
+    searches the whole trip, not just the city on screen — a hit elsewhere
+    switches the map to that city first (the row says so before you tap it).
+    This searches your own places, never the network, so it works offline.
+    Matches with no coordinate yet can't be jumped to, and the panel says how
+    many it left out rather than dropping them silently.
+  - **"View on map" now singles out the place you opened.** It used to switch to
+    the Map tab showing that city and leave you to find the pin yourself among
+    every other pin there; it now carries the place through, so the pin arrives
+    selected, centred and briefly ringed, with its detail panel already open.
+
+- 8369218: A place can now be saved **without a location**. Previously, adding a place with no
+  search result and no pasted coordinate silently dropped it at the centre of its city —
+  so a food chain with four branches in one city produced four identical pins that looked
+  exactly like real ones. Leaving the coordinate field blank now saves the place unpinned:
+  list the candidate branches in the description, and set the location from the place's
+  detail modal once you've worked out which one fits the day.
+
+  Places without a location are excluded from the map (which says how many it left off)
+  and from Auto-plan, and are tagged "No location" on the Places tab and in the detail
+  modal.
+
+  Needs `supabase/migrations/0007_optional_place_location.sql` applied before a
+  location-less place can sync.
+
+- 0e7c639: Add a **Transport** place category for transit nodes (airports, train/bus stations,
+  metro stops, ferry terminals). It appears in the Add Place and Place Detail category
+  pickers and as a Places-tab filter chip, with a new `cat-transport` icon on the map
+  markers and place rows. Free-text categories like `airport`, `station`, `metro` or
+  `ferry` — including ones carried in from geocoder results — now group under it.
+
+### Patch Changes
+
+- 2358436: Fix focus jumping to the close button on every keystroke inside a modal. The
+  shared `Modal` focus trap keyed its setup effect on `onClose`; callers that
+  rebuild that callback each render (Edit journey) re-ran the effect — and its
+  initial-focus call — on every render, so typing a city name moved focus to the
+  X after each letter. `onClose` is now read through a ref and the effect keys on
+  `open` alone.
+
 ## 0.9.0
 
 ### Minor Changes
