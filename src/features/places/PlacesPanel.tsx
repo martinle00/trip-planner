@@ -35,10 +35,11 @@ import {
 
 interface PlacesPanelProps {
   onOpenAddPlace: (mode: AddPlaceMode) => void;
-  /** "View on map" from a place's detail modal — App switches to the Map
-   *  tab showing that city (the same handoff the timeline's city chips
-   *  use). Optional so tests can render the panel standalone. */
-  onViewOnMap?: (city: string) => void;
+  /** "View on map" from a place's detail modal — App switches to the Map tab
+   *  showing that city (the same handoff the timeline's city chips use) and
+   *  singles out that place's pin once there. Optional so tests can render
+   *  the panel standalone. */
+  onViewOnMap?: (placeId: ID, city: string) => void;
 }
 
 export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {

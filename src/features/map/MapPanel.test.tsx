@@ -15,9 +15,10 @@
 // button labelled by its tooltip text, so a pin can still be "clicked" the
 // same way a user would tap it.
 
-import type { ReactNode } from 'react';
+import { useState } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MapPanel } from './MapPanel';
 import { useTripStore } from '../../store/useTripStore';
 import type { Day, Place, Trip } from '../../data/schema';
@@ -26,6 +27,16 @@ let onlineMock = true;
 vi.mock('../../hooks/useOnlineStatus', () => ({
   useOnlineStatus: () => onlineMock,
 }));
+
+// One shared stand-in for the Leaflet map object, so a test can assert where
+// the camera was sent (FitToPlaces/FlyToPlace both go through it). `vi.mock`
+// is hoisted above this, but `useMap` only dereferences it at render time.
+const mapStub = {
+  setView: vi.fn(),
+  fitBounds: vi.fn(),
+  flyTo: vi.fn(),
+  getZoom: vi.fn(() => 11),
+};
 
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -42,7 +53,7 @@ vi.mock('react-leaflet', () => ({
       {children}
     </button>
   ),
-  useMap: () => ({ setView: vi.fn(), fitBounds: vi.fn() }),
+  useMap: () => mapStub,
   useMapEvents: () => null,
 }));
 
@@ -130,19 +141,23 @@ function baseState() {
   };
 }
 
-function renderMapPanel() {
+function renderMapPanel(props: Partial<ComponentProps<typeof MapPanel>> = {}) {
   return render(
     <MapPanel
       selectedCity="Shanghai"
       onOpenAutoPlan={() => {}}
       onOpenAddPlace={() => {}}
       onJumpToItinerary={() => {}}
+      {...props}
     />,
   );
 }
 
 beforeEach(() => {
   onlineMock = true;
+  mapStub.setView.mockClear();
+  mapStub.fitBounds.mockClear();
+  mapStub.flyTo.mockClear();
 });
 
 describe('MapPanel — staged changes', () => {
@@ -245,5 +260,146 @@ describe('MapPanel — places with no location', () => {
     setupStore();
     renderMapPanel();
     expect(screen.queryByText(/no location yet/)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+/** Stands in for App, which owns `selectedCity`: lets a cross-city search pick
+ *  actually switch the map's city so the follow-on selection can be asserted. */
+function CityHarness() {
+  const [city, setCity] = useState('Shanghai');
+  return (
+    <MapPanel
+      selectedCity={city}
+      onSelectCity={setCity}
+      onOpenAutoPlan={() => {}}
+      onOpenAddPlace={() => {}}
+      onJumpToItinerary={() => {}}
+    />
+  );
+}
+
+const SUZHOU_GARDEN: Place = {
+  id: 'place-humble',
+  tripId: 'trip-1',
+  name: 'Humble Administrator’s Garden',
+  category: 'Garden',
+  city: 'Suzhou',
+  lat: 31.32,
+  lng: 120.63,
+  status: 'wishlist',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+function typeSearch(text: string) {
+  const box = screen.getByRole('combobox', { name: 'Search your saved places' });
+  fireEvent.change(box, { target: { value: text } });
+  return box;
+}
+
+/** Scoped to the search listbox on purpose — the pin-detail panel's
+ *  "Assign to day" `<select>` contributes `option` roles of its own. */
+function searchOptions(): HTMLElement[] {
+  const list = screen.queryByRole('listbox', { name: 'Matching places' });
+  return list ? within(list).getAllByRole('option') : [];
+}
+
+function showingCity(): string {
+  return document.querySelector('.map-showing strong')?.textContent ?? '';
+}
+
+describe('MapPanel — pin search', () => {
+  it('lists only matching places and flies the map to the one picked', () => {
+    setupStore();
+    renderMapPanel();
+    typeSearch('bund');
+
+    const options = searchOptions();
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent('The Bund');
+
+    fireEvent.click(options[0]);
+
+    // Selected in the detail panel...
+    expect(screen.getByLabelText('Assign The Bund to a day')).toBeInTheDocument();
+    // ...and the camera actually moved to it.
+    expect(mapStub.flyTo).toHaveBeenCalledWith([31.24, 121.49], 15, expect.anything());
+    // The list closes behind the pick.
+    expect(searchOptions()).toHaveLength(0);
+  });
+
+  it('picks the highlighted match on Enter, arrow keys moving the highlight', () => {
+    setupStore();
+    renderMapPanel();
+    const box = typeSearch('a'); // matches both Shanghai places
+
+    expect(searchOptions().length).toBeGreaterThan(1);
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    const highlighted = searchOptions().find((o) => o.getAttribute('aria-selected') === 'true');
+    // Exactly one option is active, and it's the one the input points at —
+    // that pairing is the whole combobox contract.
+    expect(highlighted).toBe(searchOptions()[1]);
+    expect(box).toHaveAttribute('aria-activedescendant', highlighted!.id);
+
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(searchOptions()).toHaveLength(0);
+    expect(mapStub.flyTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches cities for a match elsewhere in the trip, and keeps it selected through the switch', () => {
+    setupStore({ places: [TIANZIFANG, BUND, SUZHOU_GARDEN] });
+    render(<CityHarness />);
+
+    // Not reachable from Shanghai's pins — the search still finds it.
+    typeSearch('humble');
+    const [option] = searchOptions();
+    expect(option).toHaveTextContent('Switch city');
+
+    fireEvent.click(option);
+
+    expect(showingCity()).toBe('Suzhou');
+    // The city switch resets the day/pin selection for every OTHER reason;
+    // this one has to survive it, or the jump lands on nothing.
+    expect(screen.getByLabelText('Assign Humble Administrator’s Garden to a day')).toBeInTheDocument();
+    expect(mapStub.flyTo).toHaveBeenCalledWith([31.32, 120.63], 15, expect.anything());
+  });
+
+  it('counts a matching place with no location instead of silently dropping it', () => {
+    const chain: Place = {
+      id: 'place-chain',
+      tripId: 'trip-1',
+      name: 'Bund Snack Bar',
+      city: 'Shanghai',
+      status: 'wishlist',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    setupStore({ places: [BUND, chain] });
+    renderMapPanel();
+    typeSearch('bund');
+
+    expect(searchOptions()).toHaveLength(1);
+    expect(screen.getByText(/1 match has no location yet/)).toBeInTheDocument();
+  });
+});
+
+describe('MapPanel — "View on map" focus request', () => {
+  it('selects, centres and reports back the requested pin', () => {
+    setupStore();
+    const onFocusHandled = vi.fn();
+    renderMapPanel({ focusRequest: { placeId: 'place-bund', nonce: 1 }, onFocusHandled });
+
+    expect(screen.getByLabelText('Assign The Bund to a day')).toBeInTheDocument();
+    expect(mapStub.flyTo).toHaveBeenCalledWith([31.24, 121.49], 15, expect.anything());
+    // Consumed once — a request left set would re-centre the map every time
+    // the user came back to this tab.
+    expect(onFocusHandled).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing without a request', () => {
+    setupStore();
+    renderMapPanel();
+    expect(mapStub.flyTo).not.toHaveBeenCalled();
+    expect(screen.getByText(/Tap a pin, or pick a day above/)).toBeInTheDocument();
   });
 });

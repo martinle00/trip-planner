@@ -16,6 +16,7 @@ import { useStickyOffsets } from './hooks/useStickyOffsets';
 import { useCondenseHeader } from './hooks/useCondenseHeader';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { MapPanel } from './features/map/MapPanel';
+import type { MapFocusRequest } from './features/map/MapPanel';
 import { PlacesPanel } from './features/places/PlacesPanel';
 import { ItineraryPanel } from './features/itinerary/ItineraryPanel';
 import { SettingsModal } from './features/settings/SettingsModal';
@@ -25,6 +26,7 @@ import { AutoPlanModal } from './features/autoplan/AutoPlanModal';
 import { AddPlaceModal } from './features/places/AddPlaceModal';
 import { Modal } from './components/Modal';
 import type { AddPlaceMode, AddPlacePoint } from './features/places/AddPlaceModal';
+import type { ID } from './data/schema';
 
 type TabId = 'map' | 'places' | 'itinerary' | 'budget';
 
@@ -159,6 +161,13 @@ function App() {
   // timeline's "active" state persists even while on another tab.
   const [selectedCity, setSelectedCityState] = useState<string>('');
 
+  // A pin the Map tab should single out on arrival ("View on map" from a
+  // place's detail modal). Lives here because MapPanel is unmounted while
+  // another tab is showing, so the request has to outlive the tab switch that
+  // creates it. MapPanel clears it once consumed — see `MapFocusRequest`.
+  const [mapFocus, setMapFocus] = useState<MapFocusRequest | null>(null);
+  const mapFocusNonce = useRef(0);
+
   // The single add-place modal, shared by the Map tab's "Add place" button,
   // a real tap on the Leaflet map (mode 'pin', coordinate known), and the
   // Places tab's own "Add place" button.
@@ -228,6 +237,21 @@ function App() {
     setSelectedCityState(cityName);
     setTab('map');
   }, []);
+
+  /** "View on map" from a place's detail modal: the same city+tab handoff as
+   *  `selectCity`, plus a request for the Map tab to centre and flash that
+   *  one pin. Both pieces are set in the same update so MapPanel mounts with
+   *  the right city already in place. */
+  const viewPlaceOnMap = useCallback((placeId: ID, cityName: string) => {
+    setSelectedCityState(cityName);
+    setTab('map');
+    mapFocusNonce.current += 1;
+    setMapFocus({ placeId, nonce: mapFocusNonce.current });
+  }, []);
+
+  /** Consumed-once: a stale request would re-centre the map every time the
+   *  user returned to the Map tab. */
+  const clearMapFocus = useCallback(() => setMapFocus(null), []);
 
   const openAddPlace = useCallback((mode: AddPlaceMode, point?: AddPlacePoint) => {
     setAddPlaceMode(mode);
@@ -474,9 +498,12 @@ function App() {
               onOpenAutoPlan={openAutoPlan}
               onOpenAddPlace={openAddPlace}
               onJumpToItinerary={(anchorId) => jumpTo('itinerary', anchorId)}
+              focusRequest={mapFocus}
+              onFocusHandled={clearMapFocus}
+              onSelectCity={selectCity}
             />
           )}
-          {tab === 'places' && <PlacesPanel onOpenAddPlace={openAddPlace} onViewOnMap={selectCity} />}
+          {tab === 'places' && <PlacesPanel onOpenAddPlace={openAddPlace} onViewOnMap={viewPlaceOnMap} />}
           {tab === 'itinerary' && <ItineraryPanel />}
           {tab === 'budget' && <BudgetPanel onOpenSettings={() => setSettingsOpen(true)} />}
         </main>

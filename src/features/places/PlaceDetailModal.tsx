@@ -71,10 +71,13 @@ interface PlaceDetailModalProps {
    *  day-color map. */
   pinColor: string;
   onClose: () => void;
-  /** Read mode's "View on map" handoff: switches to the Map tab showing
-   *  this place's city (App owns both pieces of state). Optional so the
-   *  modal still renders standalone — the link simply isn't offered. */
-  onViewOnMap?: (city: string) => void;
+  /** Read mode's "View on map" handoff: switches to the Map tab showing this
+   *  place's city AND singles this place's pin out there — selected, centred
+   *  and briefly flashed (App owns both pieces of state). Without the id the
+   *  handoff drops the user into a city full of pins with no clue which one
+   *  they asked for. Optional so the modal still renders standalone — the
+   *  link simply isn't offered. */
+  onViewOnMap?: (placeId: ID, city: string) => void;
   /** Reports every time this place's draft existence flips, so the grid's
    *  card badges (which live outside this modal, and outside React state
    *  the store tracks reactively — drafts are IndexedDB-only) can stay in
@@ -741,7 +744,7 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
                       type="button"
                       className="detail-link modal-map-link"
                       onClick={() => {
-                        onViewOnMap(place.city);
+                        onViewOnMap(place.id, place.city);
                         onClose();
                       }}
                     >

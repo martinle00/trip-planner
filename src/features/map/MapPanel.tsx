@@ -18,7 +18,7 @@
 // pressed. `<MapSaveBar>` (a separate, store-agnostic component) is the only
 // thing that actually commits or reverts staging.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
 import {
@@ -36,11 +36,27 @@ import { buildDayColorMap, cityFocusPoint, dayColor, dayLabel, daysForCity, days
 import { fmtCompactRange, fmtShortNumeric, parseISODate } from '../../lib/dates';
 import { buildPinIcon } from './markerIcon';
 import { MapSaveBar, MAP_SAVE_BAR_ID } from './MapSaveBar';
+import { MapSearch } from './MapSearch';
 import { crossCityHint, isPlacePending } from './mapStaging';
 import type { StagedAssignments } from './mapStaging';
 
 const DEFAULT_CENTER: [number, number] = [30.5, 112];
 const DEFAULT_ZOOM = 5;
+/** Zoom a focused pin is guaranteed at least — close enough to read the street
+ *  it's on, but never zooms BACK out if the user was already closer in. */
+const FOCUS_ZOOM = 15;
+/** How long the focused pin keeps its flash ring. Long enough to find with
+ *  your eyes after the pan settles, short enough not to become chrome. */
+const FLASH_MS = 2600;
+
+/** A request to put a specific pin in front of the user: select it, move the
+ *  map to it and flash it. Carries a nonce so asking for the SAME place twice
+ *  in a row still re-fires — otherwise a second "View on map" on a place
+ *  that's already selected would do nothing visible. */
+export interface MapFocusRequest {
+  placeId: ID;
+  nonce: number;
+}
 
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -52,9 +68,26 @@ interface MapPanelProps {
   onOpenAutoPlan: (trigger?: HTMLElement | null) => void;
   onOpenAddPlace: (mode: AddPlaceMode, point?: AddPlacePoint) => void;
   onJumpToItinerary: (anchorId: string) => void;
+  /** A pin to jump to on arrival — set by the Places tab's "View on map".
+   *  App is expected to have pointed `selectedCity` at that place's city in
+   *  the same update. Cleared via `onFocusHandled` so it can't re-fire when
+   *  the user later comes back to this tab. */
+  focusRequest?: MapFocusRequest | null;
+  onFocusHandled?: () => void;
+  /** Lets a search hit in another city switch the map there (App owns
+   *  `selectedCity`). Without it the search box is city-local. */
+  onSelectCity?: (city: string) => void;
 }
 
-export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpToItinerary }: MapPanelProps) {
+export function MapPanel({
+  selectedCity,
+  onOpenAutoPlan,
+  onOpenAddPlace,
+  onJumpToItinerary,
+  focusRequest = null,
+  onFocusHandled,
+  onSelectCity,
+}: MapPanelProps) {
   const trip = useTripStore((s) => s.trip);
   const places = useTripStore((s) => s.places);
   const days = useTripStore((s) => s.days);
@@ -67,15 +100,67 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
 
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  // The pin the map camera should move to, and the one wearing the transient
+  // flash ring. Separate from `selectedPlaceId` because selection is sticky
+  // (it drives the detail panel) while these two are one-shot.
+  const [focusTarget, setFocusTarget] = useState<MapFocusRequest | null>(null);
+  const [flashPlaceId, setFlashPlaceId] = useState<string | null>(null);
+  const focusNonceRef = useRef(0);
+  // A pin asked for while the map was still on ANOTHER city. Held in a ref,
+  // not state, because the city switch it triggers lands in the same commit
+  // as the reset effect below — which would otherwise clear the very
+  // selection the user just asked for.
+  const pendingFocusRef = useRef<string | null>(null);
   // Focused when a Discard empties the Save bar entirely (nothing staged left
   // anywhere) — there's no control left inside the bar to land focus on.
   const panelTitleRef = useRef<HTMLHeadingElement>(null);
 
-  // Reset the day/pin selection whenever the timeline switches cities.
+  // Reset the day/pin selection whenever the timeline switches cities — unless
+  // the switch was itself a jump to a specific pin, which survives it.
   useEffect(() => {
     setSelectedDayId(null);
-    setSelectedPlaceId(null);
+    setSelectedPlaceId(pendingFocusRef.current);
+    pendingFocusRef.current = null;
   }, [selectedCity]);
+
+  /** Puts one pin in front of the user: selects it, clears any day filter
+   *  hiding it, moves the camera and flashes the marker. Switches cities
+   *  first when the pin isn't in the one on screen. */
+  const focusPlace = useCallback(
+    (placeId: ID, city: string) => {
+      if (city !== selectedCity) {
+        // Read back by the `selectedCity` effect above, in the commit the
+        // city switch causes.
+        pendingFocusRef.current = placeId;
+        onSelectCity?.(city);
+      }
+      setSelectedDayId(null);
+      setSelectedPlaceId(placeId);
+      focusNonceRef.current += 1;
+      setFocusTarget({ placeId, nonce: focusNonceRef.current });
+      setFlashPlaceId(placeId);
+    },
+    [selectedCity, onSelectCity],
+  );
+
+  // Declared AFTER the city-reset effect on purpose: both run in the same
+  // commit when App switches tab, city and focus at once, and effects fire in
+  // declaration order, so this one gets the last word on the selection.
+  useEffect(() => {
+    if (!focusRequest) return;
+    focusPlace(focusRequest.placeId, selectedCity);
+    onFocusHandled?.();
+    // `focusPlace`/`selectedCity` are intentionally not deps: this fires once
+    // per distinct request, and App has already pointed `selectedCity` at the
+    // place's city. Re-running on a later city change would drag the map back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest]);
+
+  useEffect(() => {
+    if (!flashPlaceId) return;
+    const timer = window.setTimeout(() => setFlashPlaceId(null), FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [flashPlaceId]);
 
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
   const cityDays = useMemo(() => daysForCity(days, selectedCity), [days, selectedCity]);
@@ -164,6 +249,16 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
         {cityMeta && <span className="range">&middot; {fmtCompactRange(cityMeta.arrive, cityMeta.depart)}</span>}
       </div>
 
+      {/* Finds a saved pin by name instead of hunting for it among the day
+          colours. Spans the whole trip, so a hit in another city switches the
+          map there first — see placeSearch.ts. */}
+      <MapSearch
+        places={places}
+        selectedCity={selectedCity}
+        colorForPlace={(p) => dayColor(getEffectiveDayId(p, stagedAssignments), dayColorMap)}
+        onPick={(p) => focusPlace(p.id, p.city)}
+      />
+
       {/* Promotes the day-filter chips into their own sticky sub-bar under the
           (also sticky) tabbar — same pattern as the Itinerary tab's existing
           #itQuickNav/.it-quicknav (index.css ~L649), just applied to Map.
@@ -222,6 +317,8 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
                   stagedAssignments={stagedAssignments}
                   selectedDayId={selectedDayId}
                   selectedPlaceId={selectedPlaceId}
+                  focusTarget={focusTarget}
+                  flashPlaceId={flashPlaceId}
                   onSelectPlace={handleSelectPlace}
                   onMapClick={handleMapTap}
                   cityName={selectedCity}
@@ -330,6 +427,10 @@ interface LeafletMapProps {
   stagedAssignments: StagedAssignments;
   selectedDayId: string | null;
   selectedPlaceId: string | null;
+  /** Camera request — see `MapFocusRequest` and `FlyToPlace`. */
+  focusTarget: MapFocusRequest | null;
+  /** The pin currently wearing the transient "here it is" ring. */
+  flashPlaceId: string | null;
   onSelectPlace: (id: string) => void;
   onMapClick: (lat: number, lng: number) => void;
   /** The selected city — used to centre the map when it has no pins yet. */
@@ -344,6 +445,8 @@ function LeafletMap({
   stagedAssignments,
   selectedDayId,
   selectedPlaceId,
+  focusTarget,
+  flashPlaceId,
   onSelectPlace,
   onMapClick,
   cityName,
@@ -355,6 +458,10 @@ function LeafletMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FitToPlaces places={places} cityName={cityName} />
+      {/* After FitToPlaces on purpose: when a focus request arrives together
+          with a city switch, both effects run in the same commit and this one
+          has to win the camera. */}
+      <FlyToPlace target={focusTarget} places={places} />
       <ClickToAdd onMapClick={onMapClick} />
       {places.map((p) => {
         const effDayId = getEffectiveDayId(p, stagedAssignments);
@@ -379,7 +486,11 @@ function LeafletMap({
               emph,
               dim,
               pending,
+              flash: p.id === flashPlaceId,
             })}
+            // Leaflet stacks markers by latitude; without this the pin the
+            // user just asked for can sit behind a neighbour.
+            zIndexOffset={p.id === selectedPlaceId ? 1000 : 0}
             eventHandlers={{ click: () => onSelectPlace(p.id) }}
           >
             <Tooltip direction="top" offset={[0, -14]}>
@@ -413,6 +524,29 @@ function FitToPlaces({ places, cityName }: { places: LocatedPlace[]; cityName: s
     map.fitBounds(bounds, { padding: [32, 32], maxZoom: 15 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [places, map]);
+  return null;
+}
+
+/** Moves the camera to a requested pin. `places` is a dependency because the
+ *  request routinely arrives one commit BEFORE the pin does: a cross-city jump
+ *  switches `selectedCity` first, and only the following render carries that
+ *  city's places. The nonce ledger makes the effect idempotent, so the extra
+ *  runs `places` causes cost nothing and can't drag the map back to a pin the
+ *  user has since moved away from. */
+function FlyToPlace({ target, places }: { target: MapFocusRequest | null; places: LocatedPlace[] }) {
+  const map = useMap();
+  const handledNonce = useRef(0);
+  useEffect(() => {
+    if (!target || handledNonce.current === target.nonce) return;
+    const place = places.find((p) => p.id === target.placeId);
+    if (!place) return; // Not in the city on screen yet — wait for the switch.
+    handledNonce.current = target.nonce;
+    // Never zoom back OUT: if the user was already closer in than FOCUS_ZOOM,
+    // yanking them out is a worse answer than just panning.
+    const zoom = Math.max(map.getZoom(), FOCUS_ZOOM);
+    if (prefersReducedMotion()) map.setView([place.lat, place.lng], zoom);
+    else map.flyTo([place.lat, place.lng], zoom, { duration: 0.8 });
+  }, [target, places, map]);
   return null;
 }
 

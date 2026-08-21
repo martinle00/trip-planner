@@ -19,6 +19,12 @@ export interface PinIconOptions {
    *  gold dot, the map's "unsaved change" signal (see the Map save-changes
    *  spec, mockup/map-save-changes.html, and its legend entry). */
   pending?: boolean;
+  /** Transient "this is the one you asked for" cue, set for a couple of
+   *  seconds after a search pick or a "View on map" handoff. Drawn as an
+   *  expanding `::after` ring, NOT as an outline or box-shadow: those two
+   *  properties are already spoken for by selected/emph and pending
+   *  respectively, and a flashed pin is routinely all three at once. */
+  flash?: boolean;
 }
 
 export function buildPinIcon(opts: PinIconOptions): L.DivIcon {
@@ -28,6 +34,7 @@ export function buildPinIcon(opts: PinIconOptions): L.DivIcon {
   if (opts.emph) classes.push('emph');
   if (opts.dim) classes.push('dim');
   if (opts.pending) classes.push('pending');
+  if (opts.flash) classes.push('flash');
 
   const iconName = categoryIcon(opts.category);
   const badge = !opts.unassigned && opts.badgeText

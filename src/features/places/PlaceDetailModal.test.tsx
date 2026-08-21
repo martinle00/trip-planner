@@ -483,7 +483,9 @@ describe('PlaceDetailModal — editing name, category, city and location', () =>
 
     expect(screen.queryByLabelText('Location')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /View on map/ }));
-    expect(onViewOnMap).toHaveBeenCalledWith('Chongqing');
+    // The place id travels with the city: the Map tab needs it to single this
+    // pin out rather than just landing the user in Chongqing.
+    expect(onViewOnMap).toHaveBeenCalledWith(PLACE.id, 'Chongqing');
   });
 
   it('one "Save changes" commits the prose draft AND the identity fields', async () => {

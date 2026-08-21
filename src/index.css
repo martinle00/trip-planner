@@ -472,6 +472,52 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
 .map-showing strong{ color:var(--ink); font-weight:700; }
 .map-showing .range{ color:var(--ink-faint); }
 
+/* --- "find a pin" search (MapSearch.tsx) ---
+   The results panel is ABSOLUTE, not in flow: this box sits directly above a
+   `min(70vh,560px)` map, and letting up to eight rows push that down would
+   shove the thing you're searching for off-screen the moment you start
+   typing. z-index has to clear BOTH the map box (z-index:auto inside its own
+   isolation context, see .map-container-outer) and the sticky day-chip bar
+   that sits between this and the map (.map-day-quicknav, z-index 27) — which
+   otherwise slices the top rows off the list. It stays under the sticky
+   tabbar's 29, so an open list never covers primary nav. */
+.map-search{ position:relative; margin:0 0 14px; }
+.map-search-field{ margin-bottom:0; }
+.map-search-panel{
+  position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:28;
+  background:var(--paper-raised); border:1px solid var(--line-strong);
+  border-radius:var(--radius-md); box-shadow:var(--shadow-md); overflow:hidden;
+}
+.map-search-results{ list-style:none; margin:0; padding:0; max-height:min(46vh, 320px); overflow-y:auto; }
+.map-search-result{
+  display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer;
+  border-bottom:1px solid var(--line); min-height:44px;
+}
+.map-search-result:last-child{ border-bottom:none; }
+/* Hover and keyboard-arrow highlight are the SAME state (`.active`, mirrored
+   by aria-selected) — a combobox has one active option, and letting the mouse
+   paint a second one is how users end up pressing Enter on the wrong row. */
+.map-search-result.active{ background:var(--paper-sunk); }
+.map-search-dot{
+  width:24px; height:24px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
+  background:var(--d-grey); border:2px solid var(--paper-raised); box-shadow:0 1px 3px rgba(0,0,0,.22);
+}
+.map-search-dot svg{ width:11px; height:11px; stroke:#fff; fill:none; }
+.map-search-body{ display:flex; flex-direction:column; gap:1px; min-width:0; flex:1 1 auto; }
+.map-search-name{ font-size:13.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.map-search-meta{ font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.map-search-jump{
+  flex:none; font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:var(--radius-full);
+  background:var(--accent-soft); color:var(--accent-soft-ink);
+}
+.map-search-note{
+  display:flex; align-items:center; flex-wrap:wrap; gap:6px;
+  font-size:11.5px; color:var(--ink-soft); padding:9px 12px;
+  border-top:1px solid var(--line); background:var(--paper-sunk);
+}
+.map-search-note svg{ width:12px; height:12px; flex:none; }
+.map-search-panel .search-hint{ padding:12px; }
+
 .map-layout{ display:grid; grid-template-columns: 1fr; gap:16px; }
 .map-stage-wrap{ position:relative; }
 .map-container-outer{
@@ -538,6 +584,28 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
   line-height:1; pointer-events:none;
 }
 .pin-marker.unassigned .pin-badge{ display:none; }
+
+/* "Here's the one you asked for" — the answer to a search pick or a Places-tab
+   "View on map", which both drop the user into a city full of near-identical
+   pins. Drawn as an expanding ::after ring because BOTH other ring properties
+   are already taken: `outline` by .selected/.emph and `box-shadow` by
+   .pending, and a flashed pin is routinely all of those at once. It's purely
+   transient (MapPanel clears it after FLASH_MS) — the lasting cue is the ink
+   .selected outline plus the pin-detail panel opening beside the map, so
+   nothing is conveyed by the animation alone. */
+.pin-marker.flash::after{
+  content:''; position:absolute; inset:-5px; border-radius:50%; pointer-events:none;
+  border:3px solid var(--accent);
+  animation:pin-flash 1.1s ease-out 2;
+}
+@keyframes pin-flash{
+  0%{ transform:scale(.75); opacity:.95; }
+  100%{ transform:scale(1.7); opacity:0; }
+}
+/* Reduced motion still needs the "which one" answer, just held still. */
+@media (prefers-reduced-motion:reduce){
+  .pin-marker.flash::after{ animation:none; opacity:.95; }
+}
 
 /* Opposite corner from .pin-badge (top-right) so the two never collide. */
 .pin-pending-dot{
