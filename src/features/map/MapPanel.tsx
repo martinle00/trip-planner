@@ -30,8 +30,9 @@ import {
 import { Icon } from '../../components/Icons';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { AddPlaceMode, AddPlacePoint } from '../places/AddPlaceModal';
-import type { Day, ID, Place } from '../../data/schema';
-import { buildDayColorMap, dayColor, dayLabel, daysForCity, daysForLeg, suggestPlaceLocation } from '../../lib/tripView';
+import type { Day, ID, LocatedPlace, Place } from '../../data/schema';
+import { hasLocation } from '../../data/schema';
+import { buildDayColorMap, cityFocusPoint, dayColor, dayLabel, daysForCity, daysForLeg } from '../../lib/tripView';
 import { fmtCompactRange, fmtShortNumeric, parseISODate } from '../../lib/dates';
 import { buildPinIcon } from './markerIcon';
 import { MapSaveBar, MAP_SAVE_BAR_ID } from './MapSaveBar';
@@ -83,6 +84,12 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
   // renumber the days after it.
   const legDays = useMemo(() => daysForLeg(days, selectedCity), [days, selectedCity]);
   const cityPlaces = useMemo(() => places.filter((p) => p.city === selectedCity), [places, selectedCity]);
+  // Only pinned places reach Leaflet. A place can exist without coordinates
+  // (a chain whose branch isn't chosen yet — see `Place.lat`); it stays on
+  // the Places tab and is counted below the map rather than being pinned to
+  // a made-up spot.
+  const cityPinnedPlaces = useMemo(() => cityPlaces.filter(hasLocation), [cityPlaces]);
+  const unpinnedCount = cityPlaces.length - cityPinnedPlaces.length;
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const selectedDay = days.find((d) => d.id === selectedDayId) ?? null;
   const cityMeta = trip?.cities.find((c) => c.name === selectedCity);
@@ -208,7 +215,7 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
                   <Icon name="map" /> Map: <b>OpenStreetMap</b>
                 </div>
                 <LeafletMap
-                  places={cityPlaces}
+                  places={cityPinnedPlaces}
                   cityDays={cityDays}
                   legDays={legDays}
                   dayColorMap={dayColorMap}
@@ -235,6 +242,16 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
               </div>
             )}
           </div>
+
+          {unpinnedCount > 0 && (
+            <p className="map-unpinned-note">
+              <Icon name="pin" />
+              {unpinnedCount === 1
+                ? '1 place in this city has no location yet, so it isn’t on the map.'
+                : `${unpinnedCount} places in this city have no location yet, so they aren’t on the map.`}{' '}
+              Open it on the Places tab to set one.
+            </p>
+          )}
 
           {cityDays.length > 0 && (
             <div className="legend" id="mapLegend">
@@ -305,7 +322,7 @@ export function MapPanel({ selectedCity, onOpenAutoPlan, onOpenAddPlace, onJumpT
 // ---------------------------------------------------------------------------
 
 interface LeafletMapProps {
-  places: Place[];
+  places: LocatedPlace[];
   cityDays: Day[];
   /** The leg's days incl. its day trips — what "Day N" counts over. */
   legDays: Day[];
@@ -375,7 +392,7 @@ function LeafletMap({
   );
 }
 
-function FitToPlaces({ places, cityName }: { places: Place[]; cityName: string }) {
+function FitToPlaces({ places, cityName }: { places: LocatedPlace[]; cityName: string }) {
   const map = useMap();
   useEffect(() => {
     if (places.length === 0) {
@@ -383,7 +400,7 @@ function FitToPlaces({ places, cityName }: { places: Place[]; cityName: string }
       // country. This is the normal state for a day-trip leg (Wulong,
       // Shenzhen), which typically has no saved places, and it's what made
       // those legs look like the map simply didn't have them.
-      const center = cityName ? suggestPlaceLocation(cityName, []) : null;
+      const center = cityName ? cityFocusPoint(cityName, []) : null;
       if (center) map.setView([center.lat, center.lng], 11);
       else map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
       return;

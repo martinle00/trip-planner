@@ -8,7 +8,8 @@
 // clustering + ordering algorithm) lives behind this boundary.
 // ============================================================================
 
-import type { Place, Day, ID } from '../data/schema';
+import type { Day, ID, LocatedPlace, Place } from '../data/schema';
+import { hasLocation } from '../data/schema';
 import type { GeoPoint } from './geo';
 import { haversineMeters, centroid, squaredDist } from './geo';
 
@@ -78,12 +79,12 @@ export function autoPlan(
 ): DayPlan[] {
   const config = _config;
 
-  const validPlaces = _places.filter(
-    (p) => Number.isFinite(p.lat) && Number.isFinite(p.lng),
-  );
+  // A place with no coordinates yet (see `Place.lat`) has nothing to cluster
+  // on — it is skipped rather than guessed at, same as a NaN pair.
+  const validPlaces = _places.filter(hasLocation);
 
   // Partition places by city, preserving first-seen order (deterministic).
-  const placesByCity = new Map<string, Place[]>();
+  const placesByCity = new Map<string, LocatedPlace[]>();
   for (const p of validPlaces) {
     const existing = placesByCity.get(p.city);
     if (existing) existing.push(p);
@@ -115,7 +116,7 @@ export function autoPlan(
 // ============================================================================
 
 /** Plan a single city's places onto that city's days. */
-function planCity(cityPlaces: Place[], cityDays: Day[], config: AutoPlanConfig): DayPlan[] {
+function planCity(cityPlaces: LocatedPlace[], cityDays: Day[], config: AutoPlanConfig): DayPlan[] {
   const sortedDays = [...cityDays].sort(
     (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
   );

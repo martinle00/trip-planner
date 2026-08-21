@@ -131,8 +131,22 @@ export interface Place {
   selfReview?: string;
   /** Free-text category, e.g. 'Sightseeing', 'Food', 'Museum'. */
   category?: string;
-  lat: number;
-  lng: number;
+  /**
+   * WGS-84 position, or undefined when the place has no location yet.
+   *
+   * A place is deliberately allowed to exist without coordinates: a chain
+   * with several branches in one city is worth capturing as a single place
+   * (with the candidate branches written into `description`) and pinning
+   * later, once the itinerary says which branch to actually visit. Nothing
+   * fabricates a stand-in coordinate for it — a city-centroid guess would
+   * put a wrong pin on the map that reads exactly like a real one.
+   *
+   * Consumers must treat the pair as all-or-nothing: the map skips these
+   * places, `autoplan` already filters on `Number.isFinite`, and the Places
+   * tab flags them as needing a location.
+   */
+  lat?: number;
+  lng?: number;
   /** City name this place belongs to (matches a City.name, incl. day-trip cities). */
   city: string;
   status: PlaceStatus;
@@ -153,6 +167,22 @@ export interface Place {
    * conflict rather than silently overwriting or prompting a merge UI).
    */
   updatedAt: string;
+}
+
+/** A `Place` known to carry coordinates — what the map, bounds fitting and
+ *  any distance maths can consume without re-checking. */
+export type LocatedPlace = Place & { lat: number; lng: number };
+
+/**
+ * Whether a place has a usable position. Coordinates are ALL-OR-NOTHING:
+ * a half-set pair is treated as no location at all, so nothing downstream
+ * ever has to reason about a place that is pinned in one axis only.
+ *
+ * The one predicate every consumer should use — a bare `place.lat !== undefined`
+ * misses NaN, which is what a malformed import or a `Number(null)` produces.
+ */
+export function hasLocation(place: Place): place is LocatedPlace {
+  return Number.isFinite(place.lat) && Number.isFinite(place.lng);
 }
 
 /** One dated day of the trip, belonging to a city. */

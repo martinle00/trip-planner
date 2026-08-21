@@ -7,6 +7,7 @@
 // ============================================================================
 
 import type { City, Day, ID, Place, Trip } from '../data/schema';
+import { hasLocation } from '../data/schema';
 import { fmtRange, fmtWeekdayDayMonth } from './dates';
 import { centroid } from './geo';
 import type { GeoPoint } from './geo';
@@ -300,12 +301,17 @@ const CITY_FALLBACK_CENTER: Record<string, GeoPoint> = {
 };
 
 /**
- * Best-guess coordinates for a newly added place that wasn't dropped on the
- * map: the centroid of that city's existing pins, or a static per-city
- * fallback. Lets the Places-tab quick-add form skip asking for lat/lng.
+ * Where to point the MAP when a city has nothing to fit to: the centroid of
+ * that city's existing pins, or a static per-city fallback.
+ *
+ * Deliberately NOT a coordinate to save on a place. It used to double as the
+ * Add Place fallback, which quietly pinned every location-less place to the
+ * middle of its city — several branches of one chain all landing on the same
+ * fake spot. A place without a location now simply has none (see
+ * `Place.lat`); only the camera is allowed to guess.
  */
-export function suggestPlaceLocation(cityName: string, places: Place[]): GeoPoint {
-  const existing = places.filter((p) => p.city === cityName);
+export function cityFocusPoint(cityName: string, places: Place[]): GeoPoint {
+  const existing = places.filter((p) => p.city === cityName).filter(hasLocation);
   if (existing.length > 0) return centroid(existing.map((p) => ({ lat: p.lat, lng: p.lng })));
   return CITY_FALLBACK_CENTER[cityName] ?? { lat: 30, lng: 110 };
 }

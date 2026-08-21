@@ -218,3 +218,32 @@ describe('MapPanel — staged changes', () => {
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
 });
+
+describe('MapPanel — places with no location', () => {
+  const CHAIN: Place = {
+    id: 'place-chain',
+    tripId: 'trip-1',
+    name: 'Jia Jia Tang Bao',
+    category: 'Food',
+    city: 'Shanghai',
+    status: 'wishlist',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('does not pin a place that has no coordinates, and says so under the map', () => {
+    setupStore({ places: [TIANZIFANG, CHAIN] });
+    renderMapPanel();
+
+    // The located place still gets its marker...
+    expect(screen.getByText(/Tianzifang/)).toBeInTheDocument();
+    // ...the unlocated one is nowhere on the map (no made-up city-centre pin).
+    expect(screen.queryByText(/Jia Jia Tang Bao/)).not.toBeInTheDocument();
+    expect(screen.getByText(/1 place in this city has no location yet/)).toBeInTheDocument();
+  });
+
+  it('says nothing when every place in the city is pinned', () => {
+    setupStore();
+    renderMapPanel();
+    expect(screen.queryByText(/no location yet/)).not.toBeInTheDocument();
+  });
+});

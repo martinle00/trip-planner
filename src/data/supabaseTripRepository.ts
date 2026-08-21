@@ -110,8 +110,8 @@ interface PlaceRow {
   description: string | null;
   self_review: string | null;
   category: string | null;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   city: string;
   status: string;
   day_id: string | null;
@@ -128,8 +128,8 @@ function placeFromRow(row: PlaceRow): Place {
     description: row.description ?? undefined,
     selfReview: row.self_review ?? undefined,
     category: row.category ?? undefined,
-    lat: row.lat,
-    lng: row.lng,
+    lat: row.lat ?? undefined,
+    lng: row.lng ?? undefined,
     city: row.city,
     status: row.status as Place['status'],
     dayId: row.day_id ?? undefined,
@@ -147,8 +147,8 @@ function placeToRow(place: Place): PlaceRow {
     description: place.description ?? null,
     self_review: place.selfReview ?? null,
     category: place.category ?? null,
-    lat: place.lat,
-    lng: place.lng,
+    lat: place.lat ?? null,
+    lng: place.lng ?? null,
     city: place.city,
     status: place.status,
     day_id: place.dayId ?? null,

@@ -48,6 +48,7 @@ import { useTripStore } from '../../store/useTripStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { ID, ItineraryItem, Place } from '../../data/schema';
 import { PLACE_CATEGORIES, categoryIcon, orderedCities } from '../../lib/tripView';
+import { hasLocation } from '../../data/schema';
 import { splitMergedProse } from '../../lib/proseMerge';
 import { formatCoordinate, parseCoordinateInput } from '../../lib/coordinateInput';
 import { gcj02ToWgs84, isInsideChina } from '../../lib/gcj02';
@@ -155,6 +156,7 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
   const pendingWriteRef = useRef<{ placeId: ID; description: string; selfReview: string } | null>(null);
 
   const placeId = place?.id ?? null;
+  const placeLocated = place !== null && hasLocation(place);
   const cityNames = trip ? orderedCities(trip).map((c) => c.name) : [];
 
   // Declared up here, not next to the JSX that uses them: `identityDirty`
@@ -165,12 +167,13 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
   const shiftAvailable = pastedPoint !== null && isInsideChina(pastedPoint);
   const shiftApplied = shiftAvailable && applyChinaShift;
   const nextPoint = pastedPoint && shiftApplied ? gcj02ToWgs84(pastedPoint) : pastedPoint;
+  const coordFieldEmpty = coordValue.trim() === '';
 
   function resetIdentityFields(from: Place | null) {
     setNameValue(from?.name ?? '');
     setCategoryValue(from?.category ?? '');
     setCityValue(from?.city ?? '');
-    setCoordValue(from ? `${from.lat}, ${from.lng}` : '');
+    setCoordValue(from && hasLocation(from) ? `${from.lat}, ${from.lng}` : '');
     setApplyChinaShift(false);
   }
 
@@ -183,6 +186,11 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
       categoryValue !== (place.category ?? '') ||
       cityValue !== place.city ||
       (nextPoint !== null && (nextPoint.lat !== place.lat || nextPoint.lng !== place.lng)));
+
+  // A place may legitimately have no coordinates (see `Place.lat`), so an
+  // unparseable/blank coordinate box is NOT a reason to block a save of the
+  // other identity fields — it just means "leave the location as it is".
+  // Clearing an existing pin isn't offered here; blank reads as unchanged.
 
   // (Re)loads whenever a different place opens — including switching
   // straight from one place's card to another's while this same component
@@ -417,7 +425,10 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
       setSaveError(`Pick a ${!categoryValue ? 'category' : 'city'} before saving.`);
       return;
     }
-    if (!nextPoint) {
+    // Only TYPED-BUT-UNREADABLE text blocks the save. A blank box means
+    // "leave the location alone" — which for a place saved without one (see
+    // `Place.lat`) is the normal state, not an error to nag about.
+    if (!nextPoint && !coordFieldEmpty) {
       setMode('edit');
       setLocationOpen(true);
       setSaveError(
@@ -457,14 +468,14 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
       // after it — see the note where they're declared. A no-op write is
       // skipped so an ordinary prose save stays a single round trip.
       if (identityDirty) {
-        const moved = nextPoint.lat !== saved.lat || nextPoint.lng !== saved.lng;
+        const moved = nextPoint !== null && (nextPoint.lat !== saved.lat || nextPoint.lng !== saved.lng);
         await updatePlace({
           ...saved,
           name: trimmedName,
           category: categoryValue,
           city: cityValue,
-          lat: nextPoint.lat,
-          lng: nextPoint.lng,
+          lat: nextPoint?.lat ?? saved.lat,
+          lng: nextPoint?.lng ?? saved.lng,
           // The stored address came from the geocoder for the OLD
           // coordinate — keeping it beside a hand-moved pin is just a
           // wrong label.
@@ -642,7 +653,8 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
                       disabled={mode === 'saving'}
                     >
                       <Icon name="pin" />
-                      <span>Location set</span> &middot; <span className="action">Change</span>
+                      <span>{placeLocated ? 'Location set' : 'No location yet'}</span> &middot;{' '}
+                      <span className="action">{placeLocated ? 'Change' : 'Add one'}</span>
                       <Icon name="chevron-right" className="chev" />
                     </button>
                     <div className={`location-editor${locationOpen ? ' open' : ''}`} id="pd-location-editor">
@@ -667,7 +679,9 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
                           </p>
                         ) : (
                           <p className="coord-hint">
-                            Paste a pair like 31.2304, 121.4737, or a full Google Maps link.
+                            {placeLocated
+                              ? 'Paste a pair like 31.2304, 121.4737, or a full Google Maps link. Leave it blank to keep the current pin.'
+                              : 'This place isn’t on the map yet. Paste a pair like 31.2304, 121.4737, or a full Google Maps link — or leave it blank until you’ve picked which branch to visit.'}
                           </p>
                         )}
                         {shiftAvailable && nextPoint && pastedPoint && (
@@ -703,6 +717,12 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
                   <div className="modal-tags">
                     {place.category && <span className="tag">{place.category}</span>}
                     <span className="tag city">{place.city}</span>
+                    {!placeLocated && (
+                      <span className="tag no-location">
+                        <Icon name="pin" className="tag-icon" />
+                        No location
+                      </span>
+                    )}
                     {savedReview.trim() && (
                       <span className="tag reviewed">
                         <Icon name="check" className="tag-icon" />
@@ -711,8 +731,12 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
                     )}
                   </div>
                   {/* Read mode's answer to "where is this?" — a map, not a
-                      number pair. Nobody judges a pin by its decimals. */}
-                  {onViewOnMap && (
+                      number pair. Nobody judges a pin by its decimals.
+                      Withheld for a place with no coordinates: the map has
+                      nothing to show it, so the link would only lead
+                      somewhere it isn't (the "No location" tag above is the
+                      honest answer instead). */}
+                  {onViewOnMap && placeLocated && (
                     <button
                       type="button"
                       className="detail-link modal-map-link"

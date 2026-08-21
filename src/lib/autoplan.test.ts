@@ -137,6 +137,25 @@ describe('autoPlan', () => {
 // emit strings like "25:00" — not a valid time at all (`<input type="time">`
 // rejects it, and it reads as 1am the previous night). Reachable from the
 // modal's own knobs, which allow 8 stops × 180 min with a 60 min buffer.
+describe('autoPlan — places with no location', () => {
+  it('skips a place that has no coordinates instead of clustering it at 0,0', () => {
+    const seed = buildSeed();
+    const unlocated = {
+      ...seed.places[0],
+      id: 'place-unlocated',
+      name: 'Some chain, branch TBD',
+      lat: undefined,
+      lng: undefined,
+    };
+    const plan = autoPlan([...seed.places, unlocated], seed.days, DEFAULT_AUTOPLAN_CONFIG);
+
+    const planned = plan.flatMap((dp) => dp.stops.map((s) => s.placeId));
+    expect(planned).not.toContain('place-unlocated');
+    // ...and it changes nothing about where the located places land.
+    expect(plan).toEqual(autoPlan(seed.places, seed.days, DEFAULT_AUTOPLAN_CONFIG));
+  });
+});
+
 describe('autoPlan — start times never leave the day', () => {
   const OVERFLOWING: AutoPlanConfig = {
     maxStopsPerDay: 8,

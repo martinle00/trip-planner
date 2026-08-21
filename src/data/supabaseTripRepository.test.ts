@@ -259,6 +259,30 @@ describe('SupabaseTripRepository', () => {
     expect(places).toEqual([place]);
   });
 
+  it('round-trips a place with NO location as null columns, not as 0,0', async () => {
+    const { client, tables } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const place: Place = {
+      id: 'place-chain',
+      tripId: baseTrip.id,
+      name: 'Jia Jia Tang Bao',
+      city: 'Shanghai',
+      status: 'wishlist',
+      description: 'Renmin Rd or Huanghe Rd — pick one closer to the day',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    await repo.upsertPlace(place);
+
+    const [row] = tables.places;
+    expect(row.lat).toBeNull();
+    expect(row.lng).toBeNull();
+
+    // ...and comes back as absent, never as a real-looking coordinate.
+    const [loaded] = await repo.listPlaces(baseTrip.id);
+    expect(loaded.lat).toBeUndefined();
+    expect(loaded.lng).toBeUndefined();
+  });
+
   it('deletePlace removes the row', async () => {
     const { client } = makeFakeClient();
     const repo = new SupabaseTripRepository(client, USER_ID);

@@ -441,6 +441,11 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
    unsaved local edit exists for this place. Can coexist with .reviewed: a
    place you already reviewed can still pick up a new unsaved edit later. */
 .tag.draft{ background:var(--gold-soft); color:var(--gold-soft-ink); border-color:transparent; }
+/* A dashed outline over the neutral tag = "not set yet", the same vocabulary
+   the map legend's dashed dot uses for an unassigned pin. Deliberately NOT
+   gold: a place with no location is an ordinary planning state (which branch
+   of the chain?), not something needing attention. */
+.tag.no-location{ background:transparent; color:var(--ink-soft); border-style:dashed; }
 .tag-icon{ width:10px; height:10px; }
 
 .status-pill{
@@ -581,6 +586,15 @@ main{ flex:1; padding:16px; padding-bottom:56px; }
 }
 .skip-to-add:focus-visible{ transform:translateY(0); outline:2px solid var(--paper); outline-offset:2px; }
 @media (prefers-reduced-motion:reduce){ .skip-to-add{ transition:none; } }
+
+/* Accounts for places the map can't show because they have no coordinates
+   yet — without it the Map and Places tabs would silently disagree on how
+   many places this city has. */
+.map-unpinned-note{
+  display:flex; align-items:center; flex-wrap:wrap; gap:6px;
+  margin:10px 4px 0; font-size:12px; color:var(--ink-soft);
+}
+.map-unpinned-note svg{ width:13px; height:13px; flex:none; }
 
 .legend{ display:flex; flex-wrap:wrap; gap:8px 16px; padding:12px 4px 0; }
 .legend-item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); }

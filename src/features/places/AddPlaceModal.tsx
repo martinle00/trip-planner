@@ -10,13 +10,18 @@
 //    still offered but only to auto-fill a name, the pin keeps its tapped
 //    coordinate.
 //
+// A location is OPTIONAL in 'search' mode: save with no coordinate and the
+// place lands on the Places tab unpinned, to be located later (a chain with
+// several branches is one place, not one guess). Nothing substitutes a
+// city-centroid stand-in — see `Place.lat` in data/schema.ts.
+//
 // Search consumer contract (per lib/geocode.ts's Nominatim usage-policy
 // notes): debounce keystrokes ~300ms, and create a fresh AbortController per
 // request, aborting the previous one, so a superseded keystroke's request is
 // cancelled rather than piling up. `[]` results show the "no results" state;
 // an AbortError is ignored silently; a GeocodeError (or any other rejection)
-// falls back to manual entry (`suggestPlaceLocation()` supplies a city-centroid
-// coordinate at save time). Offline is driven off `useOnlineStatus()`.
+// falls back to manual entry (where the coordinate field may be left blank).
+// Offline is driven off `useOnlineStatus()`.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -30,7 +35,7 @@ import { formatCoordinate, parseCoordinateInput } from '../../lib/coordinateInpu
 import type { CoordinateParseFailure } from '../../lib/coordinateInput';
 import { gcj02ToWgs84, isInsideChina } from '../../lib/gcj02';
 import { haversineMeters } from '../../lib/geo';
-import { PLACE_CATEGORIES, inferCityFromAddress, orderedCities, suggestPlaceLocation } from '../../lib/tripView';
+import { PLACE_CATEGORIES, inferCityFromAddress, orderedCities } from '../../lib/tripView';
 
 export type AddPlaceMode = 'search' | 'pin';
 
@@ -74,7 +79,6 @@ const COORD_FAILURE_MESSAGES: Record<Exclude<CoordinateParseFailure, 'empty'>, s
 
 export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPlaceModalProps) {
   const trip = useTripStore((s) => s.trip);
-  const places = useTripStore((s) => s.places);
   const addPlace = useTripStore((s) => s.addPlace);
   const online = useOnlineStatus();
 
@@ -123,7 +127,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
   const manualPoint = pastedPoint && shiftApplied ? gcj02ToWgs84(pastedPoint) : pastedPoint;
   const coordFailureMessage =
     parsedCoord.ok || parsedCoord.reason === 'empty'
-      ? `Leave this blank and the pin drops at the centre of ${city || defaultCity || 'the city'} — right city, wrong street.`
+      ? 'Optional — leave it blank to save the place without a location and pin it later.'
       : COORD_FAILURE_MESSAGES[parsedCoord.reason];
 
   function clearPendingTimers() {
@@ -249,8 +253,12 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     if (!trimmedName || !category || !city || saving) return;
     setSaving(true);
 
-    let lat: number;
-    let lng: number;
+    // No coordinate from any of the three sources means the place is saved
+    // WITHOUT one. Deliberately not defaulted to the city centre: several
+    // branches of the same chain would all pin to the same wrong spot and
+    // read on the map exactly like real locations.
+    let lat: number | undefined;
+    let lng: number | undefined;
     let address: string | undefined;
     if (mode === 'pin' && point) {
       lat = point.lat;
@@ -262,10 +270,6 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     } else if (manualPoint) {
       lat = manualPoint.lat;
       lng = manualPoint.lng;
-    } else {
-      const loc = suggestPlaceLocation(city, places);
-      lat = loc.lat;
-      lng = loc.lng;
     }
 
     await addPlace({

@@ -105,6 +105,27 @@ the implementation is swapped at runtime:
   writes the network couldn't take. This is what `AuthGate` installs once a session
   exists; see the sync model below.
 
+### A place may have no location
+
+`Place.lat`/`lng` are **optional**, and `hasLocation(place)` in `data/schema.ts` is the
+only predicate anyone should use (a bare `!== undefined` misses `NaN`). Add Place saves
+without a coordinate when the user supplies none — it no longer substitutes a
+city-centroid guess, because a franchise with four branches in one city is one place
+worth capturing early, and four identical fake pins are indistinguishable from real
+ones. The branch gets pinned later, from the place's detail modal, once the itinerary
+says which one to visit.
+
+- The map renders only located places and states the count it left off; `autoplan`
+  filters them out; the Places tab and the detail modal show a dashed "No location" tag
+  and the modal withholds "View on map".
+- `cityFocusPoint` (ex-`suggestPlaceLocation`) still guesses a city centre — but only
+  for the **camera**, never for a saved coordinate. Don't re-wire it into a save path.
+- Postgres: `places.lat`/`lng` are nullable as of `0007_optional_place_location.sql`,
+  with a `check ((lat is null) = (lng is null))` — coordinates are all-or-nothing.
+  **That migration still has to be applied to the live project**; until it is, saving a
+  location-less place fails its not-null constraint (an RLS-style hard error, *not*
+  something the outbox will queue).
+
 ### Sync model: queued writes, cloud is source of truth
 
 Still **no merge/conflict-resolution logic**, and still not getting any — every write

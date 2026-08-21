@@ -13,7 +13,7 @@ import {
   groupPlacesByCity,
   ORPHANED_PLACES_GROUP,
   inferCityFromAddress,
-  suggestPlaceLocation,
+  cityFocusPoint,
 } from './tripView';
 
 describe('categoryGroup', () => {
@@ -78,21 +78,29 @@ describe('categoryIcon', () => {
   });
 });
 
-describe('suggestPlaceLocation', () => {
+describe('cityFocusPoint', () => {
+  it('ignores places that have no coordinates yet', () => {
+    const places = [
+      { id: '1', tripId: 't', name: 'A', city: 'Shanghai', lat: 10, lng: 20, status: 'wishlist' as const, updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: '2', tripId: 't', name: 'Chain', city: 'Shanghai', status: 'wishlist' as const, updatedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    expect(cityFocusPoint('Shanghai', places)).toEqual({ lat: 10, lng: 20 });
+  });
+
   it('returns the centroid of existing places in that city when there are any', () => {
     const places = [
       { id: '1', tripId: 't', name: 'A', city: 'Shanghai', lat: 10, lng: 20, status: 'wishlist' as const, updatedAt: '2026-01-01T00:00:00.000Z' },
       { id: '2', tripId: 't', name: 'B', city: 'Shanghai', lat: 20, lng: 30, status: 'wishlist' as const, updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
-    expect(suggestPlaceLocation('Shanghai', places)).toEqual({ lat: 15, lng: 25 });
+    expect(cityFocusPoint('Shanghai', places)).toEqual({ lat: 15, lng: 25 });
   });
 
   it('falls back to the static city center when there are no existing places', () => {
-    expect(suggestPlaceLocation('Chengdu', [])).toEqual({ lat: 30.5728, lng: 104.0668 });
+    expect(cityFocusPoint('Chengdu', [])).toEqual({ lat: 30.5728, lng: 104.0668 });
   });
 
   it('falls back to a default point for an unrecognized city with no places', () => {
-    expect(suggestPlaceLocation('Nowhereville', [])).toEqual({ lat: 30, lng: 110 });
+    expect(cityFocusPoint('Nowhereville', [])).toEqual({ lat: 30, lng: 110 });
   });
 });
 

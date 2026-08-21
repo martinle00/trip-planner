@@ -18,6 +18,7 @@ import { citySlug } from '../../components/RouteStrip';
 import type { AddPlaceMode } from './AddPlaceModal';
 import { PlaceDetailModal } from './PlaceDetailModal';
 import type { Day, ID, Place } from '../../data/schema';
+import { hasLocation } from '../../data/schema';
 import { buildPlaceDeleteWarning } from '../../lib/placeDeleteWarning';
 import {
   PLACE_CATEGORIES,
@@ -377,6 +378,15 @@ function PlaceCard({ place, cityDays, legDays, dayColorMap, hasDraft, onAssign, 
           </span>
         )}
         {hasDraft && <span className="tag draft">Draft</span>}
+        {/* A place can be saved before its location is known (a chain with
+            several branches — see `Place.lat`). Flagged here because the map
+            simply won't show it until a pin is set. */}
+        {!hasLocation(place) && (
+          <span className="tag no-location">
+            <Icon name="pin" className="tag-icon" />
+            No location
+          </span>
+        )}
       </div>
       {place.description?.trim() && <p className="place-desc-excerpt">{place.description}</p>}
       <button

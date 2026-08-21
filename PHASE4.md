@@ -252,6 +252,12 @@ likely be the common path.)
   failure reason. Blank still falls back to the centroid — the field is an upgrade, not
   a new required step.
 
+> **Superseded (2026-08-21):** the centroid fallback is gone. Blank now saves the place
+> with **no location at all** (`Place.lat`/`lng` are optional; `hasLocation()` in
+> `data/schema.ts` is the one predicate). A chain with several branches in one city is
+> one place worth capturing early, and a stack of identical city-centre pins reads on
+> the map exactly like real ones. See CLAUDE.md § "A place may have no location".
+
 > **The GCJ-02 shift is ON by default but reversible from the UI** — the note under the
 > field says how far it moved the pin and offers "Use the pasted numbers instead". That
 > was deliberate: the offset is still empirically unverified, so a wrong assumption is a

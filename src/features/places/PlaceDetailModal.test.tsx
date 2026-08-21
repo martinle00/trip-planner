@@ -589,3 +589,83 @@ describe('PlaceDetailModal — editing name, category, city and location', () =>
     expect(updatePlaceMock.mock.calls[0][0]).toMatchObject({ lat: 29.5647, lng: 106.5787 });
   });
 });
+
+describe('PlaceDetailModal — a place saved without a location', () => {
+  const TRIP = {
+    id: 'trip-1',
+    name: 'Trip',
+    startDate: '2026-11-07',
+    endDate: '2026-11-30',
+    homeCurrency: 'AUD',
+    tripCurrency: 'CNY',
+    rates: { AUD: 1, CNY: 0.21 },
+    cities: [{ name: 'Chongqing', order: 1, nights: 2, arrive: '2026-11-07', depart: '2026-11-09' }],
+  };
+
+  // The Phase-11 case: one chain with several branches, captured now and
+  // pinned once the itinerary says which branch to visit.
+  const UNLOCATED: Place = {
+    id: 'place-1',
+    tripId: 'trip-1',
+    name: 'Jia Jia Tang Bao',
+    category: 'Food',
+    city: 'Chongqing',
+    status: 'wishlist',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  let updatePlaceMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    updatePlaceMock = vi.fn(async () => {});
+    commitImpl = async () => ({ place: UNLOCATED, merged: false });
+    useTripStore.setState({
+      trip: TRIP as never,
+      itineraryByDay: {},
+      updatePlace: updatePlaceMock as never,
+      updateItineraryItem: vi.fn(async () => {}) as never,
+    });
+  });
+
+  async function openEditor() {
+    render(<PlaceDetailModal place={UNLOCATED} pinColor="var(--d-grey)" onClose={() => {}} onDraftChange={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit this place' }));
+  }
+
+  it('is flagged as having no location in read mode', async () => {
+    render(<PlaceDetailModal place={UNLOCATED} pinColor="var(--d-grey)" onClose={() => {}} onDraftChange={() => {}} />);
+    await flush();
+    expect(screen.getByText('No location')).toBeInTheDocument();
+  });
+
+  it('offers to add one, with an empty coordinate box (no city-centre guess pre-filled)', async () => {
+    await openEditor();
+    fireEvent.click(screen.getByRole('button', { name: /Add one/ }));
+    expect((screen.getByLabelText('Location') as HTMLInputElement).value).toBe('');
+  });
+
+  it('renaming it saves without inventing a coordinate', async () => {
+    await openEditor();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Jia Jia Tang Bao (Renmin Rd)' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+    await flush();
+
+    expect(updatePlaceMock).toHaveBeenCalledTimes(1);
+    const saved = updatePlaceMock.mock.calls[0][0];
+    expect(saved.name).toBe('Jia Jia Tang Bao (Renmin Rd)');
+    expect(saved.lat).toBeUndefined();
+    expect(saved.lng).toBeUndefined();
+  });
+
+  it('accepts a location later, once the branch is chosen', async () => {
+    await openEditor();
+    fireEvent.click(screen.getByRole('button', { name: /Add one/ }));
+    // Sydney: outside China, so no datum shift — the saved pair is exact.
+    fireEvent.change(screen.getByLabelText('Location'), { target: { value: '-33.8688, 151.2093' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+    await flush();
+
+    expect(updatePlaceMock.mock.calls[0][0]).toMatchObject({ lat: -33.8688, lng: 151.2093 });
+  });
+});

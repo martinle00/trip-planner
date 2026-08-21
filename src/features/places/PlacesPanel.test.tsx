@@ -169,6 +169,17 @@ describe('PlacesPanel — card badges and description excerpt (Phase 4 items 3/4
     expect(screen.getByText('Best seen from across the river at dusk.')).toHaveClass('place-desc-excerpt');
   });
 
+  it('flags a place with no coordinates, and leaves a pinned one unflagged', () => {
+    useTripStore.setState({
+      places: [{ ...PLACES[0], lat: undefined, lng: undefined }, PLACES[1]],
+    });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const unlocatedCard = screen.getByText('The Bund').closest('.place-card') as HTMLElement;
+    expect(within(unlocatedCard).getByText('No location')).toBeInTheDocument();
+    const pinnedCard = screen.getByText('Yu Garden').closest('.place-card') as HTMLElement;
+    expect(within(pinnedCard).queryByText('No location')).not.toBeInTheDocument();
+  });
+
   it('shows a gold "Draft" tag once the initial per-place draft scan resolves', async () => {
     useTripStore.setState({
       getPlaceDraft: vi.fn(async (placeId: string) =>

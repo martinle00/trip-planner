@@ -318,8 +318,8 @@ describe('AddPlaceModal — save paths', () => {
     expect(saved.name).toBe('My dropped pin');
   });
 
-  it('manual entry uses the city-centroid/fallback location and sets no address', async () => {
-    resetStore([]); // no existing places in Chengdu -> static fallback center
+  it('manual entry with no coordinate saves an unlocated place and sets no address', async () => {
+    resetStore([]);
     render(<AddPlaceModal open mode="search" point={null} defaultCity="Chengdu" onClose={() => {}} />);
 
     fireEvent.click(screen.getByText(/Can.t find it\? Enter it manually/));
@@ -330,9 +330,10 @@ describe('AddPlaceModal — save paths', () => {
 
     expect(addPlaceMock).toHaveBeenCalledTimes(1);
     const saved = addPlaceMock.mock.calls[0][0];
-    // Static Chengdu fallback from lib/tripView.ts's CITY_FALLBACK_CENTER.
-    expect(saved.lat).toBe(30.5728);
-    expect(saved.lng).toBe(104.0668);
+    // No city-centroid stand-in: the place is saved without a location and
+    // gets pinned later (see `Place.lat`).
+    expect(saved.lat).toBeUndefined();
+    expect(saved.lng).toBeUndefined();
     expect(saved.address).toBeUndefined();
   });
 });
@@ -399,18 +400,18 @@ describe('AddPlaceModal — manual coordinates (Phase 4 item 9)', () => {
 
     const saved = addPlaceMock.mock.calls[0][0];
     expect(saved.lat).not.toBe(30.5728);
-    expect(Math.abs(saved.lat - 30.5728)).toBeLessThan(0.01);
+    expect(Math.abs((saved.lat as number) - 30.5728)).toBeLessThan(0.01);
   });
 
-  it('falls back to the city centroid when the field is left blank', async () => {
+  it('saves with NO location when the field is left blank, rather than guessing a city centre', async () => {
     resetStore([]);
     openManual();
     fireEvent.click(screen.getByText('Save to wishlist'));
     await flush();
 
     const saved = addPlaceMock.mock.calls[0][0];
-    expect(saved.lat).toBe(30.5728);
-    expect(saved.lng).toBe(104.0668);
+    expect(saved.lat).toBeUndefined();
+    expect(saved.lng).toBeUndefined();
   });
 
   it('explains an unusable short link rather than silently ignoring it', () => {
@@ -419,7 +420,7 @@ describe('AddPlaceModal — manual coordinates (Phase 4 item 9)', () => {
     expect(screen.getByText(/shortened Google link/)).toBeInTheDocument();
   });
 
-  it('saves the centroid rather than blocking when the paste is unparseable', async () => {
+  it('saves with no location rather than blocking when the paste is unparseable', async () => {
     resetStore([]);
     const coord = openManual();
     fireEvent.change(coord, { target: { value: 'somewhere near the river' } });
@@ -427,7 +428,7 @@ describe('AddPlaceModal — manual coordinates (Phase 4 item 9)', () => {
 
     fireEvent.click(screen.getByText('Save to wishlist'));
     await flush();
-    expect(addPlaceMock.mock.calls[0][0].lat).toBe(30.5728);
+    expect(addPlaceMock.mock.calls[0][0].lat).toBeUndefined();
   });
 });
 
