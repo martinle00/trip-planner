@@ -15,6 +15,8 @@ import { BackToTop } from '../../components/BackToTop';
 import type { Expense } from '../../data/schema';
 import { DAY_PALETTE, EXPENSE_CATEGORIES, defaultCurrencyForCity, orderedCities } from '../../lib/tripView';
 import { CURRENCIES, convert, currencySymbol } from '../../lib/exchangeRates';
+import { SETTLEMENT_EPSILON, computeSettlement, excludedCount } from '../../lib/settlement';
+import type { Settlement, SettlementExclusions } from '../../lib/settlement';
 
 function categoryColor(category: string): string {
   let hash = 0;
@@ -67,6 +69,36 @@ function splitSummary(
     parts.push(`not assigned ${fmtMoney(byPerson.unattributed, homeCurrency)}`);
   }
   return parts.length > 0 ? `Who paid: ${parts.join(', ')}` : 'Nothing paid yet';
+}
+
+/** Why expenses were left out of the settlement, as a comma-joinable list of
+ *  phrases. Every bucket gets its own phrase rather than one lumped "N not
+ *  counted": the fixes are completely different (tick "paid" vs. name a payer
+ *  vs. wait for a rate), and this card is only trustworthy if the reason a
+ *  bill is missing from it is legible without opening every row. */
+function settlementExclusionReasons(x: SettlementExclusions): string[] {
+  const reasons: string[] = [];
+  if (x.unpaid > 0) reasons.push(`${x.unpaid} not marked paid yet`);
+  if (x.noPayer > 0) reasons.push(`${x.noPayer} with no payer set`);
+  if (x.orphanPayer > 0) reasons.push(`${x.orphanPayer} paid by a former companion`);
+  if (x.noRate > 0) reasons.push(`${x.noRate} with no exchange rate`);
+  if (x.coversNobody > 0) reasons.push(`${x.coversNobody} covering nobody`);
+  return reasons;
+}
+
+/** The line under the payment list that shows the netting doing its work.
+ *  This IS the "automatically rebalances" behaviour made visible: the debts
+ *  the group racked up against each other are collapsed to the fewest
+ *  handovers, and an expense pointing the other way shrinks the number
+ *  rather than adding a second one to remember. */
+function rebalanceNote(s: Settlement): string {
+  const payments = `${s.transfers.length} payment${s.transfers.length === 1 ? '' : 's'}`;
+  const bills = `${s.countedExpenses} expense${s.countedExpenses === 1 ? '' : 's'}`;
+  if (s.rawObligations <= s.transfers.length) return `${payments} to settle ${bills}.`;
+  return (
+    `${s.rawObligations} debts across ${bills} net down to ${payments} — ` +
+    `logging an expense that covers someone back rebalances this on its own.`
+  );
 }
 
 /** City-filter sentinel for expenses with no city — the "Whole trip" bucket
@@ -327,6 +359,21 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     return { rows, orphanCount, unattributed, unattributedCount, unattributedExcluded };
   }, [visibleExpenses, trip]);
 
+  // Settle up — who owes whom, netted (see lib/settlement.ts for the maths
+  // and for why the netting is the "auto-rebalance").
+  //
+  // Deliberately over `expenses`, NOT `visibleExpenses`: every other card on
+  // this tab rebases onto the filtered set and wears a "Filtered" tag, but
+  // those cards report a subtotal, and this one prints an instruction someone
+  // hands over money on. "Pay Priya A$40" computed from the Chengdu-only
+  // subset is an instruction that is wrong to follow, and the tag alone is a
+  // thin defence against acting on a number that looks exactly like the real
+  // one. Same exemption the rates card already takes, for the same reason.
+  const settlement = useMemo(
+    () => computeSettlement(expenses, trip?.members ?? [], trip ?? { rates: {} }),
+    [expenses, trip],
+  );
+
   // Sorted by CONVERTED home-currency amount (not raw amount — mixing raw
   // amounts across currencies isn't a meaningful order). No-rate expenses
   // sort to the end since they have no comparable converted value.
@@ -559,6 +606,8 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     byPerson.rows.reduce((sum, r) => sum + r.sum, 0) + byPerson.unattributed || 1;
   const hasExpenses = expenses.length > 0;
   const members = trip.members ?? [];
+  const settleReasons = settlementExclusionReasons(settlement.exclusions);
+  const settleExcluded = excludedCount(settlement.exclusions);
 
   return (
     <section className="panel" id="panel-budget" role="tabpanel" aria-labelledby="tab-budget">
@@ -948,6 +997,157 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                 <span className="rate-missing-note">
                   {byPerson.orphanCount} expense{byPerson.orphanCount === 1 ? '' : 's'} excluded &mdash; payer no
                   longer in your companions list
+                </span>
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Settle up — the actionable counterpart to "By person" directly
+          above it. That card answers "who PAID what"; someone who paid
+          nothing still owes their share of every meal that covered them, and
+          this one answers "who OWES what", which is the number people
+          actually hand money over on. Kept as a separate card rather than a
+          third column on that one: the two are computed from different
+          fields (that card reads `paidBy` alone, this one reads `paidBy`,
+          `coversMemberIds` and `paid` together) and a merged card would
+          invite reading one figure as a breakdown of the other. */}
+      <div className="card cat-breakdown settle-card">
+        <div className="field-label" style={{ marginBottom: 10 }}>
+          Settle up{' '}
+          {/* NOT the "Filtered" tag every other card wears — the opposite
+              claim. This card ignores the filter on purpose (see the memo),
+              so with a filter on it has to say which set it covers, or it
+              reads as another filtered subtotal. */}
+          {filtersActive && <span className="tag">Whole trip</span>}{' '}
+          <span style={{ textTransform: 'none', fontWeight: 600, color: 'var(--ink-faint)' }}>
+            &middot; who owes whom, in {trip.homeCurrency}
+          </span>
+        </div>
+
+        {members.length < 2 ? (
+          <p className="panel-hint" style={{ margin: '4px 0 2px' }}>
+            Add at least two companions to track who owes whom.{' '}
+            {/* The whole action sits inside the button rather than a bare
+                "Settings", so the accessible name still says what it does
+                when a screen reader lists the page's controls out of
+                context — and so it can't collide with the topbar's own
+                "Settings" icon button. */}
+            <button type="button" className="rates-home-link" onClick={onOpenSettings}>
+              Manage companions in Settings
+            </button>
+          </p>
+        ) : settlement.countedExpenses === 0 ? (
+          /* "All square" would be a LIE here, and the most damaging thing
+             this card could say: a trip logged without ever ticking "paid"
+             has every expense excluded, and reporting that as settled tells
+             people to walk away owing each other real money. Say what is
+             missing instead. */
+          <p className="panel-hint" style={{ margin: '4px 0 2px' }}>
+            Nothing to settle yet
+            {settleReasons.length > 0
+              ? ` — ${settleExcluded} expense${settleExcluded === 1 ? '' : 's'} not counted: ${settleReasons.join(', ')}`
+              : ' — no expenses to split'}
+            .
+          </p>
+        ) : (
+          <>
+            {settlement.isSquare ? (
+              <p className="settle-square">
+                <Icon name="check" /> All square &mdash; nobody owes anybody.
+              </p>
+            ) : (
+              <>
+                <ol className="settle-list">
+                  {settlement.transfers.map((t) => (
+                    <li className="settle-row" key={`${t.from.id}->${t.to.id}`}>
+                      <span className="settle-parties">
+                        <span className="settle-party">
+                          <MemberAvatar name={t.from.name} color={t.from.color} size="xs" />
+                          <span>{t.from.name}</span>
+                        </span>
+                        {/* The chevron carries the direction visually and is
+                            aria-hidden like every other Icon, so the verb has
+                            to be spoken somewhere or the row reads as two
+                            names and a number with no relationship. */}
+                        <span className="visually-hidden"> pays </span>
+                        <Icon name="chevron-right" className="settle-arrow" />
+                        <span className="settle-party">
+                          <MemberAvatar name={t.to.name} color={t.to.color} size="xs" />
+                          <span>{t.to.name}</span>
+                        </span>
+                      </span>
+                      <span className="settle-amt tabular">{fmtMoney(t.amount, trip.homeCurrency)}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="panel-hint settle-net-note">{rebalanceNote(settlement)}</p>
+              </>
+            )}
+
+            <div className="field-label settle-balances-label">Balances</div>
+            <div className="split-legend">
+              {settlement.balances.map((b) => {
+                const owing = b.net < -SETTLEMENT_EPSILON;
+                const owed = b.net > SETTLEMENT_EPSILON;
+                return (
+                  <div
+                    className={`split-legend-row${owing || owed ? '' : ' is-zero'}`}
+                    key={b.member.id}
+                  >
+                    <span className="cat-label">
+                      <MemberAvatar name={b.member.name} color={b.member.color} size="xs" />
+                      <span>{b.member.name}</span>
+                    </span>
+                    <span className="cat-amt tabular">
+                      <span
+                        className={`cat-amt-value${owing ? ' settle-net-owing' : owed ? ' settle-net-owed' : ''}`}
+                      >
+                        {/* `.cat-amt` is monospaced for column alignment,
+                            which is right for the figure and wrong for the
+                            words around it — mono prose reads as a code
+                            fragment. The verb steps back into the body face;
+                            only the number stays tabular. */}
+                        <span className="settle-net-verb">
+                          {owing ? 'owes' : owed ? 'is owed' : 'square'}
+                        </span>
+                        {owing
+                          ? ` ${fmtMoney(-b.net, trip.homeCurrency)}`
+                          : owed
+                            ? ` ${fmtMoney(b.net, trip.homeCurrency)}`
+                            : ''}
+                      </span>
+                      {/* The two figures the net is the difference of. Without
+                          them "Priya owes A$100" is a verdict with no working
+                          shown, and the first thing anyone asks of a split is
+                          why it came out that way.
+
+                          "FRONTED", not "paid", and the difference is
+                          load-bearing: the By-person card directly above sums
+                          every expense a member is named on, this one counts
+                          only the ones actually marked paid, so the same
+                          person legitimately shows two different totals one
+                          card apart. Reusing the word "paid" for both makes
+                          that read as a bug; "fronted" says money actually
+                          left this person's pocket, which is the only kind
+                          that can be owed back. The gold note at the foot of
+                          the card names the unpaid ones. */}
+                      <span className="cat-amt-note">
+                        fronted {fmtMoney(b.paid, trip.homeCurrency)} &middot; share{' '}
+                        {fmtMoney(b.share, trip.homeCurrency)}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {settleReasons.length > 0 && (
+              <p className="panel-hint" style={{ margin: '10px 0 0' }}>
+                <span className="rate-missing-note">
+                  {settleExcluded} expense{settleExcluded === 1 ? '' : 's'} not counted &mdash;{' '}
+                  {settleReasons.join(', ')}
                 </span>
               </p>
             )}

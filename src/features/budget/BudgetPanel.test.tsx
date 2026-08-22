@@ -1067,3 +1067,169 @@ describe('BudgetPanel — filters', () => {
     expect(visibleLabels()).toHaveLength(5);
   });
 });
+
+// ============================================================================
+// Settle up — who owes whom. The maths itself is covered exhaustively in
+// lib/settlement.test.ts; these cover the card's own decisions: the
+// whole-trip exemption from the filter bar, the states it can be in, and the
+// exclusion reporting that keeps "nothing to settle" from reading as
+// "settled".
+// ============================================================================
+describe('BudgetPanel — Settle up', () => {
+  const MEMBERS: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+
+  function exp(partial: Partial<Expense> & { id: string }): Expense {
+    return {
+      tripId: 'trip-test',
+      category: 'Food',
+      label: partial.id,
+      amount: 0,
+      currency: 'AUD',
+      paid: true,
+      ...partial,
+    };
+  }
+
+  function settleCard(container: HTMLElement): HTMLElement {
+    return container.querySelector('.settle-card') as HTMLElement;
+  }
+
+  it('asks for companions before it can say anything about who owes whom', () => {
+    resetStore({ expenses: [exp({ id: 'e1', amount: 100 })] });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    expect(
+      within(settleCard(container)).getByText(/Add at least two companions to track who owes whom/),
+    ).toBeInTheDocument();
+  });
+
+  it('opens Settings from that pointer — companions are edited there, not here', () => {
+    const onOpenSettings = vi.fn();
+    resetStore();
+    const { container } = render(<BudgetPanel onOpenSettings={onOpenSettings} />);
+
+    fireEvent.click(
+      within(settleCard(container)).getByRole('button', { name: 'Manage companions in Settings' }),
+    );
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('names who pays whom, how much, and shows the working behind each balance', () => {
+    // Alex fronts A$300 covering both; Priya has paid nothing.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' })],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = settleCard(container);
+
+    const row = card.querySelector('.settle-row') as HTMLElement;
+    expect(within(row).getByText('Alex')).toBeInTheDocument();
+    expect(within(row).getByText('Priya')).toBeInTheDocument();
+    expect(within(row).getByText('A$150')).toBeInTheDocument();
+
+    const alexBalance = within(card).getAllByText('Alex').at(-1)!.closest('.split-legend-row') as HTMLElement;
+    // Verb and figure are separate elements (different type faces), so
+    // assert on the composed text rather than a single text node.
+    expect((alexBalance.querySelector('.cat-amt-value') as HTMLElement).textContent).toBe(
+      'is owed A$150',
+    );
+    expect(within(alexBalance).getByText(/fronted A\$300 · share A\$150/)).toBeInTheDocument();
+  });
+
+  it('nets offsetting expenses down instead of listing both debts', () => {
+    // Alex covers Priya's A$80 dinner; Priya covers Alex's A$50 train. The
+    // card must show ONE A$30 payment, not two debts to remember.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 80, paidBy: 'm-alex', coversMemberIds: ['m-priya'] }),
+        exp({ id: 'e2', amount: 50, paidBy: 'm-priya', coversMemberIds: ['m-alex'] }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = settleCard(container);
+
+    const rows = card.querySelectorAll('.settle-row');
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0] as HTMLElement).getByText('A$30')).toBeInTheDocument();
+    expect(within(card).getByText(/2 debts across 2 expenses net down to 1 payment/)).toBeInTheDocument();
+  });
+
+  it('reports all square once the offsetting expenses cancel exactly', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 80, paidBy: 'm-alex', coversMemberIds: ['m-priya'] }),
+        exp({ id: 'e2', amount: 80, paidBy: 'm-priya', coversMemberIds: ['m-alex'] }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = settleCard(container);
+
+    expect(within(card).getByText(/All square/)).toBeInTheDocument();
+    expect(card.querySelectorAll('.settle-row')).toHaveLength(0);
+    expect(within(card).getAllByText('square')).toHaveLength(2);
+  });
+
+  it('never reports "all square" when nothing qualified — it says what is missing', () => {
+    // The dangerous case: a whole trip logged without ticking "paid".
+    // Reporting that as settled sends people home owing each other money.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', paid: false }),
+        exp({ id: 'e2', amount: 40 }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = settleCard(container);
+
+    expect(within(card).queryByText(/All square/)).not.toBeInTheDocument();
+    expect(
+      within(card).getByText(/Nothing to settle yet — 2 expenses not counted: 1 not marked paid yet, 1 with no payer set/),
+    ).toBeInTheDocument();
+  });
+
+  it('names each exclusion reason separately alongside a real settlement', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }),
+        exp({ id: 'e2', amount: 500, currency: 'THB', paidBy: 'm-priya' }), // no rate
+        exp({ id: 'e3', amount: 99, paidBy: 'm-ghost' }), // former companion
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    expect(
+      within(settleCard(container)).getByText(
+        /2 expenses not counted — 1 paid by a former companion, 1 with no exchange rate/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('stays whole-trip while a city filter is on, and says so', () => {
+    // Every other card rebases onto the filtered set and wears "Filtered".
+    // This one prints an instruction someone hands money over on, so a
+    // Shanghai-only figure would be wrong to act on.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', city: 'Shanghai' }),
+        exp({ id: 'e2', amount: 100, paidBy: 'm-alex', city: 'Singapore' }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Shanghai' } });
+
+    const card = settleCard(container);
+    expect(within(card).getByText('Whole trip')).toBeInTheDocument();
+    // A$400 total, split two ways -> Priya owes A$200, not A$150.
+    expect(within(card.querySelector('.settle-row') as HTMLElement).getByText('A$200')).toBeInTheDocument();
+  });
+});

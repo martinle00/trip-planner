@@ -18,7 +18,7 @@ vite-plugin-pwa, hand-written CSS with design tokens (no Tailwind). Vitest + oxl
 npm run dev      # vite dev server (port 5173)
 npm run build    # tsc -b && vite build  — must pass before shipping
 npm run lint     # oxlint
-npm test         # vitest run  (584 tests as of this writing)
+npm test         # vitest run  (756 tests as of this writing)
 
 npm run changeset          # write an intent file for a change you just made
 npm run changeset:status   # what's pending for the next version
@@ -322,7 +322,31 @@ through mockup + review before implementation.
 order, not queue order** — coalescing moves a re-edited record to the back, which
 could otherwise put a day behind the place that references it.
 
+### Settle up is derived, never stored (Phase 11)
+
+`src/lib/settlement.ts` answers "who owes whom" as a **pure function of the current
+expense list** — there is no debts table, no repayment record, no new entity for the
+outbox to queue or order. See `PHASE11.md`. Three things that are easy to get wrong:
+
+- **The netting IS the auto-rebalance.** Each net is `(what a member fronted) − (their
+  share of what covered them)`, so an expense pointing the other way subtracts from the
+  same number the first one added — offsetting expenses cancel by construction. Don't
+  add a ledger to "make it persist"; the whole point is that there is nothing that can
+  drift out of step with the expenses it came from.
+- **Unpaid expenses are excluded, so this card and `By person` legitimately disagree**
+  about what a person paid (hence "fronted", not "paid", in its balance rows). Settling
+  against `paid: false` would tell someone to reimburse a bill nobody has footed. The
+  worst thing this card can do is print "All square" over a trip logged without ever
+  ticking "paid" — `countedExpenses === 0` names what's missing instead.
+- **It reads `expenses`, NOT `visibleExpenses`.** Every other card on the tab rebases
+  onto the city/category filter; this one prints an instruction someone hands money over
+  on, so a filtered figure would be wrong to act on. The `Whole trip` tag (in place of
+  the usual `Filtered` one) is the paired half of that choice.
+
 ## Status / next steps
+
+**Phase 11 (Settle up: who owes whom) — see `PHASE11.md`.** Done; pure derived
+module + one Budget card, no schema/repository change. Not yet used on a real trip.
 
 **Phase 10 (editable journey) — see `PHASE10.md`.** P0 plus add-a-leg done; **rename**
 a leg not yet (the city name is the foreign key — see PHASE10 §P1). An added leg is
