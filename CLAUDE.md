@@ -361,15 +361,12 @@ derived settlement (no schema change at all), then **recording a repayment** via
 
 > ⚠️ **`0008_expense_transfers.sql` has NOT been applied to the live project.**
 > Until it is, every `upsertExpense` fails on the missing `is_transfer` column —
-> an RLS-style hard error, *not* something the outbox will queue.
-
-**Migrations now apply themselves** — `.github/workflows/migrations.yml` runs
-`supabase db push` on any push to `master` touching `supabase/migrations/**`, after
-replaying the whole chain against a throwaway Postgres. **Two one-time setup steps
-are required first** (a `SUPABASE_DB_URL` secret using the *Session pooler* URI, and
-a one-off `migration repair` to baseline the migrations already applied by hand) —
-see DEPLOY.md §2.1. The workflow's `preflight` job refuses to run and prints the
-exact command until the baseline is done.
+> an RLS-style hard error, *not* something the outbox will queue, so it breaks ALL
+> expense saving, not just repayments. (`0007` **has** been applied.)
+>
+> Migrations are applied by hand, in the Supabase dashboard's SQL editor. There is
+> deliberately no CI that applies them — single developer, and the workflow it took
+> to do this safely cost more than it saved.
 
 **Phase 10 (editable journey) — see `PHASE10.md`.** P0 plus add-a-leg done; **rename**
 a leg not yet (the city name is the foreign key — see PHASE10 §P1). An added leg is
