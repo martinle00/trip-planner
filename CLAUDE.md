@@ -18,7 +18,7 @@ vite-plugin-pwa, hand-written CSS with design tokens (no Tailwind). Vitest + oxl
 npm run dev      # vite dev server (port 5173)
 npm run build    # tsc -b && vite build  — must pass before shipping
 npm run lint     # oxlint
-npm test         # vitest run  (756 tests as of this writing)
+npm test         # vitest run  (775 tests as of this writing)
 
 npm run changeset          # write an intent file for a change you just made
 npm run changeset:status   # what's pending for the next version
@@ -186,7 +186,7 @@ it), so signing out with pending work would destroy it.
 `supabase/migrations/0001_init.sql` — **already applied** to the live project.
 5 tables (`trips`, `days`, `places`, `itinerary`, `expenses`) mirroring the Dexie
 tables; `cities`/`rates` are JSONB columns on `trips`. Later migrations add
-prose fields, expense members/sharing, and collaborators.
+prose fields, expense members/sharing, collaborators, and expense transfers.
 
 **Access is membership, not ownership** (`0005_trip_collaborators.sql`): every
 policy asks `is_trip_member(trip_id)`, so an account with no row in
@@ -338,6 +338,16 @@ outbox to queue or order. See `PHASE11.md`. Three things that are easy to get wr
   against `paid: false` would tell someone to reimburse a bill nobody has footed. The
   worst thing this card can do is print "All square" over a trip logged without ever
   ticking "paid" — `countedExpenses === 0` names what's missing instead.
+- **A repayment is an expense, flagged `isTransfer` — and it is NOT spending.**
+  "Mark paid" writes an ordinary expense (payer = debtor, `coversMemberIds` = the
+  single creditor, home currency, `paid: true`), so it clears the debt through the
+  same balance arithmetic and rides the existing repository/outbox/sync/export
+  paths with no new entity. The rule every other reader must follow: exclude it
+  from every cost total. The Budget tab does that at ONE choke point —
+  `costExpenses` in `BudgetPanel.tsx` — and anything new that sums expenses must
+  filter on it too, or the trip's spend inflates by the size of every settled debt.
+  Repayments are therefore absent from "All expenses"; the Settle-up card's
+  "Already settled" strip is the only place one is visible and the only undo.
 - **It reads `expenses`, NOT `visibleExpenses`.** Every other card on the tab rebases
   onto the city/category filter; this one prints an instruction someone hands money over
   on, so a filtered figure would be wrong to act on. The `Whole trip` tag (in place of
@@ -345,8 +355,14 @@ outbox to queue or order. See `PHASE11.md`. Three things that are easy to get wr
 
 ## Status / next steps
 
-**Phase 11 (Settle up: who owes whom) — see `PHASE11.md`.** Done; pure derived
-module + one Budget card, no schema/repository change. Not yet used on a real trip.
+**Phase 11 (Settle up: who owes whom) — see `PHASE11.md`.** Done, in two parts: the
+derived settlement (no schema change at all), then **recording a repayment** via
+`Expense.isTransfer` (snapshot **v6**, migration `0008`). Not yet used on a real trip.
+
+> ⚠️ **`0008_expense_transfers.sql` has NOT been applied to the live project.**
+> Until it is, every `upsertExpense` fails on the missing `is_transfer` column —
+> an RLS-style hard error, *not* something the outbox will queue. Same outstanding
+> state as `0007_optional_place_location.sql`.
 
 **Phase 10 (editable journey) — see `PHASE10.md`.** P0 plus add-a-leg done; **rename**
 a leg not yet (the city name is the foreign key — see PHASE10 §P1). An added leg is

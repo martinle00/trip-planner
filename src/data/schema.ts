@@ -270,6 +270,35 @@ export interface Expense {
    * array. Removing a member must leave this field exactly as it was.
    */
   coversMemberIds?: ID[];
+  /**
+   * Marks this row as a REPAYMENT between two companions rather than a trip
+   * cost (Phase 11). Absent/`false` = an ordinary expense, so every
+   * pre-Phase-11 row is already valid data with this field simply absent.
+   *
+   * A transfer is written by the Settle-up card's "Mark paid" button and is
+   * shaped exactly like any other expense — `paidBy` is the person who handed
+   * the money over, `coversMemberIds` is the single person who received it,
+   * `amount` is in the trip's home currency and `paid` is always `true`. That
+   * is what makes it settle the debt with no special maths: the payer's
+   * "fronted" total goes up and the recipient's "share" goes up by the same
+   * amount, so the pair nets to zero through the ordinary balance formula in
+   * `lib/settlement.ts`.
+   *
+   * THE ONE RULE EVERY OTHER READER MUST FOLLOW: a transfer is **not spending**
+   * and must be excluded from every cost total — the trip total, paid/to-pay,
+   * By-category, By-person, the per-currency subtotals and the expense list
+   * itself. Money moving from one companion to another is not money the trip
+   * consumed, and counting it would inflate the trip's spend by the size of
+   * the debt. The Budget tab enforces this at a single choke point
+   * (`costExpenses`) rather than in each total separately; anything new that
+   * sums expenses must filter on this field too.
+   *
+   * Deliberately a flag on `Expense` rather than a separate `settlements`
+   * table: it rides the existing repository, outbox, sync and export/import
+   * paths unchanged — no new entity to queue, order on replay, or add RLS
+   * policies for. See PHASE11.md.
+   */
+  isTransfer?: boolean;
 }
 
 /**
@@ -297,15 +326,19 @@ export interface Expense {
  * doesn't resolve to any day in the snapshot degrades to `city: undefined`
  * ("Whole trip"), never throws.
  *
- * `parseSnapshot` (exportImport.ts) accepts and migrates v1, v2, v3 and v4
- * snapshots on import (chaining v1 -> v2 -> v3 -> v4 -> v5 for a very old
- * export); exports always write v5. `parseSnapshot` also normalises an
- * explicit `Expense.coversMemberIds: []` to `undefined` on every import,
- * regardless of the snapshot's original version — see `Expense`'s doc
- * comment above.
+ * v5 -> v6 (Phase 11 — settle up): purely additive. Adds
+ * `Expense.isTransfer` (optional, absent = an ordinary expense), so a v5
+ * record is already valid v6 data with the field simply absent — no
+ * per-record transform needed.
+ *
+ * `parseSnapshot` (exportImport.ts) accepts and migrates v1, v2, v3, v4 and
+ * v5 snapshots on import (chaining v1 -> ... -> v6 for a very old export);
+ * exports always write v6. `parseSnapshot` also normalises an explicit
+ * `Expense.coversMemberIds: []` to `undefined` on every import, regardless of
+ * the snapshot's original version — see `Expense`'s doc comment above.
  */
 export interface TripSnapshot {
-  version: 5;
+  version: 6;
   trip: Trip;
   days: Day[];
   places: Place[];

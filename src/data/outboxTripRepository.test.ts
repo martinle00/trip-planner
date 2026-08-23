@@ -85,7 +85,7 @@ function makeFakeRepo(overrides: Partial<TripRepository> = {}): TripRepository {
     },
     async deleteExpense() {},
     async exportSnapshot() {
-      return { version: 5, trip, days: [], places: [], itinerary: [], expenses: [] };
+      return { version: 6, trip, days: [], places: [], itinerary: [], expenses: [] };
     },
     async importSnapshot() {},
     ...overrides,
@@ -219,7 +219,7 @@ describe('OutboxTripRepository — writes', () => {
     );
 
     await expect(
-      repo.importSnapshot({ version: 5, trip, days: [], places: [], itinerary: [], expenses: [] }),
+      repo.importSnapshot({ version: 6, trip, days: [], places: [], itinerary: [], expenses: [] }),
     ).rejects.toBeDefined();
     expect(await outboxRepository.count()).toBe(0);
   });

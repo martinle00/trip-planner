@@ -25,3 +25,10 @@ Splits respect each expense's **Covers** setting, so a hotel room that only cove
 two of you is only owed by those two. Everything converts to your home currency
 first, and the card always covers the **whole trip** even when the list is filtered
 to one city — a per-city figure would be the wrong amount to actually hand over.
+
+**Mark a debt paid.** Each payment row carries a **Mark paid** button — tap it once
+the money has actually changed hands and the balance clears. A repayment is recorded
+as its own kind of entry, so it settles the debt without counting as trip spending:
+your total, categories and per-person figures don't move, and it stays out of the
+expense list. Recorded repayments sit in an **Already settled** strip under the
+balances, where one recorded by mistake can be undone.

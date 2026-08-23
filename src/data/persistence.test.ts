@@ -146,7 +146,7 @@ describe('DexieTripRepository — export/import round trip', () => {
     await repo.upsertPlace(geocodedPlace);
 
     const snapshot = await repo.exportSnapshot();
-    expect(snapshot.version).toBe(5);
+    expect(snapshot.version).toBe(6);
     const exportedPlace = snapshot.places.find((p) => p.id === 'place-export-1');
     expect(exportedPlace?.address).toBe(geocodedPlace.address);
     expect(exportedPlace?.description).toBe(geocodedPlace.description);
@@ -176,7 +176,7 @@ describe('DexieTripRepository — export/import round trip', () => {
     expect(seededPlaces.length).toBeGreaterThan(0);
 
     const minimalSnapshot = {
-      version: 5 as const,
+      version: 6 as const,
       trip: trip!,
       days: [],
       places: [

@@ -1291,6 +1291,25 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    By-person card directly above, so the two lists of member rows line up
    rather than being two near-identical layouts one card apart. Only the
    amount's colour differs, and only because here it carries a direction. */
+/* "Mark paid" — a real action on an instruction row, so it gets a button
+   rather than a link, but stays `.btn` default (not `.btn-primary`): the
+   primary action on the Budget tab is "Add expense", and two accent fills
+   competing in one viewport reads as two equally urgent calls. */
+.settle-mark-btn{ flex:none; gap:5px; padding:5px 9px; font-size:11.5px; }
+.settle-mark-btn svg{ width:12px; height:12px; }
+/* The amount stops being flush-right once the button follows it, so it needs
+   its own breathing room rather than relying on `justify-content`. */
+.settle-row .settle-amt{ margin-left:auto; }
+
+/* Recorded repayments. Recessive on purpose — this is a receipt, not a
+   figure to act on, and the only reason it is on screen at all is so a
+   mistaken one can be undone. */
+.settle-history{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
+.settle-history-row{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); }
+.settle-history-label{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.settle-history-amt{ margin-left:auto; font-family:var(--font-mono); font-weight:600; white-space:nowrap; flex:none; }
+.settle-undo-btn{ flex:none; padding:3px 8px; font-size:11px; }
+
 .settle-net-verb{ font-family:var(--font-body); font-weight:600; }
 .settle-net-owing{ color:var(--gold-soft-ink); }
 .settle-net-owed{ color:var(--jade-soft-ink); }

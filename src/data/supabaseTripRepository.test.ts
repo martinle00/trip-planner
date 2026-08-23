@@ -357,6 +357,50 @@ describe('SupabaseTripRepository', () => {
     expect(expenses).toEqual([expense]);
   });
 
+  // Phase 11 — `Expense.isTransfer`. Same lockstep rule as Phase 5's
+  // note/paidBy and Phase 6's city/coversMemberIds: a field the mappers drop
+  // is a field that silently reverts on every sync.
+  it('upsertExpense/listExpenses round-trips Expense.isTransfer (Phase 11)', async () => {
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const repayment: Expense = {
+      id: 'expense-repayment',
+      tripId: baseTrip.id,
+      category: 'Repayment',
+      label: 'Priya → Alex',
+      amount: 150,
+      currency: 'AUD',
+      paid: true,
+      paidBy: 'member-2',
+      coversMemberIds: ['member-1'],
+      isTransfer: true,
+    };
+    await repo.upsertExpense(repayment);
+    expect(await repo.listExpenses(baseTrip.id)).toEqual([repayment]);
+  });
+
+  it('reads an ordinary expense back with isTransfer absent, not false (Phase 11)', async () => {
+    // The column is `not null default false`, so every pre-Phase-11 row comes
+    // back as `false`. Mapping that to `undefined` keeps a remote round-trip
+    // from writing the field onto every ordinary expense in the trip.
+    const { client } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const ordinary: Expense = {
+      id: 'expense-ordinary',
+      tripId: baseTrip.id,
+      category: 'Food',
+      label: 'Dinner',
+      amount: 120,
+      currency: 'CNY',
+      paid: true,
+    };
+    await repo.upsertExpense(ordinary);
+    const [read] = await repo.listExpenses(baseTrip.id);
+    // Key may exist with an undefined value (every optional field in these
+    // mappers does); what matters is that it never reads back as `true`.
+    expect(read.isTransfer).toBeUndefined();
+  });
+
   it('saveTrip/getTrip round-trips TripMember.color (Phase 6)', async () => {
     const { client } = makeFakeClient(existingTripRow());
     const repo = new SupabaseTripRepository(client, USER_ID);
@@ -379,7 +423,7 @@ describe('SupabaseTripRepository', () => {
       },
     } as unknown as import('@supabase/supabase-js').SupabaseClient;
     const repo = new SupabaseTripRepository(client, USER_ID);
-    const snapshot = { version: 5 as const, trip: baseTrip, days: [], places: [], itinerary: [], expenses: [] };
+    const snapshot = { version: 6 as const, trip: baseTrip, days: [], places: [], itinerary: [], expenses: [] };
     await repo.importSnapshot(snapshot);
     expect(rpcCalls).toEqual([{ fn: 'import_trip_snapshot', args: { snapshot } }]);
   });

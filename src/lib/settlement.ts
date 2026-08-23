@@ -18,6 +18,15 @@
 // offsetting expense rebalances by construction, and there is no ledger that
 // can drift out of step with the expenses it was derived from.
 //
+// RECORDING A REPAYMENT needs no special case here, which is the point of
+// modelling it as `Expense.isTransfer` rather than a settlements table. A
+// repayment is an ordinary expense whose payer is the debtor and whose single
+// covered member is the creditor, so the formula above credits the debtor the
+// full amount and charges the creditor the full amount — the pair moves to
+// zero through the same arithmetic every other expense goes through. The only
+// thing this module does differently with one is COUNT it separately, so the
+// "N debts across M expenses" line doesn't call a hand-back a purchase.
+//
 // Everything here is in HOME currency (see `Trip.rates`' "live-convert"
 // contract in data/schema.ts): the balances re-derive from whatever rates are
 // currently stored, exactly like every other total on the Budget tab.
@@ -90,8 +99,20 @@ export interface Settlement {
   balances: SettlementBalance[];
   /** Fewest transfers that clear every balance. Empty when all square. */
   transfers: SettlementTransfer[];
-  /** Expenses that actually fed the calculation. */
+  /**
+   * Trip COSTS that fed the calculation — repayments are counted separately
+   * in `settledTransfers`, because "3 debts across 4 expenses" must mean four
+   * things the group bought, not three purchases and a hand-back.
+   */
   countedExpenses: number;
+  /**
+   * Repayments (`Expense.isTransfer`) that fed the calculation — money already
+   * handed between companions. They move the balances through exactly the same
+   * arithmetic as any other expense, which is the whole reason a repayment
+   * needs no special case: crediting the payer and charging the recipient
+   * their full share IS clearing the debt.
+   */
+  settledTransfers: number;
   /**
    * Individual IOUs before netting: one per (counted expense × covered member
    * other than the payer). This is what `transfers.length` is compared
@@ -199,6 +220,7 @@ export function computeSettlement(
     coversNobody: 0,
   };
   let countedExpenses = 0;
+  let settledTransfers = 0;
   let rawObligations = 0;
 
   for (const e of expenses) {
@@ -231,13 +253,19 @@ export function computeSettlement(
       continue;
     }
 
-    countedExpenses += 1;
+    // A repayment moves money without the group having bought anything, so it
+    // counts towards the balances but never towards the "N debts across M
+    // expenses" framing — it is the thing that DISCHARGES a debt, not one that
+    // creates one.
+    if (e.isTransfer) settledTransfers += 1;
+    else countedExpenses += 1;
+
     paidByMember.set(payer.id, (paidByMember.get(payer.id) ?? 0) + converted);
     const perHead = converted / covered.length;
     for (const m of covered) {
       shareByMember.set(m.id, (shareByMember.get(m.id) ?? 0) + perHead);
       // The payer's own slice is not an IOU — they already hold it.
-      if (m.id !== payer.id && perHead > SETTLEMENT_EPSILON) rawObligations += 1;
+      if (!e.isTransfer && m.id !== payer.id && perHead > SETTLEMENT_EPSILON) rawObligations += 1;
     }
   }
 
@@ -252,6 +280,7 @@ export function computeSettlement(
     balances,
     transfers,
     countedExpenses,
+    settledTransfers,
     rawObligations,
     exclusions,
     isSquare: balances.every((b) => Math.abs(b.net) <= SETTLEMENT_EPSILON),

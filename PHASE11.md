@@ -4,12 +4,16 @@ Working notes for Phase 11. Read this before touching `lib/settlement.ts` or the
 Budget tab's Settle-up card. Same structure as the other `PHASE*.md`: why, what
 changed, decisions + rationale, traps.
 
-> **STATUS: IMPLEMENTED.** `npm run build` clean, `npm run lint` clean (only the
-> known `RouteStrip.tsx:13` warning), **756 tests green** (28 new: 21 in
-> `lib/settlement.test.ts`, 7 in `BudgetPanel.test.tsx`).
-> **No schema change, no migration, no repository change** — see decision 1.
-> Rendered and checked in a real Chromium at 390px and 320px in both themes;
-> not yet used on a real trip.
+> **STATUS: IMPLEMENTED**, in two parts — the read-only settlement first, then
+> **recording a repayment** (`Expense.isTransfer`) as a follow-up. `npm run build`
+> clean, `npm run lint` clean (only the known `RouteStrip.tsx:13` warning),
+> **775 tests green**. Rendered and checked in a real Chromium at 390px and 320px
+> in both themes; not yet used on a real trip.
+>
+> ⚠️ **`supabase/migrations/0008_expense_transfers.sql` has NOT been applied to the
+> live project.** Until it is, `upsertExpense` fails on the missing `is_transfer`
+> column — a hard error, *not* something the outbox will queue. Same posture as
+> `0007`; see the CLAUDE.md note.
 
 ---
 
@@ -127,14 +131,85 @@ doing.
   `.cat-label`/`.cat-amt` are descendant-scoped and every row-shaped widget must be
   added to those selector lists; the balances list relies on that having been done.
 
+---
+
+## Part 2 — Recording a repayment (`Expense.isTransfer`)
+
+Part 1 could only ever *describe* the position: you settled up in a banking app and
+the card went on saying "Sam pays Alex A$317" until an offsetting expense happened
+to cancel it. Each settle row now carries **Mark paid**.
+
+### What changed
+
+- **`Expense.isTransfer?: boolean`** (schema.ts) — snapshot **v5 → v6**, purely
+  additive, no per-record transform (`migrateSnapshotV5ToV6`).
+- **`supabase/migrations/0008_expense_transfers.sql`** — `is_transfer boolean not
+  null default false`, plus the whole `import_trip_snapshot` body carried forward
+  again (0002/0003/0004 all flag that `create or replace` hazard).
+- **No Dexie version bump.** `isTransfer` isn't indexed, and `.stores()` only
+  declares indexed fields — absent already reads as "ordinary expense". This is the
+  first expense-field change in the project's history that needed *no* local
+  migration; every earlier one is a `version(n).upgrade()` in `db.ts`.
+- Budget tab: a `costExpenses` choke point, the **Mark paid** button, and an
+  **Already settled** strip.
+
+### Decisions and rationale
+
+1. **A flag on `Expense`, not a `settlements` table.** A repayment is shaped
+   exactly like an expense — payer in `paidBy`, recipient as the single entry in
+   `coversMemberIds`, amount in home currency, `paid: true` — so it rides the
+   repository, outbox, sync, replay-ordering and export/import paths *unchanged*.
+   No new entity to queue, order or write RLS for; marking a debt paid works
+   offline for free. A table would have cost all of that for the same result.
+
+2. **It needs no special case in the settlement maths, and that is the point.**
+   Crediting the payer the full amount and charging the recipient the full amount
+   *is* clearing the debt, through the ordinary balance formula. `settlement.ts`
+   does exactly one thing differently with a transfer: **counts it separately**, so
+   "N debts across M expenses" doesn't call a hand-back a purchase.
+
+3. **A transfer is not spending — enforced at ONE choke point.** `costExpenses` in
+   `BudgetPanel` feeds the trip total, paid/to-pay, By-category, By-person, the
+   per-currency subtotals, the filter counts and the expense list. Filtering in each
+   total separately is how one of them gets missed and the trip's spend silently
+   inflates by the size of every debt settled. A new total added later inherits the
+   rule instead of having to remember it.
+
+4. **Rounded to CENTS, not to the whole units the card displays.** Whole units look
+   obvious — the button sits next to "A$317" — and are wrong: the residue from each
+   rounding lands on the *same* creditor, so two companions settling A$33.33 apiece
+   accumulate 0.67, clear `SETTLEMENT_EPSILON`, and leave the card nagging about a
+   A$1 debt nobody owes. Caught by a test written specifically for it, which also
+   pins the whole-unit behaviour as the counter-example. Cents are also what a bank
+   transfer can actually carry, and `fmtMoney` rounds the display anyway.
+
+5. **Repayments are absent from "All expenses", so the history strip is the only
+   undo.** A hand-back is not a cost and must not sit in a list of costs — which
+   makes the `Already settled` strip the sole place one is visible, and therefore
+   the sole place one can be reversed. A mis-recorded repayment would otherwise be
+   unreachable while silently holding a real debt at zero.
+
+6. **"Mark paid", not "Pay".** The app moves no money and must not imply it did.
+
+### Traps
+
+- **The empty state tests `settledTransfers` as well as `countedExpenses`.** A
+  repayment on its own genuinely moves the balances (it credits one person and
+  charges another). Testing `countedExpenses` alone renders "nothing to settle"
+  over a real imbalance *and* strands the only control that could undo it.
+- **`expenseFromRow` maps `false` → `undefined`, deliberately.** The column is
+  `not null default false`, so every pre-Phase-11 row reads back `false`; mapping it
+  straight through would start writing `isTransfer` onto every ordinary expense in
+  the trip on the next sync.
+- **Anything new that sums expenses must filter on `isTransfer`.** See decision 3.
+
+---
+
 ## Not done / possible next
 
-- **Recording a repayment.** Nothing marks a transfer as *made* — the card
-  describes the current position and the user settles it outside the app. There is
-  a zero-schema-change trick available if this is ever wanted: a settlement payment
-  is just an expense paid by the debtor covering only the creditor, which nets the
-  pair to zero. It is not implemented because it would also add the repayment to
-  the trip's spend total, and a transfer between companions is not a trip cost.
+- **Nothing reconciles a partial repayment against a specific debt.** A transfer is
+  just a payer, a recipient and an amount; settle A$100 of a A$317 debt and the
+  card correctly shows A$217 outstanding, but nothing links the two records.
 - **Uneven splits.** Every split is per-head across the covered members; there are
   no shares/weights, and `coversMemberIds` cannot express one.
 - **Settling in a currency other than home.** Transfers are always home-currency.

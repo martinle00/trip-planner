@@ -16,7 +16,7 @@ import type { Expense } from '../../data/schema';
 import { DAY_PALETTE, EXPENSE_CATEGORIES, defaultCurrencyForCity, orderedCities } from '../../lib/tripView';
 import { CURRENCIES, convert, currencySymbol } from '../../lib/exchangeRates';
 import { SETTLEMENT_EPSILON, computeSettlement, excludedCount } from '../../lib/settlement';
-import type { Settlement, SettlementExclusions } from '../../lib/settlement';
+import type { Settlement, SettlementExclusions, SettlementTransfer } from '../../lib/settlement';
 
 function categoryColor(category: string): string {
   let hash = 0;
@@ -164,6 +164,10 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   const online = useOnlineStatus();
 
   const [formOpen, setFormOpen] = useState(false);
+  /** The transfer row currently being written, so its button can show the
+   *  in-flight state. Offline this resolves immediately (the outbox takes the
+   *  write), so it is a guard against a double-tap rather than a spinner. */
+  const [settlingKey, setSettlingKey] = useState<string | null>(null);
   /** `null` = the form is in ADD mode; an id = editing that expense in
    *  place (Phase 5 item 4 — one inline form, two modes, not a second
    *  modal — see DESIGN-SYSTEM.md §4's `.add-form` entry). */
@@ -227,9 +231,31 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     setPaidFilter('all');
   }
 
+  /**
+   * Every expense that is actual SPENDING — i.e. not a repayment between two
+   * companions (`Expense.isTransfer`, Phase 11).
+   *
+   * THE single choke point for schema.ts's "a transfer is not spending" rule.
+   * Every cost figure on this tab derives from this list rather than from
+   * `expenses`: the trip total, paid/to-pay, By-category, By-person, the
+   * per-currency subtotals, the filter counts and the expense list itself.
+   * Doing it here rather than inside each of those means a new total added
+   * later inherits the rule instead of having to remember it — money moving
+   * from one companion to another is not money the trip consumed, and
+   * counting it would inflate the trip's spend by the size of the debt.
+   *
+   * The Settle-up card is the ONE consumer that deliberately reads `expenses`
+   * instead: a repayment is exactly what it needs to see, since that is what
+   * clears a balance.
+   */
+  const costExpenses = useMemo(() => expenses.filter((e) => !e.isTransfer), [expenses]);
+  /** Repayments already recorded, newest last — the Settle-up card's history
+   *  strip and its only undo path. */
+  const recordedTransfers = useMemo(() => expenses.filter((e) => e.isTransfer), [expenses]);
+
   const visibleExpenses = useMemo(
     () =>
-      expenses.filter((e) => {
+      costExpenses.filter((e) => {
         // NO_CITY is its own bucket, not a variant of 'all': `Expense.city`
         // is optional and undefined means trip-wide (flights, insurance), so
         // without a sentinel those rows are unreachable by any city filter.
@@ -240,7 +266,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
         const paidOk = paidFilter === 'all' || (paidFilter === 'paid' ? e.paid : !e.paid);
         return cityOk && categoryOk && paidOk;
       }),
-    [expenses, cityFilter, categoryFilter, paidFilter],
+    [costExpenses, cityFilter, categoryFilter, paidFilter],
   );
 
   // `Expense.category` is free text — EXPENSE_CATEGORIES is only the picker
@@ -251,11 +277,11 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   // Only categories actually present get a chip: a chip that can only ever
   // return "no expenses match" is a dead control.
   const categoryOptions = useMemo(() => {
-    const present = new Set(expenses.map((e) => e.category).filter(Boolean));
+    const present = new Set(costExpenses.map((e) => e.category).filter(Boolean));
     const canonical = EXPENSE_CATEGORIES.filter((c) => present.has(c));
     const extras = [...present].filter((c) => !EXPENSE_CATEGORIES.includes(c)).sort();
     return [...canonical, ...extras];
-  }, [expenses]);
+  }, [costExpenses]);
 
   const budget = useMemo(() => {
     const byCurrency = new Map<string, number>();
@@ -304,13 +330,13 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   // legend while it's still being applied everywhere else.
   const rateChips = useMemo(() => {
     if (!trip) return [];
-    const currencies = new Set(expenses.map((e) => e.currency));
+    const currencies = new Set(costExpenses.map((e) => e.currency));
     return [...currencies]
       .filter((c) => c !== trip.homeCurrency)
       .sort()
       .map((c) => ({ currency: c, value: convert(1, c, trip) }))
       .filter((c): c is { currency: string; value: number } => c.value !== undefined);
-  }, [expenses, trip]);
+  }, [costExpenses, trip]);
 
   // Phase 5 item 6 — per-person totals. Reuses `convert()` exactly like the
   // summary/category totals above (PHASE5 trap #4: never sum raw amounts
@@ -404,6 +430,45 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
             : 'fresh';
   const relativeUpdated = trip.ratesUpdatedAt ? formatRelativeTime(trip.ratesUpdatedAt) : undefined;
   const statusMessage = ratesStatusMessage(ratesState, relativeUpdated);
+
+  /**
+   * Records that a computed transfer was actually handed over, as an expense
+   * flagged `isTransfer` (schema.ts). No new entity, no new store action: it
+   * rides `addExpense` and therefore the whole existing repository / outbox /
+   * sync path, so marking a debt paid works offline and queues like any other
+   * write.
+   *
+   * The amount is rounded to CENTS, not to the whole units the card displays.
+   * Whole units look like the obvious choice — the button sits next to
+   * "A$317" — but the residue each rounding leaves lands on the same person:
+   * with two companions settling A$33.33 apiece against one creditor, two
+   * roundings of 0.33 accumulate to 0.67, which clears `SETTLEMENT_EPSILON`
+   * and leaves the card nagging about a A$1 debt that nobody owes. Cents are
+   * also what the user can actually transfer, and `fmtMoney` rounds the
+   * display anyway, so the row still reads "A$33" everywhere.
+   */
+  async function handleMarkSettled(transfer: SettlementTransfer) {
+    if (!trip) return;
+    setSettlingKey(`${transfer.from.id}->${transfer.to.id}`);
+    try {
+      await addExpense({
+        category: 'Repayment',
+        label: `${transfer.from.name} → ${transfer.to.name}`,
+        amount: Math.round(transfer.amount * 100) / 100,
+        currency: trip.homeCurrency,
+        paid: true,
+        paidBy: transfer.from.id,
+        // The recipient is the ONLY covered member: that is what charges them
+        // the full amount and so cancels what they were owed. "Everyone"
+        // (undefined) would spread it across the whole group and settle
+        // nothing.
+        coversMemberIds: [transfer.to.id],
+        isTransfer: true,
+      });
+    } finally {
+      setSettlingKey(null);
+    }
+  }
 
   function resetFormFields() {
     setEditingId(null);
@@ -604,7 +669,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
    */
   const splitTotal =
     byPerson.rows.reduce((sum, r) => sum + r.sum, 0) + byPerson.unattributed || 1;
-  const hasExpenses = expenses.length > 0;
+  const hasExpenses = costExpenses.length > 0;
   const members = trip.members ?? [];
   const settleReasons = settlementExclusionReasons(settlement.exclusions);
   const settleExcluded = excludedCount(settlement.exclusions);
@@ -691,9 +756,9 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
               value={cityFilter}
               onChange={(e) => setCityFilter(e.target.value)}
             >
-              <option value="all">All cities &middot; {expenses.length}</option>
+              <option value="all">All cities &middot; {costExpenses.length}</option>
               {orderedCities(trip).map((c) => {
-                const count = expenses.filter((e) => e.city === c.name).length;
+                const count = costExpenses.filter((e) => e.city === c.name).length;
                 return (
                   <option key={c.name} value={c.name}>
                     {c.name} &middot; {count}
@@ -701,7 +766,7 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                 );
               })}
               <option value={NO_CITY}>
-                Whole trip &middot; {expenses.filter((e) => !e.city?.trim()).length}
+                Whole trip &middot; {costExpenses.filter((e) => !e.city?.trim()).length}
               </option>
             </select>
           </div>
@@ -1038,7 +1103,13 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
               Manage companions in Settings
             </button>
           </p>
-        ) : settlement.countedExpenses === 0 ? (
+        ) : settlement.countedExpenses === 0 && settlement.settledTransfers === 0 ? (
+          /* `settledTransfers` is part of the test, not decoration: a
+             recorded repayment on its own moves the balances (it credits one
+             person and charges another), and it is only undoable from the
+             history strip in the branch below. Testing `countedExpenses`
+             alone would render "nothing to settle" over a real imbalance and
+             strand the one control that could undo it. */
           /* "All square" would be a LIE here, and the most damaging thing
              this card could say: a trip logged without ever ticking "paid"
              has every expense excluded, and reporting that as settled tells
@@ -1079,6 +1150,26 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                         </span>
                       </span>
                       <span className="settle-amt tabular">{fmtMoney(t.amount, trip.homeCurrency)}</span>
+                      {/* Records the handover as an `isTransfer` expense,
+                          which cancels the debt through the ordinary balance
+                          maths — see `handleMarkSettled`. Labelled "Mark
+                          paid", not "Pay": the app moves no money and must
+                          not imply it did. */}
+                      <button
+                        type="button"
+                        className="btn btn-sm settle-mark-btn"
+                        disabled={settlingKey !== null}
+                        onClick={() => void handleMarkSettled(t)}
+                      >
+                        <Icon name="check" />
+                        <span>
+                          Mark paid
+                          <span className="visually-hidden">
+                            : {t.from.name} paid {t.to.name}{' '}
+                            {fmtMoney(t.amount, trip.homeCurrency)}
+                          </span>
+                        </span>
+                      </button>
                     </li>
                   ))}
                 </ol>
@@ -1142,6 +1233,42 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                 );
               })}
             </div>
+
+            {/* Recorded repayments. They are deliberately absent from "All
+                expenses" — a hand-back between companions is not trip
+                spending (schema.ts's `isTransfer` rule), so it must not sit in
+                a list of costs. That makes this strip the ONLY place one is
+                visible, and therefore the only place one can be undone: a
+                repayment recorded by mistake would otherwise be unreachable
+                and would silently hold a real debt at zero. */}
+            {recordedTransfers.length > 0 && (
+              <>
+                <div className="field-label settle-balances-label">
+                  Already settled{' '}
+                  <span style={{ textTransform: 'none', fontWeight: 600, color: 'var(--ink-faint)' }}>
+                    &middot; not counted as trip spending
+                  </span>
+                </div>
+                <ul className="settle-history">
+                  {recordedTransfers.map((t) => (
+                    <li className="settle-history-row" key={t.id}>
+                      <span className="settle-history-label">{t.label}</span>
+                      <span className="settle-history-amt tabular">
+                        {fmtMoney(t.amount, t.currency)}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm settle-undo-btn"
+                        onClick={() => void removeExpense(t.id)}
+                      >
+                        Undo
+                        <span className="visually-hidden"> repayment: {t.label}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
 
             {settleReasons.length > 0 && (
               <p className="panel-hint" style={{ margin: '10px 0 0' }}>

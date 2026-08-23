@@ -36,7 +36,7 @@ describe('serializeSnapshot / parseSnapshot', () => {
     const json = serializeSnapshot(snapshot);
     const parsed = parseSnapshot(json);
     expect(parsed).toEqual(snapshot);
-    expect(parsed.version).toBe(5);
+    expect(parsed.version).toBe(6);
   });
 
   it('throws on malformed JSON', () => {
@@ -92,7 +92,7 @@ describe('parseSnapshot — v1 -> v2 -> v3 chained migration', () => {
   it('migrates a v1 snapshot all the way to v5 shape (version, trip.rates, expense amount/currency/city, place description)', () => {
     const parsed = parseSnapshot(V1_JSON);
 
-    expect(parsed.version).toBe(5);
+    expect(parsed.version).toBe(6);
     expect(parsed.trip).toEqual({
       id: 'trip-v1',
       name: 'Old Trip',
@@ -135,7 +135,7 @@ describe('parseSnapshot — v1 -> v2 -> v3 chained migration', () => {
     const migrated = parseSnapshot(V1_JSON);
     const reparsed = parseSnapshot(serializeSnapshot(migrated));
     expect(reparsed).toEqual(migrated);
-    expect(reparsed.version).toBe(5);
+    expect(reparsed.version).toBe(6);
   });
 
   it('the migrated rate preserves the "multiply to convert" convention (rates.CNY === old cnyToHomeRate)', () => {
@@ -154,8 +154,8 @@ describe('parseSnapshot — unsupported/missing version is rejected, never silen
     );
   });
 
-  it('throws for an unrecognized future version (e.g. 6)', () => {
-    expect(() => parseSnapshot(JSON.stringify({ ...BASE, version: 6 }))).toThrow(
+  it('throws for an unrecognized future version (e.g. 7)', () => {
+    expect(() => parseSnapshot(JSON.stringify({ ...BASE, version: 7 }))).toThrow(
       'parseSnapshot: unsupported snapshot version',
     );
   });
@@ -215,7 +215,7 @@ describe('parseSnapshot — v2 -> v3 migration (Place.note -> description, updat
   it('migrates a v2 snapshot to v5: note -> description, note removed, updatedAt backfilled', () => {
     const parsed = parseSnapshot(V2_JSON);
 
-    expect(parsed.version).toBe(5);
+    expect(parsed.version).toBe(6);
     const withNote = parsed.places.find((p) => p.id === 'place-with-note');
     expect(withNote?.description).toBe('Go at sunset');
     expect((withNote as unknown as { note?: string })?.note).toBeUndefined();
@@ -332,7 +332,7 @@ describe('parseSnapshot — v3 -> v4 migration (Phase 5: Expense.note/paidBy, Tr
   it('an old v3 snapshot (no members/note/paidBy) imports cleanly as v5 with those fields simply absent', () => {
     const parsed = parseSnapshot(V3_JSON);
 
-    expect(parsed.version).toBe(5);
+    expect(parsed.version).toBe(6);
     expect(parsed.trip.members).toBeUndefined();
     expect(parsed.expenses[0].note).toBeUndefined();
     expect(parsed.expenses[0].paidBy).toBeUndefined();
@@ -346,7 +346,7 @@ describe('parseSnapshot — v3 -> v4 migration (Phase 5: Expense.note/paidBy, Tr
     const migrated = parseSnapshot(V3_JSON);
     const reparsed = parseSnapshot(serializeSnapshot(migrated));
     expect(reparsed).toEqual(migrated);
-    expect(reparsed.version).toBe(5);
+    expect(reparsed.version).toBe(6);
   });
 
   it('a v3 snapshot that already carries member/note/paidBy-shaped data (hand-edited) still migrates and preserves it', () => {
@@ -381,7 +381,7 @@ describe('parseSnapshot — v3 -> v4 migration (Phase 5: Expense.note/paidBy, Tr
       ],
     });
     const parsed = parseSnapshot(withExtras);
-    expect(parsed.version).toBe(5);
+    expect(parsed.version).toBe(6);
     expect(parsed.trip.members).toEqual([{ id: 'member-1', name: 'Alex' }]);
     expect(parsed.expenses[0]).toMatchObject({ note: 'Split three ways', paidBy: 'member-1' });
   });
@@ -443,7 +443,7 @@ describe('parseSnapshot — v4 -> v5 migration (Phase 6: Expense.city replaces d
   it('derives city from a resolvable dayId and drops dayId/itemId', () => {
     const parsed = parseSnapshot(V4_JSON);
 
-    expect(parsed.version).toBe(5);
+    expect(parsed.version).toBe(6);
     const resolved = parsed.expenses.find((e) => e.id === 'exp-resolvable');
     expect(resolved).toMatchObject({ city: 'Shanghai', amount: 38, paidBy: 'member-1' });
     expect((resolved as unknown as { dayId?: string }).dayId).toBeUndefined();
@@ -470,7 +470,7 @@ describe('parseSnapshot — v4 -> v5 migration (Phase 6: Expense.city replaces d
     const migrated = parseSnapshot(V4_JSON);
     const reparsed = parseSnapshot(serializeSnapshot(migrated));
     expect(reparsed).toEqual(migrated);
-    expect(reparsed.version).toBe(5);
+    expect(reparsed.version).toBe(6);
   });
 
   it('a v5 snapshot with Expense.city/coversMemberIds and TripMember.color round-trips losslessly', () => {
@@ -492,7 +492,7 @@ describe('parseSnapshot — v4 -> v5 migration (Phase 6: Expense.city replaces d
     const json = serializeSnapshot(snapshot);
     const parsed = parseSnapshot(json);
     expect(parsed).toEqual(snapshot);
-    expect(parsed.version).toBe(5);
+    expect(parsed.version).toBe(6);
   });
 
   it('normalises an explicit empty coversMemberIds: [] to undefined ("everyone") on import', () => {
@@ -532,5 +532,78 @@ describe('parseSnapshot — v4 -> v5 migration (Phase 6: Expense.city replaces d
     const json = serializeSnapshot(snapshot);
     const parsed = parseSnapshot(json);
     expect(parsed.expenses[0].coversMemberIds).toEqual(['m1']);
+  });
+});
+
+describe('parseSnapshot — v5 -> v6 migration (Phase 11: Expense.isTransfer)', () => {
+  const V5_JSON = JSON.stringify({
+    version: 5,
+    trip: {
+      id: 'trip-v5',
+      name: 'V5 Trip',
+      startDate: '2026-11-07',
+      endDate: '2026-11-30',
+      homeCurrency: 'AUD',
+      tripCurrency: 'CNY',
+      rates: { AUD: 1, CNY: 0.21 },
+      ratesBase: 'AUD',
+      cities: [{ name: 'Shanghai', order: 1, nights: 2, arrive: '2026-11-09', depart: '2026-11-11' }],
+      members: [{ id: 'member-1', name: 'Alex' }],
+    },
+    days: [],
+    places: [],
+    itinerary: [],
+    expenses: [
+      {
+        id: 'exp-1',
+        tripId: 'trip-v5',
+        category: 'Food',
+        label: 'Noodles',
+        amount: 38,
+        currency: 'CNY',
+        paid: true,
+        paidBy: 'member-1',
+        city: 'Shanghai',
+      },
+    ],
+  });
+
+  it('accepts a v5 snapshot and tags it v6', () => {
+    expect(parseSnapshot(V5_JSON).version).toBe(6);
+  });
+
+  it('leaves isTransfer ABSENT rather than defaulting it onto every row', () => {
+    // Absent and false mean the same thing to every reader (`!e.isTransfer`),
+    // so writing the field onto every imported expense would only bloat the
+    // export and make a v5 and a v6 export of identical data differ.
+    const parsed = parseSnapshot(V5_JSON);
+    expect(parsed.expenses[0]).not.toHaveProperty('isTransfer');
+    expect(parsed.expenses[0]).toMatchObject({ id: 'exp-1', city: 'Shanghai' });
+  });
+
+  it('round-trips a v6 snapshot carrying a repayment', () => {
+    const withTransfer = JSON.parse(V5_JSON) as { version: number; expenses: unknown[] };
+    withTransfer.version = 6;
+    withTransfer.expenses.push({
+      id: 'exp-repay',
+      tripId: 'trip-v5',
+      category: 'Repayment',
+      label: 'Priya → Alex',
+      amount: 150,
+      currency: 'AUD',
+      paid: true,
+      paidBy: 'member-2',
+      coversMemberIds: ['member-1'],
+      isTransfer: true,
+    });
+
+    const parsed = parseSnapshot(JSON.stringify(withTransfer));
+    expect(parsed.version).toBe(6);
+    expect(parsed.expenses[1]).toMatchObject({ id: 'exp-repay', isTransfer: true });
+  });
+
+  it('carries isTransfer through a full v1 -> v6 chain untouched (it cannot exist that far back)', () => {
+    const parsed = parseSnapshot(V5_JSON);
+    expect(parsed.expenses.every((e) => e.isTransfer === undefined)).toBe(true);
   });
 });

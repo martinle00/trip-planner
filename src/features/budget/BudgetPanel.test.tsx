@@ -1233,3 +1233,152 @@ describe('BudgetPanel — Settle up', () => {
     expect(within(card.querySelector('.settle-row') as HTMLElement).getByText('A$200')).toBeInTheDocument();
   });
 });
+
+// ============================================================================
+// Phase 11 — recording a repayment. The rule that matters most here is
+// schema.ts's: a transfer is NOT spending, so it must be absent from every
+// cost total on this tab while still clearing the balance it was recorded
+// for.
+// ============================================================================
+describe('BudgetPanel — marking a debt paid', () => {
+  const MEMBERS: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+
+  function exp(partial: Partial<Expense> & { id: string }): Expense {
+    return {
+      tripId: 'trip-test',
+      category: 'Food',
+      label: partial.id,
+      amount: 0,
+      currency: 'AUD',
+      paid: true,
+      ...partial,
+    };
+  }
+
+  const REPAYMENT = exp({
+    id: 'r1',
+    category: 'Repayment',
+    label: 'Priya → Alex',
+    amount: 150,
+    paidBy: 'm-priya',
+    coversMemberIds: ['m-alex'],
+    isTransfer: true,
+  });
+
+  it('writes the handover as a transfer expense: debtor pays, creditor is the only one covered', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' })],
+      addExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(
+      within(container.querySelector('.settle-card') as HTMLElement).getByRole('button', {
+        name: /Mark paid/,
+      }),
+    );
+    await vi.waitFor(() => expect(addExpense).toHaveBeenCalledTimes(1));
+
+    expect(addExpense.mock.calls[0][0]).toMatchObject({
+      amount: 150,
+      currency: 'AUD',
+      paid: true,
+      paidBy: 'm-priya',
+      coversMemberIds: ['m-alex'],
+      isTransfer: true,
+    });
+  });
+
+  it('rounds the recorded amount to cents, not to the whole units it displays', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      // A$101 split two ways -> Priya owes 50.5 exactly.
+      expenses: [exp({ id: 'e1', amount: 101, paidBy: 'm-alex' })],
+      addExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(
+      within(container.querySelector('.settle-card') as HTMLElement).getByRole('button', {
+        name: /Mark paid/,
+      }),
+    );
+    await vi.waitFor(() => expect(addExpense).toHaveBeenCalledTimes(1));
+
+    expect(addExpense.mock.calls[0][0].amount).toBe(50.5);
+  });
+
+  it('clears the debt and reports the trip as square once recorded', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }), REPAYMENT],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = container.querySelector('.settle-card') as HTMLElement;
+
+    expect(within(card).getByText(/All square/)).toBeInTheDocument();
+    expect(card.querySelectorAll('.settle-row')).toHaveLength(0);
+  });
+
+  it('keeps a repayment out of EVERY cost total — it is not trip spending', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }), REPAYMENT],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    // Trip total stays A$300, not A$450.
+    const summary = container.querySelector('.summary-card') as HTMLElement;
+    expect(within(summary).getByText('A$300')).toBeInTheDocument();
+    expect(within(summary).queryByText('A$450')).not.toBeInTheDocument();
+
+    // By-person still credits Alex the A$300 he spent, and does not credit
+    // Priya the A$150 she handed back.
+    const byPerson = container.querySelector('.by-person-card') as HTMLElement;
+    const priyaRow = within(byPerson).getByText('Priya').closest('.split-legend-row') as HTMLElement;
+    expect(within(priyaRow).getByText('A$0')).toBeInTheDocument();
+
+    // Absent from the "All expenses" list (it shows in the Settle-up card's
+    // own history strip instead — that's the only place it belongs), and its
+    // "Repayment" category never becomes a filter chip.
+    const list = container.querySelector('.expense-list') as HTMLElement;
+    expect(within(list).getByText('e1')).toBeInTheDocument();
+    expect(within(list).queryByText('Priya → Alex')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Repayment/ })).not.toBeInTheDocument();
+  });
+
+  it('shows recorded repayments in their own strip, with an undo', async () => {
+    const removeExpense = vi.fn<TripState['removeExpense']>().mockResolvedValue(undefined);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }), REPAYMENT],
+      removeExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const history = container.querySelector('.settle-history') as HTMLElement;
+
+    expect(within(history).getByText('Priya → Alex')).toBeInTheDocument();
+    expect(within(history).getByText('A$150')).toBeInTheDocument();
+
+    fireEvent.click(within(history).getByRole('button', { name: /Undo/ }));
+    await vi.waitFor(() => expect(removeExpense).toHaveBeenCalledWith('r1'));
+  });
+
+  it('still offers the undo when a repayment is the only expense left', () => {
+    // A repayment on its own genuinely skews the balances, so the card must
+    // not fall into "nothing to settle" and hide the one control that
+    // reverses it.
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, expenses: [REPAYMENT] });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = container.querySelector('.settle-card') as HTMLElement;
+
+    expect(within(card).queryByText(/Nothing to settle yet/)).not.toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: /Undo/ })).toBeInTheDocument();
+  });
+});

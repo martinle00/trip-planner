@@ -299,3 +299,115 @@ describe('computeSettlement — exclusions', () => {
     expect(s.transfers.map((t) => [t.from.id, t.to.id, t.amount])).toEqual([['priya', 'alex', 50]]);
   });
 });
+
+describe('computeSettlement — recorded repayments (isTransfer)', () => {
+  it('clears the debt it was recorded for, through the ordinary balance maths', () => {
+    const s = computeSettlement(
+      [
+        paidBy('alex', 300),
+        // Priya owed 150; she hands it over. Payer = debtor, covered = the
+        // single creditor.
+        paidBy('priya', 150, { coversMemberIds: ['alex'], isTransfer: true }),
+      ],
+      [ALEX, PRIYA],
+      TRIP,
+    );
+
+    expect(s.isSquare).toBe(true);
+    expect(s.transfers).toEqual([]);
+  });
+
+  it('counts a repayment separately from the expenses that created the debt', () => {
+    const s = computeSettlement(
+      [
+        paidBy('alex', 300),
+        paidBy('priya', 150, { coversMemberIds: ['alex'], isTransfer: true }),
+      ],
+      [ALEX, PRIYA],
+      TRIP,
+    );
+
+    // One purchase, one hand-back — a repayment is never "an expense" in the
+    // "N debts across M expenses" framing, and never an IOU of its own.
+    expect(s.countedExpenses).toBe(1);
+    expect(s.settledTransfers).toBe(1);
+    expect(s.rawObligations).toBe(1);
+  });
+
+  it('leaves the remainder outstanding when the repayment was partial', () => {
+    const s = computeSettlement(
+      [
+        paidBy('alex', 300),
+        paidBy('priya', 100, { coversMemberIds: ['alex'], isTransfer: true }),
+      ],
+      [ALEX, PRIYA],
+      TRIP,
+    );
+
+    expect(s.transfers.map((t) => [t.from.id, t.to.id, t.amount])).toEqual([['priya', 'alex', 50]]);
+  });
+
+  it('absorbs the cent-rounding the UI introduces, for every debtor at once', () => {
+    // A three-way split of A$100 leaves Priya and Sam owing 33.333 each. The
+    // card rounds to cents (33.33), and BOTH residues land on Alex — the
+    // reason the button records cents rather than the whole units it
+    // displays: two roundings of 0.33 would clear the epsilon and leave a
+    // phantom A$1 debt.
+    const s = computeSettlement(
+      [
+        paidBy('alex', 100),
+        paidBy('priya', 33.33, { coversMemberIds: ['alex'], isTransfer: true }),
+        paidBy('sam', 33.33, { coversMemberIds: ['alex'], isTransfer: true }),
+      ],
+      [ALEX, PRIYA, SAM],
+      TRIP,
+    );
+
+    expect(s.isSquare).toBe(true);
+    expect(s.transfers).toEqual([]);
+  });
+
+  it('would NOT stay square if the same settlements had been rounded to whole units', () => {
+    // Guards the decision above: this is what the card used to do, and the
+    // 0.67 left on Alex is exactly the phantom debt cent-rounding avoids.
+    const s = computeSettlement(
+      [
+        paidBy('alex', 100),
+        paidBy('priya', 33, { coversMemberIds: ['alex'], isTransfer: true }),
+        paidBy('sam', 33, { coversMemberIds: ['alex'], isTransfer: true }),
+      ],
+      [ALEX, PRIYA, SAM],
+      TRIP,
+    );
+
+    expect(s.isSquare).toBe(false);
+  });
+
+  it('reverses cleanly when the repayment is removed again', () => {
+    const withRepayment = [
+      paidBy('alex', 300),
+      paidBy('priya', 150, { coversMemberIds: ['alex'], isTransfer: true }),
+    ];
+    const undone = computeSettlement([withRepayment[0]], [ALEX, PRIYA], TRIP);
+
+    expect(computeSettlement(withRepayment, [ALEX, PRIYA], TRIP).isSquare).toBe(true);
+    expect(undone.transfers.map((t) => [t.from.id, t.to.id, t.amount])).toEqual([
+      ['priya', 'alex', 150],
+    ]);
+  });
+
+  it('still excludes a repayment that was somehow left unpaid', () => {
+    const s = computeSettlement(
+      [
+        paidBy('alex', 300),
+        paidBy('priya', 150, { coversMemberIds: ['alex'], isTransfer: true, paid: false }),
+      ],
+      [ALEX, PRIYA],
+      TRIP,
+    );
+
+    expect(s.exclusions.unpaid).toBe(1);
+    expect(s.settledTransfers).toBe(0);
+    expect(s.isSquare).toBe(false);
+  });
+});
