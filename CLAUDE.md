@@ -348,10 +348,20 @@ outbox to queue or order. See `PHASE11.md`. Three things that are easy to get wr
   filter on it too, or the trip's spend inflates by the size of every settled debt.
   Repayments are therefore absent from "All expenses"; the Settle-up card's
   "Already settled" strip is the only place one is visible and the only undo.
-- **It reads `expenses`, NOT `visibleExpenses`.** Every other card on the tab rebases
-  onto the city/category filter; this one prints an instruction someone hands money over
-  on, so a filtered figure would be wrong to act on. The `Whole trip` tag (in place of
-  the usual `Filtered` one) is the paired half of that choice.
+- **The card has two modes, and only ONE of them is actionable.** With no filter it
+  reads `expenses` (transfers included — a repayment is what clears a balance) and
+  offers `Mark paid` plus the `Already settled` strip. With any filter on it rebases
+  onto `visibleExpenses` and becomes **read-only**: both of those controls are withheld
+  and it wears the ordinary `Filtered` tag plus a note saying these figures are part of
+  the whole-trip balance, not a separate debt.
+
+  The read-only half is the whole safety argument, and it is not squeamishness: a
+  repayment carries `category: 'Repayment'` and no city, so it falls **out of every
+  filter that could have produced the debt it cleared**. Recording one from a Food-only
+  view would leave that view still demanding the payment just made — which is how
+  somebody pays twice. Don't wire `handleMarkSettled` into the scoped mode; if a
+  per-category settlement ever has to be actionable, the repayment needs to carry the
+  scope it settles, which is a schema change.
 
 ## Status / next steps
 

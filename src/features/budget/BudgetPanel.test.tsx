@@ -1214,25 +1214,118 @@ describe('BudgetPanel — Settle up', () => {
     ).toBeInTheDocument();
   });
 
-  it('stays whole-trip while a city filter is on, and says so', () => {
-    // Every other card rebases onto the filtered set and wears "Filtered".
-    // This one prints an instruction someone hands money over on, so a
-    // Shanghai-only figure would be wrong to act on.
+  it('rebases onto the filtered set so a category answers "who owes whom for this"', () => {
+    // A$300 of food + A$100 of transport, both fronted by Alex. Whole trip
+    // that's Priya owing A$200; filtered to Food it must be A$150 — the
+    // question the user asked by pressing the chip.
     resetStore({
       trip: { ...BASE_TRIP, members: MEMBERS },
       expenses: [
-        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', city: 'Shanghai' }),
-        exp({ id: 'e2', amount: 100, paidBy: 'm-alex', city: 'Singapore' }),
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', category: 'Food' }),
+        exp({ id: 'e2', amount: 100, paidBy: 'm-alex', category: 'Transport' }),
       ],
     });
     const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
 
+    expect(
+      within(settleCard(container).querySelector('.settle-row') as HTMLElement).getByText('A$200'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+
+    const card = settleCard(container);
+    expect(within(card).getByText('Filtered')).toBeInTheDocument();
+    expect(within(card).getByText(/who owes whom for Food, in AUD/)).toBeInTheDocument();
+    expect(within(card.querySelector('.settle-row') as HTMLElement).getByText('A$150')).toBeInTheDocument();
+    // The balances rebase with it, working and all.
+    const alexBalance = within(card).getAllByText('Alex').at(-1)!.closest('.split-legend-row') as HTMLElement;
+    expect(within(alexBalance).getByText(/fronted A\$300 · share A\$150/)).toBeInTheDocument();
+  });
+
+  it('names the whole filter, not just the category, when several are on', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', category: 'Food', city: 'Shanghai' }),
+        exp({ id: 'e2', amount: 100, paidBy: 'm-alex', category: 'Food', city: 'Singapore' }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Shanghai' } });
 
     const card = settleCard(container);
-    expect(within(card).getByText('Whole trip')).toBeInTheDocument();
-    // A$400 total, split two ways -> Priya owes A$200, not A$150.
+    expect(within(card).getByText(/who owes whom for Food · Shanghai, in AUD/)).toBeInTheDocument();
+    expect(within(card.querySelector('.settle-row') as HTMLElement).getByText('A$150')).toBeInTheDocument();
+  });
+
+  it('withholds "Mark paid" while scoped — a repayment settles the trip, not a category', () => {
+    // The double-payment trap: the repayment this button writes carries
+    // `category: 'Repayment'`, so it falls straight out of the Food filter
+    // that produced the row. The scoped view would still be demanding money
+    // that had just been handed over.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', category: 'Food' }),
+        exp({ id: 'e2', amount: 100, paidBy: 'm-alex', category: 'Transport' }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    expect(within(settleCard(container)).getByRole('button', { name: /Mark paid/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+
+    const card = settleCard(container);
+    expect(within(card).queryByRole('button', { name: /Mark paid/ })).not.toBeInTheDocument();
+    expect(
+      within(card).getByText(/Part of the whole-trip balance, not a separate debt/),
+    ).toBeInTheDocument();
+  });
+
+  it('hands the scoped view a way back to the actionable one', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', category: 'Food' }),
+        exp({ id: 'e2', amount: 100, paidBy: 'm-alex', category: 'Transport' }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+
+    fireEvent.click(
+      within(settleCard(container)).getByRole('button', {
+        name: 'Show the whole trip to record a repayment',
+      }),
+    );
+
+    const card = settleCard(container);
+    expect(within(card).queryByText('Filtered')).not.toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: /Mark paid/ })).toBeInTheDocument();
     expect(within(card.querySelector('.settle-row') as HTMLElement).getByText('A$200')).toBeInTheDocument();
+  });
+
+  it('says a filtered empty result is empty FOR THAT FILTER, not for the trip', () => {
+    // "Nothing to settle yet" full stop, over a trip that plainly has debts,
+    // is the same class of lie as "all square" over an unpaid trip.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', category: 'Food' }),
+        exp({ id: 'e2', amount: 100, category: 'Transport' }), // no payer
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Transport' }));
+
+    const card = settleCard(container);
+    expect(
+      within(card).getByText(/Nothing to settle yet for Transport — 1 expense not counted/),
+    ).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Show the whole trip' })).toBeInTheDocument();
   });
 });
 
@@ -1370,6 +1463,27 @@ describe('BudgetPanel — marking a debt paid', () => {
 
     fireEvent.click(within(history).getByRole('button', { name: /Undo/ }));
     await vi.waitFor(() => expect(removeExpense).toHaveBeenCalledWith('r1'));
+  });
+
+  it('hides the settled strip while scoped — a repayment belongs to no category', () => {
+    // Filtered to Food, the balances legitimately exclude the repayment (it
+    // isn't a food expense), so listing it underneath them would contradict
+    // the very figures it sits below.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }), REPAYMENT],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    expect(container.querySelector('.settle-history')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+
+    const card = container.querySelector('.settle-card') as HTMLElement;
+    expect(card.querySelector('.settle-history')).toBeNull();
+    // The debt is outstanding again in this scope, since the repayment that
+    // cleared it isn't food — which is exactly why there's no button here.
+    expect(within(card.querySelector('.settle-row') as HTMLElement).getByText('A$150')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: /Mark paid/ })).not.toBeInTheDocument();
   });
 
   it('still offers the undo when a repayment is the only expense left', () => {

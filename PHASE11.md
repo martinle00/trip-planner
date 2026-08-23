@@ -80,13 +80,15 @@ doing.
    rendering bug. "Fronted" says money actually left this person's pocket, which is
    the only kind that can be owed back, and the gold note names the difference.
 
-4. **Whole-trip, exempt from the filter bar.** Every other card on the tab rebases
-   onto the filtered set and wears a `Filtered` tag. This one prints an instruction
-   someone opens a banking app on, and "pay Priya A$40" derived from the
-   Shanghai-only subset is an instruction that is *wrong to follow*. With a filter
-   active it wears a `Whole trip` tag instead — the opposite claim, said out loud,
-   because otherwise it looks exactly like another filtered subtotal. Same
-   exemption the rates card already takes, for the same reason.
+4. **Two modes: whole-trip and actionable, or filtered and read-only.** *(Revised —
+   the card was originally exempt from the filter bar entirely; see "Following the
+   filter" below for what replaced that and why the original reasoning survives it.)*
+   With no filter it reads `expenses`, wears no tag, and offers `Mark paid` plus the
+   `Already settled` strip. With any filter on it rebases onto `visibleExpenses`,
+   wears the ordinary `Filtered` tag, names its scope in the heading — and withholds
+   both of those controls. The original danger was never *showing* a scoped figure;
+   it was showing one that looks exactly like the real one next to a button that
+   acts on it.
 
 5. **Exclusion buckets are a partition.** `unpaid` / `noPayer` / `orphanPayer` /
    `noRate` / `coversNobody`, tested in that order, at most one per expense — so
@@ -121,9 +123,14 @@ doing.
 - **Do not "fix" the two cards disagreeing about what a person paid.** It is
   decision 3, on purpose. Making the numbers match means either settling against
   unpaid bills (decision 2) or changing what `By person` reports.
-- **Do not switch the memo to `visibleExpenses`.** It reads like an oversight next
-  to every other memo on the tab, and it is decision 4. The `Whole trip` tag is the
-  paired half of that choice — removing one without the other is the actual bug.
+- **Do not re-enable `Mark paid` in the scoped mode.** The memo now switches between
+  `expenses` and `visibleExpenses` (decision 4), and the withheld button is what pays
+  for that. A repayment carries `category: 'Repayment'` and no city, so it falls out
+  of every filter that could have produced the debt it cleared: recording one from a
+  Food-only view would leave that view still demanding the money just handed over,
+  and the second payment looks entirely justified to whoever makes it. Making a
+  per-category settlement actionable means the repayment has to carry the scope it
+  settles — a schema change, not a UI one.
 - **Ties in `simplify()` are broken by member name then id, deliberately.** The
   instruction list has to be stable: an unrelated edit elsewhere must not reshuffle
   who is told to pay whom while someone is reading the card.
@@ -282,6 +289,64 @@ All six were fixed:
 
 ---
 
+## Part 3 — Following the filter
+
+The card originally sat outside the filter bar entirely (decision 4, as first
+written), on the grounds that "pay Priya A$40" derived from the Shanghai-only
+subset is an instruction that is wrong to follow. That reasoning is still correct.
+What it got wrong was the conclusion: it treated *seeing* a scoped figure and
+*acting* on one as the same thing, so the price of protecting the second was
+giving up the first — and "who owes whom for food" is a question people actually
+ask on a trip, and one nothing else on the tab could answer.
+
+So the exemption was replaced with a split. `settleFiltered` (just `filtersActive`)
+picks the expense set and the mode:
+
+| | no filter | any filter |
+|---|---|---|
+| source | `expenses` (transfers included) | `visibleExpenses` (transfer-free by construction) |
+| tag | none | `Filtered`, plus the scope named in the heading |
+| `Mark paid` | yes | **no** |
+| `Already settled` strip | yes | **no** |
+| net note | ends "…balances follow automatically" | ends at the netting |
+
+### Why the scoped mode is read-only
+
+**A repayment belongs to no category and no city.** `handleMarkSettled` writes
+`category: 'Repayment'` with no `city`, so the expense that clears a debt falls out
+of the very filter that produced it. Marking a Food-scoped debt paid would clear it
+in the whole-trip view and leave the Food view still asking for the same money —
+and a second payment made against a card that is still demanding it looks entirely
+justified to whoever makes it. That is the failure this card can least afford, and
+no tag or wording prevents it; only the absent button does.
+
+Two consequences worth naming:
+
+- **The button is withheld, not disabled.** A greyed control reads as "not yet";
+  the honest claim is "not from here", which is what the scope note says while
+  pointing back at the whole-trip view.
+- **The strip is hidden too, and for a different reason.** A scoped balance
+  correctly *excludes* the repayments (they aren't food), so listing them directly
+  beneath would contradict the figures they sit under. It also means the undo path
+  is filter-gated — which is why both the scope note and the filtered empty state
+  carry an explicit "Show the whole trip" button rather than relying on the filter
+  bar further up the page.
+
+### Scope wording
+
+`settleScopePhrase` joins the active axes with ` · ` ("Food", "Food · Shanghai",
+"Food · unpaid only"). The `NO_CITY` sentinel is spelled "expenses with no city"
+rather than reusing the filter's own **Whole trip** label: on this card that phrase
+already means the *unfiltered, actionable* view — the old tag — so borrowing it
+would name the scoped mode after the one thing it isn't.
+
+`paidFilter: 'unpaid'` legitimately empties the card (unpaid expenses are excluded
+from settlement anyway, decision 2). It lands on "Nothing to settle yet for unpaid
+only — N expenses not counted: N not marked paid yet", which is self-explaining,
+plus the way back.
+
+---
+
 ## Not done / possible next
 
 - **Nothing reconciles a partial repayment against a specific debt.** A transfer is
@@ -290,3 +355,8 @@ All six were fixed:
 - **Uneven splits.** Every split is per-head across the covered members; there are
   no shares/weights, and `coversMemberIds` cannot express one.
 - **Settling in a currency other than home.** Transfers are always home-currency.
+- **A scoped settlement can't be acted on.** Part 3's read-only mode is a
+  consequence of a repayment carrying no category or city. Making "settle the food
+  bill" a real action needs the transfer to record the scope it discharges — a
+  schema change, and one that then has to decide what a scoped repayment means for
+  the whole-trip balance.

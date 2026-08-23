@@ -91,7 +91,7 @@ function settlementExclusionReasons(x: SettlementExclusions): string[] {
  *  the group racked up against each other are collapsed to the fewest
  *  handovers, and an expense pointing the other way shrinks the number
  *  rather than adding a second one to remember. */
-function rebalanceNote(s: Settlement): string {
+function rebalanceNote(s: Settlement, scoped: boolean): string {
   const payments = `${s.transfers.length} payment${s.transfers.length === 1 ? '' : 's'}`;
   const bills = `${s.countedExpenses} expense${s.countedExpenses === 1 ? '' : 's'}`;
   if (s.rawObligations <= s.transfers.length) return `${payments} to settle ${bills}.`;
@@ -102,15 +102,40 @@ function rebalanceNote(s: Settlement): string {
   // it. The second sentence names its subject too — an unanchored "this
   // rebalances on its own" is the kind of vagueness that costs a card its
   // credibility when the number beside it is one you act on.
-  return (
-    `${bills} left ${s.rawObligations} separate debts between you, netted down to ${payments}. ` +
-    `Log an expense that covers someone back and these balances follow automatically.`
-  );
+  const netted = `${bills} left ${s.rawObligations} separate debts between you, netted down to ${payments}.`;
+  // ...but only in the whole-trip view. Scoped to a filter, this card is a
+  // breakdown rather than an instruction, and telling the reader their
+  // balances will "follow automatically" is an invitation to act on a
+  // subtotal — the exact thing the scope note below is there to prevent.
+  if (scoped) return netted;
+  return `${netted} Log an expense that covers someone back and these balances follow automatically.`;
 }
 
 /** City-filter sentinel for expenses with no city — the "Whole trip" bucket
  *  (flights, insurance). Not a real city name, so it can't collide with one. */
 const NO_CITY = '__none__';
+
+/**
+ * What the Settle-up card currently covers, as a noun phrase for its heading
+ * and its scope note ("Food", "Food · Chengdu").
+ *
+ * Only ever shown when a filter is on — with none it would read "who owes
+ * whom for everything", which is noise. The city sentinel is spelled out
+ * rather than reusing the filter's own "Whole trip" label: on THIS card that
+ * phrase already means the opposite (the unfiltered, actionable view), so
+ * borrowing it here would name the scoped view after the one it isn't.
+ */
+function settleScopePhrase(
+  city: string,
+  category: string,
+  paid: 'all' | 'paid' | 'unpaid',
+): string {
+  const parts: string[] = [];
+  if (category !== 'all') parts.push(category);
+  if (city !== 'all') parts.push(city === NO_CITY ? 'expenses with no city' : city);
+  if (paid !== 'all') parts.push(paid === 'paid' ? 'paid only' : 'unpaid only');
+  return parts.join(' · ');
+}
 
 type RatesState = 'loading' | 'error' | 'offline' | 'never' | 'stale' | 'fresh';
 
@@ -443,17 +468,33 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   // Settle up — who owes whom, netted (see lib/settlement.ts for the maths
   // and for why the netting is the "auto-rebalance").
   //
-  // Deliberately over `expenses`, NOT `visibleExpenses`: every other card on
-  // this tab rebases onto the filtered set and wears a "Filtered" tag, but
-  // those cards report a subtotal, and this one prints an instruction someone
-  // hands over money on. "Pay Priya A$40" computed from the Chengdu-only
-  // subset is an instruction that is wrong to follow, and the tag alone is a
-  // thin defence against acting on a number that looks exactly like the real
-  // one. Same exemption the rates card already takes, for the same reason.
+  // THE CARD HAS TWO MODES, and which one it is in is decided here:
+  //
+  //  - No filter → the whole trip, over `expenses` (transfers included, since
+  //    a repayment is exactly what clears a balance). This is the ACTIONABLE
+  //    mode: "Pay Priya A$40" is an instruction someone hands money over on.
+  //  - Any filter → `visibleExpenses`, so "who owes whom for Food" is
+  //    answerable. This mode is READ-ONLY (no Mark paid, no history strip),
+  //    which is what keeps the original safety rule intact: the danger was
+  //    never showing a scoped figure, it was showing one that looks exactly
+  //    like the real one next to a button that acts on it.
+  //
+  // The read-only half is not squeamishness. A repayment carries
+  // `category: 'Repayment'` and no city, so it falls OUT of every filter that
+  // could have produced the debt it cleared — recording one from a Food-only
+  // view would leave that view still demanding the payment that had just been
+  // made, which is how somebody pays twice.
+  //
+  // `visibleExpenses` is already transfer-free (it derives from
+  // `costExpenses`), so a scoped settlement reports `settledTransfers: 0` by
+  // construction and the history strip below has nothing to show anyway.
+  const settleFiltered = filtersActive;
+  const settleScope = settleFiltered ? visibleExpenses : expenses;
   const settlement = useMemo(
-    () => computeSettlement(expenses, trip?.members ?? [], trip ?? { rates: {} }),
-    [expenses, trip],
+    () => computeSettlement(settleScope, trip?.members ?? [], trip ?? { rates: {} }),
+    [settleScope, trip],
   );
+  const scopePhrase = settleScopePhrase(cityFilter, categoryFilter, paidFilter);
 
   // Sorted by CONVERTED home-currency amount (not raw amount — mixing raw
   // amounts across currencies isn't a meaningful order). No-rate expenses
@@ -1163,13 +1204,14 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
           data-settle-focus="settle-heading"
         >
           Settle up{' '}
-          {/* NOT the "Filtered" tag every other card wears — the opposite
-              claim. This card ignores the filter on purpose (see the memo),
-              so with a filter on it has to say which set it covers, or it
-              reads as another filtered subtotal. */}
-          {filtersActive && <span className="tag">Whole trip</span>}{' '}
+          {/* The card follows the filter now (see the memo), so it wears the
+              same "Filtered" tag as every other card that rebases. The tag
+              alone was never enough of a defence here, though — what it says
+              is only safe because the scoped mode withholds "Mark paid". */}
+          {settleFiltered && <span className="tag">Filtered</span>}{' '}
           <span style={{ textTransform: 'none', fontWeight: 600, color: 'var(--ink-faint)' }}>
-            &middot; who owes whom, in {trip.homeCurrency}
+            &middot; who owes whom{settleFiltered ? ` for ${scopePhrase}` : ''}, in{' '}
+            {trip.homeCurrency}
           </span>
         </div>
 
@@ -1206,17 +1248,27 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
              people to walk away owing each other real money. Say what is
              missing instead. */
           <p className="panel-hint" style={{ margin: '4px 0 2px' }}>
-            Nothing to settle yet
+            Nothing to settle yet{settleFiltered ? ` for ${scopePhrase}` : ''}
             {settleReasons.length > 0
               ? ` — ${settleExcluded} expense${settleExcluded === 1 ? '' : 's'} not counted: ${settleReasons.join(', ')}`
               : ' — no expenses to split'}
-            .
+            .{' '}
+            {/* Without this the filtered empty state is a dead end that looks
+                like the trip itself has nothing to settle. */}
+            {settleFiltered && (
+              <button type="button" className="rates-home-link" onClick={clearFilters}>
+                Show the whole trip
+              </button>
+            )}
           </p>
         ) : (
           <>
             {settlement.isSquare ? (
               <p className="settle-square">
-                <Icon name="check" /> All square &mdash; nobody owes anybody.
+                <Icon name="check" /> All square
+                {settleFiltered
+                  ? ` on ${scopePhrase} — nobody owes anybody for these.`
+                  : ' — nobody owes anybody.'}
               </p>
             ) : (
               <>
@@ -1252,29 +1304,57 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                             which cancels the debt through the ordinary balance
                             maths — see `handleMarkSettled`. Labelled "Mark
                             paid", not "Pay": the app moves no money and must
-                            not imply it did. */}
-                        <button
-                          type="button"
-                          className="btn btn-sm settle-mark-btn"
-                          data-settle-focus={`mark-${t.from.id}->${t.to.id}`}
-                          disabled={settlingKey === `${t.from.id}->${t.to.id}`}
-                          onClick={() => void handleMarkSettled(t)}
-                        >
-                          <Icon name="check" />
-                          <span>
-                            Mark paid
-                            <span className="visually-hidden">
-                              : {t.from.name} paid {t.to.name}{' '}
-                              {fmtMoney(t.amount, trip.homeCurrency)}
+                            not imply it did.
+                            ABSENT in the scoped mode — a repayment settles the
+                            whole-trip balance, never a category's slice of it,
+                            and the repayment it writes would vanish from the
+                            very filter that produced this row. Withheld
+                            entirely rather than shown disabled: a greyed
+                            button reads as "not yet", when the honest answer
+                            is "not from here". */}
+                        {!settleFiltered && (
+                          <button
+                            type="button"
+                            className="btn btn-sm settle-mark-btn"
+                            data-settle-focus={`mark-${t.from.id}->${t.to.id}`}
+                            disabled={settlingKey === `${t.from.id}->${t.to.id}`}
+                            onClick={() => void handleMarkSettled(t)}
+                          >
+                            <Icon name="check" />
+                            <span>
+                              Mark paid
+                              <span className="visually-hidden">
+                                : {t.from.name} paid {t.to.name}{' '}
+                                {fmtMoney(t.amount, trip.homeCurrency)}
+                              </span>
                             </span>
-                          </span>
-                        </button>
+                          </button>
+                        )}
                       </span>
                     </li>
                   ))}
                 </ol>
-                <p className="panel-hint settle-net-note">{rebalanceNote(settlement)}</p>
+                <p className="panel-hint settle-net-note">
+                  {rebalanceNote(settlement, settleFiltered)}
+                </p>
               </>
+            )}
+
+            {/* The whole reason the scoped mode is safe to show. These figures
+                are a SLICE of the trip's one balance, not a debt of their own,
+                and the difference matters the moment two people try to square
+                up category by category and hand over the same money twice. The
+                button is also the only route back to the actionable view and
+                to the "Already settled" strip, both of which the filter
+                hides. */}
+            {settleFiltered && (
+              <p className="panel-hint settle-net-note">
+                Part of the whole-trip balance, not a separate debt &mdash; these figures cover{' '}
+                <strong>{scopePhrase}</strong> only.{' '}
+                <button type="button" className="rates-home-link" onClick={clearFilters}>
+                  Show the whole trip to record a repayment
+                </button>
+              </p>
             )}
 
             <div className="field-label settle-balances-label">Balances</div>
@@ -1340,8 +1420,15 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                 a list of costs. That makes this strip the ONLY place one is
                 visible, and therefore the only place one can be undone: a
                 repayment recorded by mistake would otherwise be unreachable
-                and would silently hold a real debt at zero. */}
-            {recordedTransfers.length > 0 && (
+                and would silently hold a real debt at zero.
+
+                Hidden in the scoped mode, because a repayment belongs to no
+                category and no city: listing whole-trip handovers under a
+                "Food" heading would claim they were part of that slice, and
+                the balances above (which correctly exclude them) would then
+                contradict the strip right below. The scope note above carries
+                the route back to it. */}
+            {!settleFiltered && recordedTransfers.length > 0 && (
               <>
                 <div className="field-label settle-balances-label">
                   Already settled{' '}
