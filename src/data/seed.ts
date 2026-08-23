@@ -130,7 +130,7 @@ export function buildSeed(): TripSnapshot {
   }));
 
   return {
-    version: 5,
+    version: 6,
     trip,
     days,
     places,

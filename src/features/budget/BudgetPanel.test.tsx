@@ -1067,3 +1067,472 @@ describe('BudgetPanel — filters', () => {
     expect(visibleLabels()).toHaveLength(5);
   });
 });
+
+// ============================================================================
+// Settle up — who owes whom. The maths itself is covered exhaustively in
+// lib/settlement.test.ts; these cover the card's own decisions: the
+// whole-trip exemption from the filter bar, the states it can be in, and the
+// exclusion reporting that keeps "nothing to settle" from reading as
+// "settled".
+// ============================================================================
+describe('BudgetPanel — Settle up', () => {
+  const MEMBERS: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+
+  function exp(partial: Partial<Expense> & { id: string }): Expense {
+    return {
+      tripId: 'trip-test',
+      category: 'Food',
+      label: partial.id,
+      amount: 0,
+      currency: 'AUD',
+      paid: true,
+      ...partial,
+    };
+  }
+
+  function settleCard(container: HTMLElement): HTMLElement {
+    return container.querySelector('.settle-card') as HTMLElement;
+  }
+
+  it('asks for companions before it can say anything about who owes whom', () => {
+    resetStore({ expenses: [exp({ id: 'e1', amount: 100 })] });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    expect(
+      within(settleCard(container)).getByText(/Add at least two companions to track who owes whom/),
+    ).toBeInTheDocument();
+  });
+
+  it('opens Settings from that pointer — companions are edited there, not here', () => {
+    const onOpenSettings = vi.fn();
+    resetStore();
+    const { container } = render(<BudgetPanel onOpenSettings={onOpenSettings} />);
+
+    fireEvent.click(
+      within(settleCard(container)).getByRole('button', { name: 'Manage companions in Settings' }),
+    );
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('names who pays whom, how much, and shows the working behind each balance', () => {
+    // Alex fronts A$300 covering both; Priya has paid nothing.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' })],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = settleCard(container);
+
+    const row = card.querySelector('.settle-row') as HTMLElement;
+    expect(within(row).getByText('Alex')).toBeInTheDocument();
+    expect(within(row).getByText('Priya')).toBeInTheDocument();
+    expect(within(row).getByText('A$150')).toBeInTheDocument();
+
+    const alexBalance = within(card).getAllByText('Alex').at(-1)!.closest('.split-legend-row') as HTMLElement;
+    // Verb and figure are separate elements (different type faces), so
+    // assert on the composed text rather than a single text node.
+    expect((alexBalance.querySelector('.cat-amt-value') as HTMLElement).textContent).toBe(
+      'is owed A$150',
+    );
+    expect(within(alexBalance).getByText(/fronted A\$300 · share A\$150/)).toBeInTheDocument();
+  });
+
+  it('nets offsetting expenses down instead of listing both debts', () => {
+    // Alex covers Priya's A$80 dinner; Priya covers Alex's A$50 train. The
+    // card must show ONE A$30 payment, not two debts to remember.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 80, paidBy: 'm-alex', coversMemberIds: ['m-priya'] }),
+        exp({ id: 'e2', amount: 50, paidBy: 'm-priya', coversMemberIds: ['m-alex'] }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = settleCard(container);
+
+    const rows = card.querySelectorAll('.settle-row');
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0] as HTMLElement).getByText('A$30')).toBeInTheDocument();
+    expect(
+      within(card).getByText(/2 expenses left 2 separate debts between you, netted down to 1 payment/),
+    ).toBeInTheDocument();
+  });
+
+  it('reports all square once the offsetting expenses cancel exactly', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 80, paidBy: 'm-alex', coversMemberIds: ['m-priya'] }),
+        exp({ id: 'e2', amount: 80, paidBy: 'm-priya', coversMemberIds: ['m-alex'] }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = settleCard(container);
+
+    expect(within(card).getByText(/All square/)).toBeInTheDocument();
+    expect(card.querySelectorAll('.settle-row')).toHaveLength(0);
+    expect(within(card).getAllByText('square')).toHaveLength(2);
+  });
+
+  it('never reports "all square" when nothing qualified — it says what is missing', () => {
+    // The dangerous case: a whole trip logged without ticking "paid".
+    // Reporting that as settled sends people home owing each other money.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', paid: false }),
+        exp({ id: 'e2', amount: 40 }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = settleCard(container);
+
+    expect(within(card).queryByText(/All square/)).not.toBeInTheDocument();
+    expect(
+      within(card).getByText(/Nothing to settle yet — 2 expenses not counted: 1 not marked paid yet, 1 with no payer set/),
+    ).toBeInTheDocument();
+  });
+
+  it('names each exclusion reason separately alongside a real settlement', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }),
+        exp({ id: 'e2', amount: 500, currency: 'THB', paidBy: 'm-priya' }), // no rate
+        exp({ id: 'e3', amount: 99, paidBy: 'm-ghost' }), // former companion
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    expect(
+      within(settleCard(container)).getByText(
+        /2 expenses not counted — 1 paid by a former companion, 1 with no exchange rate/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('stays whole-trip while a city filter is on, and says so', () => {
+    // Every other card rebases onto the filtered set and wears "Filtered".
+    // This one prints an instruction someone hands money over on, so a
+    // Shanghai-only figure would be wrong to act on.
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [
+        exp({ id: 'e1', amount: 300, paidBy: 'm-alex', city: 'Shanghai' }),
+        exp({ id: 'e2', amount: 100, paidBy: 'm-alex', city: 'Singapore' }),
+      ],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Shanghai' } });
+
+    const card = settleCard(container);
+    expect(within(card).getByText('Whole trip')).toBeInTheDocument();
+    // A$400 total, split two ways -> Priya owes A$200, not A$150.
+    expect(within(card.querySelector('.settle-row') as HTMLElement).getByText('A$200')).toBeInTheDocument();
+  });
+});
+
+// ============================================================================
+// Phase 11 — recording a repayment. The rule that matters most here is
+// schema.ts's: a transfer is NOT spending, so it must be absent from every
+// cost total on this tab while still clearing the balance it was recorded
+// for.
+// ============================================================================
+describe('BudgetPanel — marking a debt paid', () => {
+  const MEMBERS: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+
+  function exp(partial: Partial<Expense> & { id: string }): Expense {
+    return {
+      tripId: 'trip-test',
+      category: 'Food',
+      label: partial.id,
+      amount: 0,
+      currency: 'AUD',
+      paid: true,
+      ...partial,
+    };
+  }
+
+  const REPAYMENT = exp({
+    id: 'r1',
+    category: 'Repayment',
+    label: 'Priya → Alex',
+    amount: 150,
+    paidBy: 'm-priya',
+    coversMemberIds: ['m-alex'],
+    isTransfer: true,
+  });
+
+  it('writes the handover as a transfer expense: debtor pays, creditor is the only one covered', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' })],
+      addExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(
+      within(container.querySelector('.settle-card') as HTMLElement).getByRole('button', {
+        name: /Mark paid/,
+      }),
+    );
+    await vi.waitFor(() => expect(addExpense).toHaveBeenCalledTimes(1));
+
+    expect(addExpense.mock.calls[0][0]).toMatchObject({
+      amount: 150,
+      currency: 'AUD',
+      paid: true,
+      paidBy: 'm-priya',
+      coversMemberIds: ['m-alex'],
+      isTransfer: true,
+    });
+  });
+
+  it('rounds the recorded amount to cents, not to the whole units it displays', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({} as Expense);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      // A$101 split two ways -> Priya owes 50.5 exactly.
+      expenses: [exp({ id: 'e1', amount: 101, paidBy: 'm-alex' })],
+      addExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(
+      within(container.querySelector('.settle-card') as HTMLElement).getByRole('button', {
+        name: /Mark paid/,
+      }),
+    );
+    await vi.waitFor(() => expect(addExpense).toHaveBeenCalledTimes(1));
+
+    expect(addExpense.mock.calls[0][0].amount).toBe(50.5);
+  });
+
+  it('clears the debt and reports the trip as square once recorded', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }), REPAYMENT],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = container.querySelector('.settle-card') as HTMLElement;
+
+    expect(within(card).getByText(/All square/)).toBeInTheDocument();
+    expect(card.querySelectorAll('.settle-row')).toHaveLength(0);
+  });
+
+  it('keeps a repayment out of EVERY cost total — it is not trip spending', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }), REPAYMENT],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    // Trip total stays A$300, not A$450.
+    const summary = container.querySelector('.summary-card') as HTMLElement;
+    expect(within(summary).getByText('A$300')).toBeInTheDocument();
+    expect(within(summary).queryByText('A$450')).not.toBeInTheDocument();
+
+    // By-person still credits Alex the A$300 he spent, and does not credit
+    // Priya the A$150 she handed back.
+    const byPerson = container.querySelector('.by-person-card') as HTMLElement;
+    const priyaRow = within(byPerson).getByText('Priya').closest('.split-legend-row') as HTMLElement;
+    expect(within(priyaRow).getByText('A$0')).toBeInTheDocument();
+
+    // Absent from the "All expenses" list (it shows in the Settle-up card's
+    // own history strip instead — that's the only place it belongs), and its
+    // "Repayment" category never becomes a filter chip.
+    const list = container.querySelector('.expense-list') as HTMLElement;
+    expect(within(list).getByText('e1')).toBeInTheDocument();
+    expect(within(list).queryByText('Priya → Alex')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Repayment/ })).not.toBeInTheDocument();
+  });
+
+  it('shows recorded repayments in their own strip, with an undo', async () => {
+    const removeExpense = vi.fn<TripState['removeExpense']>().mockResolvedValue(undefined);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }), REPAYMENT],
+      removeExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const history = container.querySelector('.settle-history') as HTMLElement;
+
+    expect(within(history).getByText('Priya → Alex')).toBeInTheDocument();
+    expect(within(history).getByText('A$150')).toBeInTheDocument();
+
+    fireEvent.click(within(history).getByRole('button', { name: /Undo/ }));
+    await vi.waitFor(() => expect(removeExpense).toHaveBeenCalledWith('r1'));
+  });
+
+  it('still offers the undo when a repayment is the only expense left', () => {
+    // A repayment on its own genuinely skews the balances, so the card must
+    // not fall into "nothing to settle" and hide the one control that
+    // reverses it.
+    resetStore({ trip: { ...BASE_TRIP, members: MEMBERS }, expenses: [REPAYMENT] });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+    const card = container.querySelector('.settle-card') as HTMLElement;
+
+    expect(within(card).queryByText(/Nothing to settle yet/)).not.toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: /Undo/ })).toBeInTheDocument();
+  });
+});
+
+// ============================================================================
+// Phase 11, post-UX-review. Both actions on the Settle-up card DESTROY the
+// control that was activated (the row moves between the payment list and the
+// settled strip), so focus and confirmation are not polish here — without
+// them a keyboard/screen-reader user is dropped to <body> in silence right
+// after committing a real repayment.
+// ============================================================================
+describe('BudgetPanel — Settle up: focus and confirmation', () => {
+  const MEMBERS: TripMember[] = [
+    { id: 'm-alex', name: 'Alex' },
+    { id: 'm-priya', name: 'Priya' },
+  ];
+
+  function exp(partial: Partial<Expense> & { id: string }): Expense {
+    return {
+      tripId: 'trip-test',
+      category: 'Food',
+      label: partial.id,
+      amount: 0,
+      currency: 'AUD',
+      paid: true,
+      ...partial,
+    };
+  }
+
+  const REPAYMENT = exp({
+    id: 'r1',
+    category: 'Repayment',
+    label: 'Priya → Alex',
+    amount: 150,
+    paidBy: 'm-priya',
+    coversMemberIds: ['m-alex'],
+    isTransfer: true,
+  });
+
+  it('moves focus to the new repayment\'s Undo after marking a debt paid', async () => {
+    // The store is stubbed, so drive the re-render by hand: mark paid, then
+    // push the created repayment into state the way the real action would.
+    const addExpense = vi
+      .fn<TripState['addExpense']>()
+      .mockImplementation(async () => {
+        useTripStore.setState((s) => ({ expenses: [...s.expenses, REPAYMENT] }));
+        return REPAYMENT;
+      });
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' })],
+      addExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(
+      within(container.querySelector('.settle-card') as HTMLElement).getByRole('button', {
+        name: /Mark paid/,
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const undo = container.querySelector('[data-settle-focus="undo-r1"]');
+      expect(undo).not.toBeNull();
+      expect(document.activeElement).toBe(undo);
+    });
+  });
+
+  it('hands focus back to the restored Mark paid button after an undo', async () => {
+    const removeExpense = vi.fn<TripState['removeExpense']>().mockImplementation(async () => {
+      useTripStore.setState((s) => ({ expenses: s.expenses.filter((e) => e.id !== 'r1') }));
+    });
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' }), REPAYMENT],
+      removeExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(
+      within(container.querySelector('.settle-history') as HTMLElement).getByRole('button', {
+        name: /Undo/,
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const mark = container.querySelector('[data-settle-focus="mark-m-priya->m-alex"]');
+      expect(mark).not.toBeNull();
+      expect(document.activeElement).toBe(mark);
+    });
+  });
+
+  it('falls back to the card heading when the action leaves no successor', async () => {
+    // Marking the ONLY debt paid collapses the list to "All square", so there
+    // is no Undo to land on until the strip renders — the heading is the
+    // last-resort target rather than <body>.
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue({
+      ...REPAYMENT,
+      id: 'not-in-state',
+    });
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' })],
+      addExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(
+      within(container.querySelector('.settle-card') as HTMLElement).getByRole('button', {
+        name: /Mark paid/,
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(
+        container.querySelector('[data-settle-focus="settle-heading"]'),
+      );
+    });
+  });
+
+  it('announces what was recorded, naming both people and the amount', async () => {
+    const addExpense = vi.fn<TripState['addExpense']>().mockResolvedValue(REPAYMENT);
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' })],
+      addExpense,
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    fireEvent.click(
+      within(container.querySelector('.settle-card') as HTMLElement).getByRole('button', {
+        name: /Mark paid/,
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const status = container.querySelector('.settle-card [role="status"]') as HTMLElement;
+      expect(status.textContent).toContain('Priya paid Alex A$150');
+    });
+  });
+
+  it('disables only the row being submitted, never every row at once', () => {
+    resetStore({
+      trip: { ...BASE_TRIP, members: MEMBERS },
+      expenses: [exp({ id: 'e1', amount: 300, paidBy: 'm-alex' })],
+    });
+    const { container } = render(<BudgetPanel onOpenSettings={() => {}} />);
+
+    // Nothing in flight -> the button is live. (The per-row scoping itself is
+    // the `settlingKey === key` comparison; this guards against the old
+    // `settlingKey !== null`, which greyed out unrelated debts.)
+    const mark = container.querySelector('[data-settle-focus="mark-m-priya->m-alex"]');
+    expect((mark as HTMLButtonElement).disabled).toBe(false);
+  });
+});

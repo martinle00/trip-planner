@@ -285,7 +285,7 @@ export function migrateExpenseV4ToV5(
   };
 }
 
-export function migrateSnapshotV4ToV5(snapshot: TripSnapshotV4): TripSnapshot {
+export function migrateSnapshotV4ToV5(snapshot: TripSnapshotV4): TripSnapshotV5 {
   const cityByDayId = new Map(snapshot.days.map((d) => [d.id, d.city]));
   return {
     version: 5,
@@ -294,6 +294,46 @@ export function migrateSnapshotV4ToV5(snapshot: TripSnapshotV4): TripSnapshot {
     places: snapshot.places,
     itinerary: snapshot.itinerary,
     expenses: snapshot.expenses.map((e) => migrateExpenseV4ToV5(e, cityByDayId)),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// v5 -> v6 migration (Phase 11 — settle up).
+//
+// v5 shape: no `Expense.isTransfer`.
+// v6 shape (current — see schema.ts): `isTransfer` added, optional, absent
+// meaning "an ordinary expense, not a repayment between companions". A v5
+// record is therefore ALREADY valid v6 data with the field simply absent —
+// a pure defaulting no-op, like the v3->v4 step above and unlike the
+// v1->v2/v2->v3/v4->v5 steps which had real per-record transforms. Still
+// written out explicitly rather than accepted inline in `parseSnapshot`, so
+// the version tag itself is corrected and this stays consistent with the
+// shape every other migration step in this file takes.
+//
+// Note what this deliberately does NOT do: it does not default `isTransfer`
+// to `false` on every row. Absent and `false` mean the same thing everywhere
+// that reads it (`!e.isTransfer`), and writing the field onto every imported
+// expense would bloat the export and make a v5 and a v6 export of identical
+// data differ for no reason.
+// ---------------------------------------------------------------------------
+
+interface TripSnapshotV5 {
+  version: 5;
+  trip: Trip;
+  days: Day[];
+  places: Place[];
+  itinerary: ItineraryItem[];
+  expenses: Expense[];
+}
+
+export function migrateSnapshotV5ToV6(snapshot: TripSnapshotV5): TripSnapshot {
+  return {
+    version: 6,
+    trip: snapshot.trip,
+    days: snapshot.days,
+    places: snapshot.places,
+    itinerary: snapshot.itinerary,
+    expenses: snapshot.expenses,
   };
 }
 
@@ -316,11 +356,12 @@ function normalizeExpensesCoversMemberIds(expenses: Expense[]): Expense[] {
 }
 
 /**
- * Parse a JSON string into a (current, v5-shaped) TripSnapshot, with minimal
- * shape validation. Accepts v1, v2, v3, v4 and v5 snapshot JSON — v1, v2, v3
- * and v4 are transparently migrated, chaining v1 -> v2 -> v3 -> v4 -> v5 for
+ * Parse a JSON string into a (current, v6-shaped) TripSnapshot, with minimal
+ * shape validation. Accepts v1 through v6 snapshot JSON — everything below
+ * v6 is transparently migrated, chaining v1 -> v2 -> v3 -> v4 -> v5 -> v6 for
  * a very old export (see migrateSnapshotV1ToV2/migrateSnapshotV2ToV3/
- * migrateSnapshotV3ToV4/migrateSnapshotV4ToV5 above). Throws if the JSON is
+ * migrateSnapshotV3ToV4/migrateSnapshotV4ToV5/migrateSnapshotV5ToV6 above).
+ * Throws if the JSON is
  * malformed, clearly not a trip snapshot, or carries a `version` this build
  * doesn't recognize (including a missing/undefined version) — an
  * unrecognized version is never silently trusted as the current shape.
@@ -346,16 +387,22 @@ export function parseSnapshot(json: string): TripSnapshot {
   const version = (parsed as { version?: unknown }).version;
   let snapshot: TripSnapshot;
   if (version === 1) {
-    snapshot = migrateSnapshotV4ToV5(
-      migrateSnapshotV3ToV4(migrateSnapshotV2ToV3(migrateSnapshotV1ToV2(parsed as TripSnapshotV1))),
+    snapshot = migrateSnapshotV5ToV6(
+      migrateSnapshotV4ToV5(
+        migrateSnapshotV3ToV4(migrateSnapshotV2ToV3(migrateSnapshotV1ToV2(parsed as TripSnapshotV1))),
+      ),
     );
   } else if (version === 2) {
-    snapshot = migrateSnapshotV4ToV5(migrateSnapshotV3ToV4(migrateSnapshotV2ToV3(parsed as TripSnapshotV2)));
+    snapshot = migrateSnapshotV5ToV6(
+      migrateSnapshotV4ToV5(migrateSnapshotV3ToV4(migrateSnapshotV2ToV3(parsed as TripSnapshotV2))),
+    );
   } else if (version === 3) {
-    snapshot = migrateSnapshotV4ToV5(migrateSnapshotV3ToV4(parsed as TripSnapshotV3));
+    snapshot = migrateSnapshotV5ToV6(migrateSnapshotV4ToV5(migrateSnapshotV3ToV4(parsed as TripSnapshotV3)));
   } else if (version === 4) {
-    snapshot = migrateSnapshotV4ToV5(parsed as TripSnapshotV4);
+    snapshot = migrateSnapshotV5ToV6(migrateSnapshotV4ToV5(parsed as TripSnapshotV4));
   } else if (version === 5) {
+    snapshot = migrateSnapshotV5ToV6(parsed as TripSnapshotV5);
+  } else if (version === 6) {
     snapshot = parsed as TripSnapshot;
   } else {
     throw new Error('parseSnapshot: unsupported snapshot version');

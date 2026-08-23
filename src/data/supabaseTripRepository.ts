@@ -213,6 +213,13 @@ interface ExpenseRow {
    *  of `TripMember.id`s, mapped straight through (no per-element mapping
    *  needed, unlike `cities`/`members`, since it's a flat string array). */
   covers_member_ids: string[] | null;
+  /** New in Phase 11 — marks a repayment between companions rather than a
+   *  trip cost (see schema.ts's `Expense.isTransfer`). `not null default
+   *  false` in Postgres (0008), so every pre-existing row reads back as an
+   *  ordinary expense without a backfill. Mapped to `undefined` rather than
+   *  `false` on the way out, so a round-trip through the remote doesn't start
+   *  writing the field onto every ordinary expense. */
+  is_transfer: boolean | null;
 }
 
 function expenseFromRow(row: ExpenseRow): Expense {
@@ -228,6 +235,7 @@ function expenseFromRow(row: ExpenseRow): Expense {
     paidBy: row.paid_by ?? undefined,
     city: row.city ?? undefined,
     coversMemberIds: row.covers_member_ids ?? undefined,
+    isTransfer: row.is_transfer ? true : undefined,
   };
 }
 
@@ -244,6 +252,7 @@ function expenseToRow(expense: Expense): ExpenseRow {
     paid_by: expense.paidBy ?? null,
     city: expense.city ?? null,
     covers_member_ids: expense.coversMemberIds ?? null,
+    is_transfer: expense.isTransfer ?? false,
   };
 }
 
@@ -446,7 +455,7 @@ export class SupabaseTripRepository implements TripRepository {
       this.listAllItinerary(trip.id),
       this.listExpenses(trip.id),
     ]);
-    return { version: 5, trip, days, places, itinerary, expenses };
+    return { version: 6, trip, days, places, itinerary, expenses };
   }
 
   async importSnapshot(snapshot: TripSnapshot): Promise<void> {

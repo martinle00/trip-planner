@@ -267,6 +267,13 @@ click, Escape, focus trap and focus restore — use it, don't rebuild it.
 **Inline `.add-form`** — always mounted, `display:none` until `.open`. The established
 pattern for add/edit forms embedded in a panel (see the Budget tab).
 
+**Instruction rows (`.settle-row`, Phase 11)** — a boxed `--paper-sunk` list item,
+evenly weighted, **no bar**. For content that is read once and acted on (the Settle-up
+card's "Sam → Alex A$317") rather than compared: encoding the amount as width invites
+reading debts against each other, when only each row's own figure matters. The amount
+takes `--gold-soft-ink` (owed), the all-square state `--jade-soft-ink` on `--jade-soft`
+— the §2 semantics, via their `-soft-ink` companions per the rule above.
+
 **Empty states** — dashed `--line-strong` border, `--paper-sunk` fill, centred icon at
 `opacity:.5`, a bold line and a `max-width:~30ch` explanation. Never a bare "No items".
 

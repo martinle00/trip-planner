@@ -249,13 +249,13 @@ describe('Dexie v1 -> v2 in-place migration (db.ts version(2).upgrade)', () => {
     expect(convert(50, 'AUD', trip!)).toBe(50);
   });
 
-  it('exportSnapshot on a migrated database produces a valid, self-consistent v5 snapshot', async () => {
+  it('exportSnapshot on a migrated database produces a valid, self-consistent current-version snapshot', async () => {
     await seedV1Database();
 
     const repo = new DexieTripRepository();
     const snapshot = await repo.exportSnapshot();
 
-    expect(snapshot.version).toBe(5);
+    expect(snapshot.version).toBe(6);
     expect(snapshot.trip.rates).toEqual({ CNY: 0.21, AUD: 1 });
     expect(snapshot.expenses.find((e) => e.id === 'exp-v1')).toMatchObject({ amount: 38, currency: 'CNY' });
   });
@@ -307,13 +307,13 @@ describe('Dexie v2 -> v3 in-place migration (db.ts version(3).upgrade)', () => {
     expect(noNote?.updatedAt).toBeDefined();
   });
 
-  it('exportSnapshot on a v2->v3-migrated database produces a valid v5 snapshot with no note field anywhere', async () => {
+  it('exportSnapshot on a v2->v3-migrated database produces a valid current-version snapshot with no note field anywhere', async () => {
     await seedV2Database();
 
     const repo = new DexieTripRepository();
     const snapshot = await repo.exportSnapshot();
 
-    expect(snapshot.version).toBe(5);
+    expect(snapshot.version).toBe(6);
     for (const place of snapshot.places) {
       expect((place as unknown as { note?: string }).note).toBeUndefined();
       expect(place.updatedAt).toBeDefined();
@@ -407,13 +407,13 @@ describe('Dexie v4 -> v5 in-place migration (db.ts version(5).upgrade)', () => {
     expect(noDay?.city).toBeUndefined();
   });
 
-  it('exportSnapshot on a v4->v5-migrated database produces a valid v5 snapshot', async () => {
+  it('exportSnapshot on a v4->v5-migrated database produces a valid current-version snapshot', async () => {
     await seedV4Database();
 
     const repo = new DexieTripRepository();
     const snapshot = await repo.exportSnapshot();
 
-    expect(snapshot.version).toBe(5);
+    expect(snapshot.version).toBe(6);
     expect(snapshot.expenses.find((e) => e.id === 'exp-with-day')).toMatchObject({ city: 'Shanghai' });
   });
 
