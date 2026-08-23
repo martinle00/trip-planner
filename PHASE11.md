@@ -205,6 +205,50 @@ to cancel it. Each settle row now carries **Mark paid**.
 
 ---
 
+## UX review (post-implementation)
+
+Reviewed by the `ux-reviewer` agent against `mockup/DESIGN-SYSTEM.md`, reading the
+implemented card plus rendered screenshots of all six states in both themes.
+Verdict: changes requested, 3 MAJOR / 2 MINOR / 1 NIT. Clean on the `-soft-ink`
+contrast rule, dark-theme parity, colour-never-sole-signifier, and component reuse.
+All six were fixed:
+
+1. **(MAJOR) Names truncated to "Priy…" in the payment row** — the one row read once
+   and acted on, and the one place the design gave names the *least* width, since the
+   row also carries a chevron, an amount and a button. Two companions with similar
+   names would have been told apart only by avatar colour, which §2 says is never a
+   sole signifier. Fixed in two stages, both content-triggered, no media query: the
+   amount + button drop to a second line together (`.settle-row-action`), and if two
+   long names still can't share a line the second party takes its own.
+   `flex-basis:auto` on `.settle-parties` is load-bearing — a fixed basis wrapped
+   *every* row, including the short-name two-companion case the app is actually for.
+2. **(MAJOR) `Mark paid` tap target below the app's own floor** — a bespoke
+   5px/11.5px shrink put the card's PRIMARY action near the 26px `.icon-btn` size §4
+   explicitly reserves for secondary destructive controls. Now `.btn-sm` metrics plus
+   `min-height:40px` (36px for `Undo`).
+3. **(MAJOR) Focus dropped after `Mark paid` / `Undo`** — both actions destroy the
+   element that was activated (the row moves between the payment list and the settled
+   strip), so focus fell to `<body>` in silence at the moment the user had just
+   committed a repayment. Focus now moves to the successor: the new repayment's
+   `Undo` after marking paid, the restored row's `Mark paid` after undoing, the card
+   heading (`tabIndex={-1}`, with a `:focus-visible` ring) when neither exists.
+4. **(MINOR) No confirmation** — added a `role="status"` live region naming both
+   people and the amount.
+5. **(MINOR) `rebalanceNote` exposed an undefined internal count** — "6 debts across
+   4 expenses" never said what a "debt" was or how it related to the expense count,
+   and "rebalances this on its own" had an unanchored subject. Rewritten to introduce
+   the relationship ("4 expenses left 6 separate debts between you…").
+6. **(NIT) All `Mark paid` buttons disabled together** — `settlingKey !== null`
+   greyed out unrelated debts; now scoped per row.
+
+> **Trap found while fixing #3:** the pending-focus target must be **state, not a
+> ref**. It is set *after* the awaited write, by which point the `expenses` change
+> has already rendered — an effect keyed on `expenses` reading a ref never fires,
+> because setting a ref schedules no render. Three tests failed on exactly this and
+> are what caught it; they now pin the behaviour.
+
+---
+
 ## Not done / possible next
 
 - **Nothing reconciles a partial repayment against a specific debt.** A transfer is

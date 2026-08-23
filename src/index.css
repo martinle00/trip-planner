@@ -1262,18 +1262,46 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    --gold/--jade on their own -soft background fails AA, which is the whole
    reason those tokens exist. */
 .settle-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+/* WRAPS, and the flex-basis on `.settle-parties` below is what makes it wrap
+   at the right moment. A phone-width row has to hold two names, a chevron, an
+   amount and a button; on one line the names are what give way, ellipsing to
+   "Priy…" / "Alexa…". That is the worst possible place on this card for
+   identity to blur -- this row is read once and acted on, and two companions
+   with similar names would then be told apart only by avatar colour, which
+   DESIGN-SYSTEM §2 says is never a sole signifier. Wrapping spends vertical
+   space (there are rarely more than two rows) to keep the names whole. */
 .settle-row{
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px;
   padding:9px 11px; border-radius:var(--radius-sm);
   background:var(--paper-sunk); border:1px solid var(--line);
 }
-.settle-parties{ display:flex; align-items:center; gap:7px; min-width:0; font-size:12.5px; font-weight:600; color:var(--ink); }
+/* `flex-basis:auto` — the preferred width is the NAMES' own width, so a row
+   that fits stays on one line ("Sam > Alex  A$317  [Mark paid]" needs 272 of
+   302 available px) and only a row that genuinely doesn't fit pushes the
+   amount + button to a second line together (they share
+   `.settle-row-action`). A fixed basis wrapped every row unconditionally,
+   including the two-companion short-name case this app is actually for.
+   `min-width` is the real floor: once wrapped, the names never get squeezed
+   below it. No media query — the trigger is the content's own width, so it
+   holds for long names on a wide screen too. */
+.settle-parties{ flex:1 1 auto; min-width:8rem; }
+.settle-row-action{ display:flex; align-items:center; gap:10px; margin-left:auto; flex:0 0 auto; }
+/* Wraps too, as a second stage. Moving the amount + button to their own line
+   (above) buys the names the full card width, which is enough for most long
+   names; two long ones together still don't fit side by side, and there the
+   second party drops to its own line rather than both ellipsing. Costs
+   nothing for ordinary names — they fit on one line and never trigger it. */
+.settle-parties{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 7px; min-width:0; font-size:12.5px; font-weight:600; color:var(--ink); }
 /* min-width:0 on BOTH the group and each party: two long names in a flex row
    on a 320px phone otherwise push the amount off the right edge instead of
    ellipsing, and the amount is the one part of the row that must never be
    the thing that gets cut. */
 .settle-party{ display:flex; align-items:center; gap:5px; min-width:0; }
-.settle-party > span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Ellipsis stays as the LAST resort — after the button has moved down and the
+   second party has taken its own line, a name long enough to still overflow
+   is one no layout was going to fit. `min-width:0` keeps the ellipsis working
+   inside the nested flex rather than overflowing the card. */
+.settle-party > span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .settle-arrow{ width:13px; height:13px; flex:none; color:var(--ink-faint); }
 .settle-amt{ font-family:var(--font-mono); font-weight:700; font-size:13px; white-space:nowrap; flex:none; color:var(--gold-soft-ink); }
 
@@ -1294,21 +1322,33 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
 /* "Mark paid" — a real action on an instruction row, so it gets a button
    rather than a link, but stays `.btn` default (not `.btn-primary`): the
    primary action on the Budget tab is "Add expense", and two accent fills
-   competing in one viewport reads as two equally urgent calls. */
-.settle-mark-btn{ flex:none; gap:5px; padding:5px 9px; font-size:11.5px; }
-.settle-mark-btn svg{ width:12px; height:12px; }
-/* The amount stops being flush-right once the button follows it, so it needs
-   its own breathing room rather than relying on `justify-content`. */
-.settle-row .settle-amt{ margin-left:auto; }
+   competing in one viewport reads as two equally urgent calls.
+
+   Keeps `.btn-sm`'s own metrics and only adds a `min-height`. An earlier
+   bespoke shrink (5px/11.5px) put it BELOW the app's smallest standard button
+   and near the 26px `.icon-btn` floor that §4 reserves for secondary
+   destructive actions in dense lists -- explicitly "not for a primary
+   action". This is the primary action of the whole card, tapped on a phone,
+   so it gets a 40px target instead. */
+.settle-mark-btn{ flex:none; gap:5px; min-height:40px; }
+.settle-mark-btn svg{ width:13px; height:13px; }
 
 /* Recorded repayments. Recessive on purpose — this is a receipt, not a
    figure to act on, and the only reason it is on screen at all is so a
    mistaken one can be undone. */
 .settle-history{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
-.settle-history-row{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); }
+.settle-history-row{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); min-height:36px; }
 .settle-history-label{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .settle-history-amt{ margin-left:auto; font-family:var(--font-mono); font-weight:600; white-space:nowrap; flex:none; }
-.settle-undo-btn{ flex:none; padding:3px 8px; font-size:11px; }
+/* Same reasoning as `.settle-mark-btn`: undoing a recorded repayment is
+   destructive and must not be a 3px-padded sliver on a phone. Kept visually
+   lighter than "Mark paid" via `.btn-ghost`, not via a smaller target. */
+.settle-undo-btn{ flex:none; min-height:36px; padding:4px 10px; font-size:11.5px; }
+
+/* Focused only programmatically (tabIndex -1), as the last-resort landing
+   spot after an action removes the control that was activated. It still needs
+   a visible ring: a keyboard user must be able to see where they ended up. */
+.settle-card .field-label:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
 
 .settle-net-verb{ font-family:var(--font-body); font-weight:600; }
 .settle-net-owing{ color:var(--gold-soft-ink); }

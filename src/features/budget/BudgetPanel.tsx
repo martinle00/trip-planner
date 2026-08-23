@@ -95,9 +95,16 @@ function rebalanceNote(s: Settlement): string {
   const payments = `${s.transfers.length} payment${s.transfers.length === 1 ? '' : 's'}`;
   const bills = `${s.countedExpenses} expense${s.countedExpenses === 1 ? '' : 's'}`;
   if (s.rawObligations <= s.transfers.length) return `${payments} to settle ${bills}.`;
+  // "N debts" is `rawObligations` — a count with no other presence on screen,
+  // so the sentence has to introduce it rather than assume it: "4 expenses
+  // left 6 debts between you" makes the relationship to the expense count
+  // explicit, where "6 debts across 4 expenses" left the reader to guess at
+  // it. The second sentence names its subject too — an unanchored "this
+  // rebalances on its own" is the kind of vagueness that costs a card its
+  // credibility when the number beside it is one you act on.
   return (
-    `${s.rawObligations} debts across ${bills} net down to ${payments} — ` +
-    `logging an expense that covers someone back rebalances this on its own.`
+    `${bills} left ${s.rawObligations} separate debts between you, netted down to ${payments}. ` +
+    `Log an expense that covers someone back and these balances follow automatically.`
   );
 }
 
@@ -164,10 +171,31 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   const online = useOnlineStatus();
 
   const [formOpen, setFormOpen] = useState(false);
-  /** The transfer row currently being written, so its button can show the
-   *  in-flight state. Offline this resolves immediately (the outbox takes the
-   *  write), so it is a guard against a double-tap rather than a spinner. */
+  /** The transfer row currently being written, keyed `from->to`, so only THAT
+   *  row's button shows the in-flight state. Offline this resolves immediately
+   *  (the outbox takes the write), so it is a guard against a double-tap
+   *  rather than a spinner — and two different debts being settled in quick
+   *  succession are independent, so one must not disable the other. */
   const [settlingKey, setSettlingKey] = useState<string | null>(null);
+  /** Spoken confirmation for "Mark paid" / "Undo". Both actions REMOVE the
+   *  row that was activated (it moves between the payment list and the
+   *  settled strip), so without this a screen-reader user gets silence at the
+   *  exact moment they've recorded money changing hands. */
+  const [settleStatus, setSettleStatus] = useState('');
+  /**
+   * `data-settle-focus` value to move focus to once the store write has
+   * re-rendered the card — see the effect below.
+   *
+   * STATE, not a ref, and that distinction is the whole mechanism: it is set
+   * AFTER the awaited write, by which point the expense-list change has
+   * already been rendered. A ref read by an effect keyed on `expenses` never
+   * fires — the render it would have needed has been and gone, and setting a
+   * ref schedules nothing. Making it state is what gives the effect a change
+   * to run on.
+   */
+  const [pendingSettleFocus, setPendingSettleFocus] = useState<string | null>(null);
+  const settleCardRef = useRef<HTMLDivElement>(null);
+  const settleHeadingRef = useRef<HTMLDivElement>(null);
   /** `null` = the form is in ADD mode; an id = editing that expense in
    *  place (Phase 5 item 4 — one inline form, two modes, not a second
    *  modal — see DESIGN-SYSTEM.md §4's `.add-form` entry). */
@@ -216,6 +244,33 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
     },
     [],
   );
+
+  /**
+   * Restores focus after a Settle-up action. "Mark paid" and "Undo" both
+   * destroy the element that was activated — the row moves between the
+   * payment list and the "Already settled" strip — so focus would otherwise
+   * fall back to <body>, silently, right after the user committed a real
+   * repayment.
+   *
+   * Focus lands on the SUCCESSOR of what was clicked (the new repayment's
+   * Undo after marking paid; the restored payment row's "Mark paid" after
+   * undoing), so the keyboard path stays where the user's attention already
+   * is and the action is immediately reversible again. The card heading is
+   * the fallback for when neither exists — e.g. marking the last debt paid
+   * collapses the list to "All square".
+   *
+   * Run from an effect rather than inline in the handler: the successor
+   * doesn't exist in the DOM until the store write has re-rendered.
+   */
+  useEffect(() => {
+    if (!pendingSettleFocus) return;
+    setPendingSettleFocus(null);
+    const target =
+      settleCardRef.current?.querySelector<HTMLElement>(
+        `[data-settle-focus="${pendingSettleFocus}"]`,
+      ) ?? settleHeadingRef.current;
+    target?.focus();
+  }, [pendingSettleFocus]);
 
   // ---- filters -------------------------------------------------------
   // Plain useState, not persisted — same as every other filter in the app
@@ -450,11 +505,12 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
   async function handleMarkSettled(transfer: SettlementTransfer) {
     if (!trip) return;
     setSettlingKey(`${transfer.from.id}->${transfer.to.id}`);
+    const amount = Math.round(transfer.amount * 100) / 100;
     try {
-      await addExpense({
+      const created = await addExpense({
         category: 'Repayment',
         label: `${transfer.from.name} → ${transfer.to.name}`,
-        amount: Math.round(transfer.amount * 100) / 100,
+        amount,
         currency: trip.homeCurrency,
         paid: true,
         paidBy: transfer.from.id,
@@ -465,9 +521,26 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
         coversMemberIds: [transfer.to.id],
         isTransfer: true,
       });
+      setSettleStatus(
+        `Recorded: ${transfer.from.name} paid ${transfer.to.name} ` +
+          `${fmtMoney(amount, trip.homeCurrency)}. Their balance is now settled.`,
+      );
+      setPendingSettleFocus(`undo-${created.id}`);
     } finally {
       setSettlingKey(null);
     }
+  }
+
+  /** Reverses a recorded repayment. The debt it cleared comes back, so focus
+   *  is handed to that restored row's "Mark paid" — the same control the user
+   *  originally pressed. */
+  async function handleUndoSettled(transfer: Expense) {
+    await removeExpense(transfer.id);
+    setSettleStatus(`Removed the repayment "${transfer.label}". That debt is outstanding again.`);
+    const creditor = transfer.coversMemberIds?.[0];
+    setPendingSettleFocus(
+      transfer.paidBy && creditor ? `mark-${transfer.paidBy}->${creditor}` : 'settle-heading',
+    );
   }
 
   function resetFormFields() {
@@ -1078,8 +1151,17 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
           fields (that card reads `paidBy` alone, this one reads `paidBy`,
           `coversMemberIds` and `paid` together) and a merged card would
           invite reading one figure as a breakdown of the other. */}
-      <div className="card cat-breakdown settle-card">
-        <div className="field-label" style={{ marginBottom: 10 }}>
+      <div className="card cat-breakdown settle-card" ref={settleCardRef}>
+        {/* tabIndex -1 so focus has somewhere sensible to land when the
+            control that was activated no longer exists and has no successor
+            — e.g. marking the last outstanding debt paid. */}
+        <div
+          className="field-label"
+          style={{ marginBottom: 10 }}
+          ref={settleHeadingRef}
+          tabIndex={-1}
+          data-settle-focus="settle-heading"
+        >
           Settle up{' '}
           {/* NOT the "Filtered" tag every other card wears — the opposite
               claim. This card ignores the filter on purpose (see the memo),
@@ -1090,6 +1172,14 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
             &middot; who owes whom, in {trip.homeCurrency}
           </span>
         </div>
+
+        {/* Both actions on this card destroy the row that was activated, so
+            the only other confirmation is a row appearing somewhere else on
+            screen. Announced rather than flashed: this is money changing
+            hands, and a screen-reader user gets nothing otherwise. */}
+        <p className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+          {settleStatus}
+        </p>
 
         {members.length < 2 ? (
           <p className="panel-hint" style={{ margin: '4px 0 2px' }}>
@@ -1149,27 +1239,37 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                           <span>{t.to.name}</span>
                         </span>
                       </span>
-                      <span className="settle-amt tabular">{fmtMoney(t.amount, trip.homeCurrency)}</span>
-                      {/* Records the handover as an `isTransfer` expense,
-                          which cancels the debt through the ordinary balance
-                          maths — see `handleMarkSettled`. Labelled "Mark
-                          paid", not "Pay": the app moves no money and must
-                          not imply it did. */}
-                      <button
-                        type="button"
-                        className="btn btn-sm settle-mark-btn"
-                        disabled={settlingKey !== null}
-                        onClick={() => void handleMarkSettled(t)}
-                      >
-                        <Icon name="check" />
-                        <span>
-                          Mark paid
-                          <span className="visually-hidden">
-                            : {t.from.name} paid {t.to.name}{' '}
-                            {fmtMoney(t.amount, trip.homeCurrency)}
+                      {/* Amount and button share one wrapper so the pair can
+                          drop to a second line together when the names need
+                          the width. Names ellipsing to "Priy…" is worst
+                          exactly here: this row is read once and acted on, so
+                          it is the one place identity has to be certain, and
+                          the avatar's colour is reinforcement, never the sole
+                          signifier. */}
+                      <span className="settle-row-action">
+                        <span className="settle-amt tabular">{fmtMoney(t.amount, trip.homeCurrency)}</span>
+                        {/* Records the handover as an `isTransfer` expense,
+                            which cancels the debt through the ordinary balance
+                            maths — see `handleMarkSettled`. Labelled "Mark
+                            paid", not "Pay": the app moves no money and must
+                            not imply it did. */}
+                        <button
+                          type="button"
+                          className="btn btn-sm settle-mark-btn"
+                          data-settle-focus={`mark-${t.from.id}->${t.to.id}`}
+                          disabled={settlingKey === `${t.from.id}->${t.to.id}`}
+                          onClick={() => void handleMarkSettled(t)}
+                        >
+                          <Icon name="check" />
+                          <span>
+                            Mark paid
+                            <span className="visually-hidden">
+                              : {t.from.name} paid {t.to.name}{' '}
+                              {fmtMoney(t.amount, trip.homeCurrency)}
+                            </span>
                           </span>
-                        </span>
-                      </button>
+                        </button>
+                      </span>
                     </li>
                   ))}
                 </ol>
@@ -1259,7 +1359,8 @@ export function BudgetPanel({ onOpenSettings }: BudgetPanelProps) {
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm settle-undo-btn"
-                        onClick={() => void removeExpense(t.id)}
+                        data-settle-focus={`undo-${t.id}`}
+                        onClick={() => void handleUndoSettled(t)}
                       >
                         Undo
                         <span className="visually-hidden"> repayment: {t.label}</span>

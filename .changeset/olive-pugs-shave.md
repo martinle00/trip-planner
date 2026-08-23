@@ -32,3 +32,8 @@ as its own kind of entry, so it settles the debt without counting as trip spendi
 your total, categories and per-person figures don't move, and it stays out of the
 expense list. Recorded repayments sit in an **Already settled** strip under the
 balances, where one recorded by mistake can be undone.
+
+Following a UX review: companion names in a payment row no longer truncate (the
+amount and button move to their own line instead), "Mark paid" and "Undo" got
+full-size tap targets, and both actions now confirm what they did and keep keyboard
+focus somewhere sensible instead of dropping it.

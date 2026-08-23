@@ -18,7 +18,7 @@ vite-plugin-pwa, hand-written CSS with design tokens (no Tailwind). Vitest + oxl
 npm run dev      # vite dev server (port 5173)
 npm run build    # tsc -b && vite build  — must pass before shipping
 npm run lint     # oxlint
-npm test         # vitest run  (775 tests as of this writing)
+npm test         # vitest run  (780 tests as of this writing)
 
 npm run changeset          # write an intent file for a change you just made
 npm run changeset:status   # what's pending for the next version
