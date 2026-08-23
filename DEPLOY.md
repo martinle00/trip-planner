@@ -158,6 +158,96 @@ Source: https://supabase.com/docs/guides/auth/rate-limits
 
 ---
 
+## 2.1 Automatic migrations (`.github/workflows/migrations.yml`)
+
+Migrations used to be pasted into the dashboard SQL editor by hand, which means
+the schema change and the code that needs it ship at different times — and the
+app breaks in between. `Supabase migrations` applies them on push to `master`.
+
+**It will not work until you do the two setup steps below.** The workflow's
+`preflight` job fails loudly with the exact command if you skip the second.
+
+### Step 1 — the `SUPABASE_DB_URL` secret
+
+Dashboard → **Connect** → **Session pooler** → copy the URI, put your database
+password in place of `[YOUR-PASSWORD]`, and save it as a repository secret named
+`SUPABASE_DB_URL` (Settings → Secrets and variables → Actions).
+
+> **Session pooler, not "Direct connection".** The direct host
+> (`db.<ref>.supabase.co`) resolves to **IPv6 only**, and GitHub's hosted
+> runners are IPv4-only — so the direct URI fails with a connection timeout
+> that reads like a firewall or a wrong password. The session pooler
+> (`aws-N-<region>.pooler.supabase.com`, port **5432**) is IPv4 and holds a
+> real session, which DDL needs. Don't use the **transaction** pooler
+> (port 6543) either: it can't carry the session state migrations rely on.
+
+### Step 2 — baseline the history, ONCE
+
+Supabase records applied migrations in `supabase_migrations.schema_migrations`.
+Migrations applied by hand never touched that table, so as far as the CLI is
+concerned **nothing has been applied** — and its first act would be to run
+`0001_init.sql` against a database that already has those tables, failing with
+`relation "trips" already exists`.
+
+Tell it the truth once, from your machine:
+
+```bash
+npx supabase migration repair --status applied \
+  0001 0002 0003 0004 0005 0006 0007 0008 \
+  --db-url "<the same Session pooler URI>"
+```
+
+List every migration you have already applied by hand. `repair` only writes the
+history table — it runs none of the SQL. Check it took:
+
+```bash
+npx supabase migration list --db-url "<URI>"   # every row should show a remote version
+```
+
+From then on `db push` applies only what is genuinely new.
+
+### What the workflow does
+
+| Job | When | What |
+| --- | --- | --- |
+| `verify` | every PR **and** every push touching `supabase/migrations/**` | Replays the **whole chain from nothing** against a throwaway Postgres 15 (with `.github/ci/auth-stub.sql` standing in for Supabase's `auth` schema), then re-applies the newest migration to prove it's idempotent. Holds **no** production credentials. |
+| `preflight` | push / manual only | Refuses to continue if the remote history was never baselined, printing the `repair` command above. |
+| `apply` | push / manual only | `db push --dry-run`, then `db push`, then prints the final state. |
+
+`verify` is the point of the whole thing: `db push` writes straight to
+production, so the chain is proved against a clean database first. A migration
+that only works against the author's already-drifted schema fails in CI instead
+of half-applying to the live project.
+
+### Wiring in an approval
+
+`apply` runs in the `production` GitHub Environment. With no protection rules it
+is fully automatic; add a required reviewer under Settings → Environments →
+`production` and every schema change waits for your click. No file change
+needed either way.
+
+### When a migration fails halfway
+
+Postgres runs each *statement* atomically but the CLI does not wrap a whole file
+in one transaction, so a failure can leave a file partly applied and **not**
+recorded in the history. Every migration in this repo is written to be
+idempotent (`add column if not exists`, `create or replace function`,
+`drop policy if exists`) precisely so the fix is to correct the SQL and re-run —
+which `verify` now checks on every change. If the history and the schema
+genuinely disagree, `migration repair --status applied|reverted <version>` is the
+tool for resyncing them.
+
+### The trap this cannot catch
+
+`create or replace function` replaces the **entire** body. A migration that
+edits `import_trip_snapshot` must be based on the file that *last defined it* —
+today `0008`, and the sequence so far is 0001 → 0004 → 0005 → 0008. Rebasing on
+an older copy silently reverts everything added since, and CI cannot see it:
+the SQL is valid and applies cleanly. See PHASE11.md, where exactly this
+happened.
+
+---
+
 ## 3. Cloudflare setup
 
 > **This project deploys via Cloudflare WORKERS (static assets), not classic

@@ -1,0 +1,181 @@
+# Applies new Supabase migrations automatically, so a schema change ships with
+# the commit that needs it instead of waiting on someone to remember to paste
+# SQL into the dashboard.
+#
+# ---------------------------------------------------------------------------
+# ONE-TIME SETUP — the workflow CANNOT work until this is done. See §"Automatic
+# migrations" in DEPLOY.md for the full walkthrough.
+#
+#   1. Secret `SUPABASE_DB_URL` = the project's **Session pooler** URI
+#      (Dashboard -> Connect -> Session pooler). NOT the "Direct connection"
+#      one: that host is IPv6-only and GitHub's runners are IPv4-only, so it
+#      fails with a connection timeout that looks like a firewall problem.
+#   2. Baseline the migration history ONCE, locally, or every run will try to
+#      re-apply 0001 against a database that already has those tables:
+#         npx supabase migration repair --status applied \
+#           0001 0002 0003 0004 0005 0006 0007 0008 --db-url "<same URI>"
+#      (List every migration already applied by hand. The `preflight` job
+#      below refuses to run and prints this command if it's been skipped.)
+# ---------------------------------------------------------------------------
+#
+# Why the `verify` job exists: `db push` applies straight to production, and a
+# migration that fails halfway leaves the schema in a state nothing in this
+# repo describes. So every run first replays the ENTIRE chain against a
+# throwaway Postgres — which catches a syntax error, a bad ordering, or a
+# migration that only works against the author's already-drifted database
+# BEFORE anything touches real data. On a pull request that is the whole job;
+# nothing is applied and no production credentials are read.
+
+name: Supabase migrations
+
+on:
+  push:
+    branches: [master]
+    paths: ['supabase/migrations/**']
+  pull_request:
+    paths: ['supabase/migrations/**']
+  workflow_dispatch:
+
+# Never let two applies overlap: `db push` is not safe to run concurrently
+# against the same database, and `cancel-in-progress` is deliberately FALSE —
+# killing a job mid-apply is the one thing worse than queueing.
+concurrency:
+  group: supabase-migrations
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Replay every migration from nothing. No production credentials here, on
+  # purpose — this job runs on pull requests too, and a schema check has no
+  # business holding the database password.
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Replay the whole chain on a clean database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Pin the MAJOR to what Supabase runs, so a syntax difference shows up
+        # here rather than in production.
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+        ports: ['5432:5432']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stub the parts of Supabase's `auth` schema the migrations use
+        run: psql "$DB" -v ON_ERROR_STOP=1 -f .github/ci/auth-stub.sql
+        env:
+          DB: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # In file order, stopping at the first failure. `ON_ERROR_STOP` matters:
+      # without it psql reports success after a failed statement.
+      - name: Apply every migration in order
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "::group::$f"
+            psql "$DB" -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
+        env:
+          DB: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Re-running the newest migration must be a no-op. Every migration in
+      # this repo is written to be idempotent (`if not exists`, `create or
+      # replace`, `drop policy if exists`), and that is what makes a half-
+      # finished apply safe to retry — which is exactly the situation this
+      # workflow can create.
+      - name: Re-apply the newest migration — it must be idempotent
+        run: |
+          newest="$(ls supabase/migrations/*.sql | tail -1)"
+          echo "Re-applying $newest"
+          psql "$DB" -v ON_ERROR_STOP=1 -f "$newest"
+        env:
+          DB: postgresql://postgres:postgres@localhost:5432/postgres
+
+  # ---------------------------------------------------------------------------
+  # Refuses to apply anything against a database whose migration history was
+  # never baselined. Without this the run fails deep inside 0001 with
+  # `relation "trips" already exists`, which reads like a broken migration
+  # rather than a missing one-time setup step.
+  # ---------------------------------------------------------------------------
+  preflight:
+    name: Check the remote migration history
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Fail early if the history table was never baselined
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Secret SUPABASE_DB_URL is not set. See the header of this workflow file."
+            exit 1
+          fi
+          supabase migration list --db-url "$SUPABASE_DB_URL" \
+            --output-format json > list.json
+          total=$(jq '.migrations | length' list.json)
+          unapplied=$(jq '[.migrations[] | select(.remote == "")] | length' list.json)
+          echo "Local migrations: $total · not recorded as applied remotely: $unapplied"
+          jq -r '.migrations[] | "  \(.local)  remote=\(if .remote == "" then "(none)" else .remote end)"' list.json
+
+          # Every single one unrecorded, with a schema this old, means the
+          # history table is empty — not that a fresh database needs every
+          # migration. Applying 0001 to the live project would fail on tables
+          # that already exist, so stop and say what to run instead.
+          if [ "$total" -gt 1 ] && [ "$total" -eq "$unapplied" ]; then
+            versions=$(jq -r '[.migrations[].local] | join(" ")' list.json)
+            echo "::error::Remote migration history is empty — nothing has been recorded as applied."
+            echo "If these migrations were applied by hand in the dashboard, baseline them ONCE:"
+            echo "  npx supabase migration repair --status applied $versions --db-url \"<SUPABASE_DB_URL>\""
+            echo "Only then will this workflow apply just the new ones."
+            exit 1
+          fi
+
+  apply:
+    name: Apply new migrations to Supabase
+    if: github.event_name != 'pull_request'
+    needs: preflight
+    runs-on: ubuntu-latest
+    # Gate this on a GitHub Environment so production DDL can require a manual
+    # approval (Settings -> Environments -> production -> required reviewers).
+    # Leaving the environment with no protection rules keeps it fully
+    # automatic; adding a reviewer later needs no change to this file.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Show what will be applied
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
+
+      # No `--include-all`: it would push a migration numbered BELOW one
+      # already applied, which for sequential numbering means someone's stale
+      # branch silently landing out of order. Without it such a migration is
+      # skipped and reported, which is the behaviour you want to notice.
+      - name: Apply
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
+
+      - name: Final migration state
+        if: always()
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase migration list --db-url "$SUPABASE_DB_URL"

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase CLI scratch dir (created by any local `supabase` command)
+supabase/.temp/
