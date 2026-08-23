@@ -205,6 +205,39 @@ to cancel it. Each settle row now carries **Mark paid**.
 
 ---
 
+## Migration 0008: the `create or replace` trap, walked into
+
+`0008` was first written by rebuilding `import_trip_snapshot`'s body from **0004**.
+That is the wrong base — **0005 redefined the function**, and rebasing on 0004 would
+have silently reverted both of 0005's changes:
+
+- capturing `v_owner` so a member importing a JSON backup **doesn't take ownership**
+  of the trip, and
+- re-inserting the `trip_collaborators` row that the `trips` delete cascaded away.
+
+Demonstrated against a real Postgres 16, not reasoned about: with the original 0008,
+a non-owner importing a snapshot ended up as `trips.user_id` and the collaborator
+count went to **0** — which, under `is_trip_member()` RLS, means every other person
+on the trip silently loses access to it. Invisible until someone imports.
+
+`0008` is now 0005's body verbatim plus the single `is_transfer` change (a diff of
+the two functions shows nothing else), and is idempotent.
+
+**Rule for the next migration that touches this function: diff against the file that
+LAST defined it, not against 0001.** Today that is 0008; the sequence so far is
+0001 → 0004 → 0005 → 0008.
+
+### Verified locally before hand-applying
+
+The whole chain 0001→0008 was replayed against a scratch Postgres 16 cluster with a
+minimal `auth` schema stub (`auth.uid()`, `auth.users`, the three roles) — all eight
+apply clean, `is_transfer` lands as `boolean not null default false`, re-running 0008
+is a no-op, a non-owner import leaves the creator and collaborators intact, and an
+`isTransfer: true` expense round-trips through the RPC while an ordinary one reads
+back `false`.
+
+---
+
 ## UX review (post-implementation)
 
 Reviewed by the `ux-reviewer` agent against `mockup/DESIGN-SYSTEM.md`, reading the
