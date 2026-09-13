@@ -306,3 +306,54 @@ describe('PlacesPanel — collapsing city sections', () => {
     expect(screen.queryByRole('button', { name: /Collapse all/ })).not.toBeInTheDocument();
   });
 });
+
+describe('PlacesPanel — every leg has a section', () => {
+  const WITH_EMPTY_LEG: Trip = {
+    ...TRIP,
+    cities: [...TRIP.cities, { name: 'Chongqing', order: 3, nights: 2, arrive: '2026-11-25', depart: '2026-11-27' }],
+  };
+
+  it('shows a leg with no saved places, saying so', () => {
+    useTripStore.setState({ trip: WITH_EMPTY_LEG });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const toggle = screen.getByRole('button', { name: /^Chongqing/ });
+    expect(toggle).toHaveTextContent('No places yet');
+    expect(screen.getByText(/Nothing saved for Chongqing yet/)).toBeInTheDocument();
+  });
+
+  it('shows the empty leg when the city filter picks it, instead of "no matches"', () => {
+    useTripStore.setState({ trip: WITH_EMPTY_LEG });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Chongqing' } });
+    expect(screen.getByText(/Nothing saved for Chongqing yet/)).toBeInTheDocument();
+    expect(screen.queryByText('No places match these filters')).not.toBeInTheDocument();
+  });
+
+  it('hides the empty leg once a category chip is on', () => {
+    useTripStore.setState({ trip: WITH_EMPTY_LEG });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    expect(screen.queryByRole('button', { name: /^Chongqing/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('PlacesPanel — follows the timeline city', () => {
+  it('scrolls to the focused city section', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<PlacesPanel onOpenAddPlace={() => {}} focusCity="Chengdu" />);
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.contexts[0]).toBe(document.getElementById('city-section-chengdu'));
+  });
+
+  it('clears a city filter for another city, and expands the focused section', () => {
+    const { rerender } = render(<PlacesPanel onOpenAddPlace={() => {}} focusCity="Shanghai" />);
+    fireEvent.click(screen.getByRole('button', { name: /^Chengdu/ }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Shanghai' } });
+    expect(screen.queryByText('Jinli Street')).not.toBeInTheDocument();
+
+    rerender(<PlacesPanel onOpenAddPlace={() => {}} focusCity="Chengdu" />);
+    expect(screen.getByRole('combobox')).toHaveValue('all');
+    expect(screen.getByRole('button', { name: /^Chengdu/ })).toHaveAttribute('aria-expanded', 'true');
+  });
+});

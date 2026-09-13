@@ -61,6 +61,11 @@ describe('categoryGroup', () => {
     expect(categoryGroup('')).toBeUndefined();
     expect(categoryGroup('Some Made Up Category')).toBeUndefined();
   });
+  it('groups accommodation spellings, including geocoder types, under Hotel', () => {
+    for (const cat of ['Accommodation', 'hostel', 'guest_house', 'Motel', 'apartment']) {
+      expect(categoryGroup(cat)).toBe('Hotel');
+    }
+  });
 });
 
 describe('categoryIcon', () => {

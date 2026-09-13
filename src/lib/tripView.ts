@@ -204,6 +204,17 @@ const CATEGORY_ICON: Record<string, string> = {
   subway: 'cat-transport',
   ferry: 'cat-transport',
   port: 'cat-transport',
+  hotel: 'cat-hotel',
+  accommodation: 'cat-hotel',
+  accomodation: 'cat-hotel',
+  hostel: 'cat-hotel',
+  guesthouse: 'cat-hotel',
+  'guest house': 'cat-hotel',
+  guest_house: 'cat-hotel',
+  motel: 'cat-hotel',
+  apartment: 'cat-hotel',
+  airbnb: 'cat-hotel',
+  lodging: 'cat-hotel',
 };
 
 export function categoryIcon(category?: string): string {
@@ -223,13 +234,14 @@ const ICON_TO_CANONICAL_CATEGORY: Record<string, string> = {
   'cat-entertainment': 'Entertainment',
   'cat-food': 'Food',
   'cat-transport': 'Transport',
+  'cat-hotel': 'Hotel',
 };
 
 /**
  * Canonical category group for a (possibly legacy/free-text) place category,
  * via the same icon-alias mapping `categoryIcon` uses — e.g. 'Sightseeing'
  * and 'Wildlife' group under 'Landmark' and 'Nature' respectively. Lets the
- * Places-tab category filter (which only offers the canonical 9) still match
+ * Places-tab category filter (which only offers the canonical 10) still match
  * pre-canonical seeded/imported data instead of silently omitting it.
  * Returns undefined for a missing or unrecognized category (never matches a
  * specific filter chip, same as `categoryIcon`'s 'pin' fallback).
@@ -240,14 +252,14 @@ export function categoryGroup(category?: string): string | undefined {
   return icon ? ICON_TO_CANONICAL_CATEGORY[icon] : undefined;
 }
 
-/** The canonical 9 place categories offered anywhere the user picks one (the
+/** The canonical 10 place categories offered anywhere the user picks one (the
  * Add Place modal, the Places-tab category filter). Older seeded/imported
  * places may carry a free-text category outside this list (e.g.
  * 'Sightseeing', 'Wildlife') — `categoryIcon` still resolves an icon for
  * those via aliasing, they just won't match a specific filter chip. */
 export const PLACE_CATEGORIES = [
   'Landmark', 'Nature', 'Garden', 'Museum', 'Street / Market', 'Shopping', 'Food', 'Entertainment',
-  'Transport',
+  'Transport', 'Hotel',
 ];
 
 /** Per-city accent palette for the Places tab (section left-border + dot),

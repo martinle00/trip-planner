@@ -73,18 +73,25 @@ describe('App — timeline drives the Map', () => {
     expect(screen.getByText('Suzhou', { selector: 'strong' })).toBeInTheDocument();
   });
 
-  it('switching to another tab first, then tapping the timeline, brings you back to Map (not Itinerary)', async () => {
+  it('tapping the timeline from Budget brings you back to Map', async () => {
     render(<App />);
     await screen.findByRole('tablist');
 
-    fireEvent.click(itineraryTab());
-    expect(itineraryTab()).toHaveAttribute('aria-selected', 'true');
-
-    const changshaNode = routeNode('Changsha');
-    fireEvent.click(changshaNode);
+    fireEvent.click(screen.getByRole('tab', { name: /Budget/ }));
+    fireEvent.click(routeNode('Changsha'));
 
     expect(mapTab()).toHaveAttribute('aria-selected', 'true');
-    expect(itineraryTab()).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it.each([/Itinerary/, /Places/])('tapping the timeline on %s stays there — that tab follows the city instead', async (name) => {
+    render(<App />);
+    await screen.findByRole('tablist');
+
+    fireEvent.click(screen.getByRole('tab', { name }));
+    fireEvent.click(routeNode('Changsha'));
+
+    expect(screen.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+    expect(routeNode('Changsha')).toHaveAttribute('aria-current', 'true');
   });
 
   it('the active city persists across tab switches (previews what Map will show)', async () => {

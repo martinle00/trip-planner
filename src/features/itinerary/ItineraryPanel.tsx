@@ -9,6 +9,7 @@ import { useTripStore } from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
 import { Modal } from '../../components/Modal';
 import { BackToTop } from '../../components/BackToTop';
+import { useFocusCity } from '../../hooks/useFocusCity';
 import { citySlug } from '../../components/RouteStrip';
 import type { Day, ID, ItineraryItem, Place } from '../../data/schema';
 import {
@@ -36,7 +37,13 @@ interface StopFormValues {
 // Mirrors the identical helper in RouteStrip.tsx/MapPanel.tsx — same
 // implementation, deliberately not extracted to a shared module (matching
 // the existing pattern in this codebase of a small local copy per file).
-export function ItineraryPanel() {
+interface ItineraryPanelProps {
+  /** The city selected in the topbar timeline. The panel scrolls to it on
+   *  arrival and whenever it changes. */
+  focusCity?: string;
+}
+
+export function ItineraryPanel({ focusCity }: ItineraryPanelProps = {}) {
   const trip = useTripStore((s) => s.trip);
   const days = useTripStore((s) => s.days);
   const places = useTripStore((s) => s.places);
@@ -85,6 +92,18 @@ export function ItineraryPanel() {
     setFlashDayId(target.id);
     window.setTimeout(() => setFlashDayId(null), 1800);
   }, [days]);
+
+  // A day-trip leg has no section of its own — its days sit nested under the
+  // base city — so it resolves to its first day, falling back to the parent
+  // city's section if it has no days yet.
+  useFocusCity(focusCity, (city) => {
+    const tripDay = days
+      .filter((d) => d.city === city && d.parentCity)
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (tripDay) return `it-day-${tripDay.id}`;
+    const leg = trip?.cities.find((c) => c.name === city);
+    return leg ? `it-${citySlug(leg.parentCity ?? leg.name)}` : null;
+  });
 
   const scrollToCity = useCallback((name: string) => {
     document.getElementById(`it-${citySlug(name)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

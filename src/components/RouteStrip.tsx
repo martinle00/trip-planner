@@ -22,7 +22,7 @@ interface RouteStripProps {
   cities: City[];
   /** The city currently selected on the Map (shared with MapPanel via App). */
   selectedCity: string;
-  /** Tapping a node selects that city on the Map and switches to the Map tab. */
+  /** Tapping a node selects that city — App decides which tab shows it. */
   onSelect: (cityName: string) => void;
   /** City names with an unsaved (staged, not yet committed) Map reassignment
    *  — draws a small gold dot on that node (see the Map save-changes spec,
@@ -65,7 +65,7 @@ export function RouteStrip({ cities, selectedCity, onSelect, pendingCities }: Ro
     <div
       ref={ref}
       className={`route-strip${hasOverflow ? ' has-overflow' : ''}`}
-      aria-label="Trip legs · tap a city to show it on the map"
+      aria-label="Trip legs · tap a city to jump to it"
     >
       {cities.map((city) => {
         const active = selectedCity === city.name;

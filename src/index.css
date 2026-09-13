@@ -833,6 +833,12 @@ select{ appearance:none; -webkit-appearance:none; padding-right:28px;
    scannable index of the trip. */
 .city-section-head{ margin-bottom:10px; }
 .city-section.is-collapsed .city-section-head{ margin-bottom:0; }
+/* Timeline focus (useFocusCity) lands a section under the sticky topbar,
+   tabbar and Add-place bar rather than behind them. */
+.city-section{ scroll-margin-top:calc(var(--topbar-h, 0px) + var(--tabbar-h, 0px) + var(--placesnav-h, 0px) + 12px); }
+/* A leg with nothing saved yet still gets a section, so the trip's city list
+   stays complete — this is its body. */
+.city-section-empty{ margin:0; font-size:13px; color:var(--ink-soft); }
 .city-section-toggle{
   display:flex; align-items:center; gap:8px; width:100%;
   background:none; border:none; padding:0; color:inherit; text-align:left; cursor:pointer;

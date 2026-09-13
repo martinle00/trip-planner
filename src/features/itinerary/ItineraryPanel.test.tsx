@@ -6,7 +6,7 @@
 // `useTripStore.setState` — no Dexie/IndexedDB involved.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ItineraryPanel } from './ItineraryPanel';
 import { useTripStore } from '../../store/useTripStore';
 import type { Day, ItineraryItem, Place, Trip } from '../../data/schema';
@@ -364,5 +364,38 @@ describe('ItineraryPanel — Add stop place picker', () => {
 
     expect(document.querySelector('.search-results')).toBeNull();
     expect(screen.getByLabelText('Title')).toHaveValue('Dinner booking');
+  });
+});
+
+describe('ItineraryPanel — follows the timeline city', () => {
+  const WITH_DAY_TRIP: Trip = {
+    ...TRIP,
+    cities: [
+      ...TRIP.cities,
+      { name: 'Suzhou', order: 2, nights: 0, arrive: '2026-11-08', depart: '2026-11-08', parentCity: 'Shanghai' },
+    ],
+  };
+  const DAY_TRIP_DAYS: Day[] = [...DAYS, { id: 'd2', tripId: 'trip-test', date: '2026-11-08', city: 'Suzhou', parentCity: 'Shanghai' }];
+
+  async function scrolledTo(focusCity: string): Promise<Element> {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<ItineraryPanel focusCity={focusCity} />);
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    return scrollIntoView.mock.contexts[0] as Element;
+  }
+
+  it('scrolls to a base city section', async () => {
+    expect(await scrolledTo('Shanghai')).toBe(document.getElementById('it-shanghai'));
+  });
+
+  it('scrolls a day-trip leg to its nested day', async () => {
+    useTripStore.setState({ trip: WITH_DAY_TRIP, days: DAY_TRIP_DAYS });
+    expect(await scrolledTo('Suzhou')).toBe(document.getElementById('it-day-d2'));
+  });
+
+  it('falls back to the parent city when the day trip has no days', async () => {
+    useTripStore.setState({ trip: WITH_DAY_TRIP });
+    expect(await scrolledTo('Suzhou')).toBe(document.getElementById('it-shanghai'));
   });
 });

@@ -231,11 +231,12 @@ function App() {
     }
   }, []);
 
-  /** The timeline's primary city-select action: switches to (or stays on)
-   *  the Map tab and shows that city there. */
+  /** The timeline's city-select action. On Places or Itinerary it stays put
+   *  and those tabs scroll to the city (they follow `selectedCity`); from
+   *  anywhere else it switches to the Map and shows that city there. */
   const selectCity = useCallback((cityName: string) => {
     setSelectedCityState(cityName);
-    setTab('map');
+    setTab((cur) => (cur === 'places' || cur === 'itinerary' ? cur : 'map'));
   }, []);
 
   /** "View on map" from a place's detail modal: the same city+tab handoff as
@@ -503,8 +504,8 @@ function App() {
               onSelectCity={selectCity}
             />
           )}
-          {tab === 'places' && <PlacesPanel onOpenAddPlace={openAddPlace} onViewOnMap={viewPlaceOnMap} />}
-          {tab === 'itinerary' && <ItineraryPanel />}
+          {tab === 'places' && <PlacesPanel onOpenAddPlace={openAddPlace} onViewOnMap={viewPlaceOnMap} focusCity={selectedCity} />}
+          {tab === 'itinerary' && <ItineraryPanel focusCity={selectedCity} />}
           {tab === 'budget' && <BudgetPanel onOpenSettings={() => setSettingsOpen(true)} />}
         </main>
       </div>

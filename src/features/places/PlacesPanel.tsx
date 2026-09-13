@@ -14,6 +14,7 @@ import type { CSSProperties } from 'react';
 import { useTripStore } from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
 import { BackToTop } from '../../components/BackToTop';
+import { useFocusCity } from '../../hooks/useFocusCity';
 import { citySlug } from '../../components/RouteStrip';
 import type { AddPlaceMode } from './AddPlaceModal';
 import { PlaceDetailModal } from './PlaceDetailModal';
@@ -40,9 +41,12 @@ interface PlacesPanelProps {
    *  singles out that place's pin once there. Optional so tests can render
    *  the panel standalone. */
   onViewOnMap?: (placeId: ID, city: string) => void;
+  /** The city selected in the topbar timeline. The panel scrolls to its
+   *  section on arrival and whenever it changes. */
+  focusCity?: string;
 }
 
-export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
+export function PlacesPanel({ onOpenAddPlace, onViewOnMap, focusCity }: PlacesPanelProps) {
   const trip = useTripStore((s) => s.trip);
   const places = useTripStore((s) => s.places);
   const days = useTripStore((s) => s.days);
@@ -60,6 +64,22 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
 
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
   const groups = useMemo(() => (trip ? groupPlacesByCity(places, trip.cities) : []), [places, trip]);
+
+  // Picking a city on the timeline must actually reveal it: a city filter set
+  // to some other leg would hide the section, and a section the user collapsed
+  // earlier would scroll into view showing nothing. The category filter is
+  // left alone — it's a deliberate narrowing that applies to every city.
+  useEffect(() => {
+    if (!focusCity) return;
+    setCityFilter((cur) => (cur === 'all' || cur === focusCity ? cur : 'all'));
+    setCollapsedCities((prev) => {
+      if (!prev.has(focusCity)) return prev;
+      const next = new Set(prev);
+      next.delete(focusCity);
+      return next;
+    });
+  }, [focusCity]);
+  useFocusCity(focusCity, (city) => `city-section-${citySlug(city)}`);
 
   // Seeds which places currently carry an unsaved local draft, once on
   // mount (e.g. after a full reload, so the "Draft" badge and the
@@ -127,11 +147,20 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
     setCategoryFilter('all');
   }
 
-  // Only the sections actually on screen (a city filtered down to nothing
-  // isn't rendered) count towards the all-or-nothing toggle.
-  const visibleCityNames = groups
-    .filter(({ places: cityPlaces }) => cityPlaces.some(matchesFilters))
-    .map(({ city: c }) => c.name);
+  // Every leg of the trip gets a section, including one with nothing saved
+  // yet — an added leg used to be invisible here until its first place, so
+  // the tab didn't read as the whole trip. A section still drops out when a
+  // filter is what emptied it: a category chip, or the city filter pointing
+  // at another city. The orphaned bucket only exists while it has places.
+  function sectionVisible({ city: c, places: cityPlaces, orphaned }: (typeof groups)[number]): boolean {
+    if (cityPlaces.some(matchesFilters)) return true;
+    return !orphaned && categoryFilter === 'all' && (cityFilter === 'all' || cityFilter === c.name);
+  }
+  const visibleGroups = groups.filter(sectionVisible);
+
+  // Only the sections actually on screen count towards the all-or-nothing
+  // toggle.
+  const visibleCityNames = visibleGroups.map(({ city: c }) => c.name);
   const allCollapsed = visibleCityNames.length > 0 && visibleCityNames.every((n) => collapsedCities.has(n));
 
   function toggleCity(name: string) {
@@ -161,7 +190,7 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
           `.add-card` that scrolled away. The filter bar right below
           deliberately stays non-sticky — see the CSS comment on
           `.places-add-quicknav`. */}
-      <div className="places-add-quicknav">
+      <div className="places-add-quicknav" id="placesAddQuickNav">
         <span className="places-add-quicknav-hint">Save a place you want to visit</span>
         {visibleCityNames.length > 1 && (
           <button className="btn btn-ghost btn-sm" onClick={toggleAllCities}>
@@ -208,7 +237,7 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
         </div>
       </div>
 
-      {totalVisible === 0 ? (
+      {visibleGroups.length === 0 ? (
         <div className="places-filter-empty" id="placesFilterEmpty">
           <Icon name="pin" />
           <strong>No places match these filters</strong>
@@ -217,9 +246,8 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
           </button>
         </div>
       ) : (
-        groups.map(({ city: c, places: cityPlaces, orphaned }) => {
+        visibleGroups.map(({ city: c, places: cityPlaces, orphaned }) => {
           const filtered = cityPlaces.filter(matchesFilters);
-          if (filtered.length === 0) return null;
           // An orphaned group's city isn't a leg, so it has no days — the
           // day dropdown on each card correctly comes up empty rather than
           // offering to assign a place to a trip it isn't on any more.
@@ -235,6 +263,7 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
           return (
             <div
               className={`city-section${collapsed ? ' is-collapsed' : ''}${orphaned ? ' is-orphaned' : ''}`}
+              id={`city-section-${citySlug(c.name)}`}
               key={c.name}
               style={{ ['--city-accent' as string]: accent } as CSSProperties}
             >
@@ -249,31 +278,39 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap }: PlacesPanelProps) {
                   <span className="city-dot" />
                   <span className="city-section-name">{c.name}</span>
                   <span className="count">
-                    {cityPlaces.length} place{cityPlaces.length === 1 ? '' : 's'} &middot;{' '}
-                    {orphaned
-                      ? 'city no longer on the trip'
-                      : assigned
-                        ? `${assigned} assigned`
-                        : 'not planned'}
+                    {cityPlaces.length === 0 ? (
+                      'No places yet'
+                    ) : (
+                      <>
+                        {cityPlaces.length} place{cityPlaces.length === 1 ? '' : 's'} &middot;{' '}
+                        {orphaned ? 'city no longer on the trip' : assigned ? `${assigned} assigned` : 'not planned'}
+                      </>
+                    )}
                   </span>
                   <Icon name="chevron-right" className={`section-chevron${collapsed ? '' : ' is-open'}`} />
                 </button>
               </h3>
-              <div className="place-grid" id={bodyId} hidden={collapsed}>
-                {filtered.map((p) => (
-                  <PlaceCard
-                    key={p.id}
-                    place={p}
-                    cityDays={cDays}
-                    legDays={cLegDays}
-                    dayColorMap={dayColorMap}
-                    hasDraft={draftPlaceIds.has(p.id)}
-                    onAssign={(dayId) => assignPlaceToDay(p.id, dayId)}
-                    onDelete={() => handleDelete(p.id)}
-                    onOpenDetail={() => setSelectedPlaceId(p.id)}
-                  />
-                ))}
-              </div>
+              {filtered.length === 0 ? (
+                <p className="city-section-empty" id={bodyId} hidden={collapsed}>
+                  Nothing saved for {c.name} yet &mdash; use Add place to start its list.
+                </p>
+              ) : (
+                <div className="place-grid" id={bodyId} hidden={collapsed}>
+                  {filtered.map((p) => (
+                    <PlaceCard
+                      key={p.id}
+                      place={p}
+                      cityDays={cDays}
+                      legDays={cLegDays}
+                      dayColorMap={dayColorMap}
+                      hasDraft={draftPlaceIds.has(p.id)}
+                      onAssign={(dayId) => assignPlaceToDay(p.id, dayId)}
+                      onDelete={() => handleDelete(p.id)}
+                      onOpenDetail={() => setSelectedPlaceId(p.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           );
         })

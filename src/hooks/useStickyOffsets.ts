@@ -13,6 +13,7 @@ export function useStickyOffsets(deps: unknown[]): void {
       const topbar = document.querySelector<HTMLElement>('.topbar');
       const tabbar = document.querySelector<HTMLElement>('.tabbar');
       const itnav = document.getElementById('itQuickNav');
+      const placesnav = document.getElementById('placesAddQuickNav');
       if (topbar) root.setProperty('--topbar-h', `${topbar.offsetHeight}px`);
       // Below the mobile breakpoint .tabbar becomes a fixed bottom dock (see
       // index.css's `@media (max-width:719px)` override) instead of sticky
@@ -27,6 +28,7 @@ export function useStickyOffsets(deps: unknown[]): void {
       const tabbarInTopStack = tabbar && getComputedStyle(tabbar).position !== 'fixed';
       root.setProperty('--tabbar-h', tabbarInTopStack ? `${tabbar!.offsetHeight}px` : '0px');
       root.setProperty('--itnav-h', itnav ? `${itnav.offsetHeight}px` : '0px');
+      root.setProperty('--placesnav-h', placesnav ? `${placesnav.offsetHeight}px` : '0px');
     }
 
     update();
@@ -36,7 +38,7 @@ export function useStickyOffsets(deps: unknown[]): void {
     let ro: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(update);
-      for (const sel of ['.topbar', '.tabbar', '#itQuickNav']) {
+      for (const sel of ['.topbar', '.tabbar', '#itQuickNav', '#placesAddQuickNav']) {
         const el = document.querySelector(sel);
         if (el) {
           ro.observe(el);

@@ -95,6 +95,10 @@ export function IconSprite() {
           <path d="M5 9h14" /><path d="M9 13h.01M15 13h.01" />
           <path d="M8 17l-2.5 4M16 17l2.5 4" />
         </symbol>
+        <symbol id="i-cat-hotel" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 5v14M3 17h18v2M21 17v-4a3 3 0 00-3-3h-8v7" />
+          <circle cx="6.5" cy="12" r="1.8" />
+        </symbol>
         <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
         </symbol>
