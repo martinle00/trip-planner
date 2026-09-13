@@ -45,19 +45,31 @@ function mapTab() {
   return screen.getByRole('tab', { name: /Map/ });
 }
 
-/** Assign (or reassign/unassign) a seeded place's day via its Places-tab
- *  card dropdown, matching the target option by its visible day label
- *  (e.g. /Day 1/, or /Wishlist/ to unassign). Waits for the change to
- *  actually commit (the store write is async). */
-async function assignViaPlacesTab(placeName: string, optionMatcher: RegExp) {
+/** Put a seeded place on exactly the days whose Places-tab chip label matches
+ *  one of `dayMatchers` (e.g. [/Day 1/]; [] to unassign), toggling one chip at
+ *  a time and waiting for each write to land — a chip computes its next set
+ *  from the saved one, so a click before the last write commits would drop it. */
+async function setDaysViaPlacesTab(placeName: string, dayMatchers: RegExp[]) {
   fireEvent.click(placesTab());
-  const select = (await screen.findByLabelText(
-    new RegExp(`Assign day for ${placeName}`),
-  )) as HTMLSelectElement;
-  const option = Array.from(select.options).find((o) => optionMatcher.test(o.textContent ?? ''));
-  if (!option) throw new Error(`No option matching ${optionMatcher} for ${placeName}`);
-  fireEvent.change(select, { target: { value: option.value } });
-  await waitFor(() => expect(select.value).toBe(option.value));
+  const group = await screen.findByRole('group', { name: `Days for ${placeName}` });
+  const chips = within(group).getAllByRole('button');
+  if (dayMatchers.some((m) => !chips.some((c) => m.test(c.getAttribute('aria-label') ?? '')))) {
+    throw new Error(`No day chip matching ${dayMatchers.join(', ')} for ${placeName}`);
+  }
+  // Turn the wanted days on before turning the others off, so a change of
+  // day never passes through "no days" on the way.
+  const wanted = (c: HTMLElement) => dayMatchers.some((m) => m.test(c.getAttribute('aria-label') ?? ''));
+  const order = [...chips.filter(wanted), ...chips.filter((c) => !wanted(c))];
+  for (const chip of order) {
+    const on = wanted(chip);
+    if ((chip.getAttribute('aria-pressed') === 'true') === on) continue;
+    fireEvent.click(chip);
+    await waitFor(() => expect(chip).toHaveAttribute('aria-pressed', String(on)));
+  }
+}
+
+async function assignViaPlacesTab(placeName: string, dayMatcher: RegExp) {
+  await setDaysViaPlacesTab(placeName, [dayMatcher]);
 }
 
 describe('Assign place to day — Places tab -> Itinerary tab', () => {
@@ -107,7 +119,7 @@ describe('Assign place to day — Places tab -> Itinerary tab', () => {
     fireEvent.click(itineraryTab());
     await screen.findByText('Marina Bay Sands');
 
-    await assignViaPlacesTab('Marina Bay Sands', /Wishlist/);
+    await setDaysViaPlacesTab('Marina Bay Sands', []);
 
     fireEvent.click(itineraryTab());
     await waitFor(() => {
@@ -149,6 +161,47 @@ describe('Assign place to day — Places tab -> Map day-view', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Day 2/ }));
     expect(await screen.findByText('Marina Bay Sands')).toBeInTheDocument();
+  });
+});
+
+describe('A place on several days', () => {
+  it('gets one stop on each chosen day, and dropping a day removes only that stop', async () => {
+    render(<App />);
+    await screen.findByRole('tablist');
+
+    await setDaysViaPlacesTab('Marina Bay Sands', [/Day 1/, /Day 2/]);
+
+    fireEvent.click(itineraryTab());
+    const titlesPerDay = () =>
+      Array.from(document.querySelectorAll('#it-singapore .it-day')).map((day) =>
+        Array.from(day.querySelectorAll('.stop-title')).map((n) => n.textContent),
+      );
+    await waitFor(() => {
+      const [day1, day2] = titlesPerDay();
+      expect(day1).toEqual(['Marina Bay Sands']);
+      expect(day2).toEqual(['Marina Bay Sands']);
+    });
+
+    await setDaysViaPlacesTab('Marina Bay Sands', [/Day 2/]);
+    fireEvent.click(itineraryTab());
+    await waitFor(() => {
+      const [day1, day2] = titlesPerDay();
+      expect(day1).toEqual([]);
+      expect(day2).toEqual(['Marina Bay Sands']);
+    });
+  });
+
+  it('shows on the Map day-view of every day it is on', async () => {
+    render(<App />);
+    await screen.findByRole('tablist');
+
+    await setDaysViaPlacesTab('Marina Bay Sands', [/Day 1/, /Day 2/]);
+
+    fireEvent.click(mapTab());
+    for (const day of [/Day 1/, /Day 2/]) {
+      fireEvent.click(await screen.findByRole('button', { name: day }));
+      expect(await screen.findByText('Marina Bay Sands')).toBeInTheDocument();
+    }
   });
 });
 
@@ -273,12 +326,14 @@ describe('Add stop picker — Itinerary tab -> Places tab', () => {
 
     // ...and the Places tab agrees, because the stop took the place with it.
     fireEvent.click(placesTab());
-    const select = (await screen.findByLabelText(
-      /Assign day for Marina Bay Sands/,
-    )) as HTMLSelectElement;
+    const group = await screen.findByRole('group', { name: 'Days for Marina Bay Sands' });
     await waitFor(() => {
-      const selected = select.options[select.selectedIndex];
-      expect(selected.textContent).toMatch(/Day 1/);
+      const on = within(group)
+        .getAllByRole('button')
+        .filter((c) => c.getAttribute('aria-pressed') === 'true')
+        .map((c) => c.getAttribute('aria-label'));
+      expect(on).toHaveLength(1);
+      expect(on[0]).toMatch(/Day 1/);
     });
   });
 

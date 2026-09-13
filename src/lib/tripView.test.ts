@@ -1,3 +1,4 @@
+import { placeCategories, withCategories } from '../data/schema';
 import { describe, expect, it } from 'vitest';
 import { buildSeed } from '../data/seed';
 import type { Day } from '../data/schema';
@@ -233,5 +234,18 @@ describe('groupPlacesByCity — orphaned places', () => {
     const orphan = groups.find((g) => g.orphaned)!;
     expect(orphan.city.order).toBeGreaterThan(Math.max(...cities.map((c) => c.order)) - 1);
     expect(groups.indexOf(orphan)).toBe(groups.length - 1);
+  });
+});
+
+describe('placeCategories / withCategories', () => {
+  it('falls back to the single legacy category, and de-duplicates', () => {
+    expect(placeCategories({ category: 'Food' })).toEqual(['Food']);
+    expect(placeCategories({ category: 'Hotel', categories: ['Hotel', 'Food', 'Hotel'] })).toEqual(['Hotel', 'Food']);
+    expect(placeCategories({})).toEqual([]);
+  });
+
+  it('keeps category equal to the first of categories', () => {
+    expect(withCategories({ name: 'x' }, ['Hotel', 'Food'])).toEqual({ name: 'x', category: 'Hotel', categories: ['Hotel', 'Food'] });
+    expect(withCategories({ category: 'Food' }, [])).toEqual({ category: undefined, categories: undefined });
   });
 });

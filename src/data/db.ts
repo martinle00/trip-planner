@@ -46,11 +46,15 @@ export interface PlaceDraft {
  */
 export interface StagedAssignment {
   placeId: ID;
-  /** The staged target day; `undefined` stages "unassign" (back to
+  /** LEGACY single staged day (see `dayIds`); `undefined` stages "unassign" (back to
    *  wishlist). Compared against the place's current SAVED `dayId` by
    *  `stagePlaceAssignment` -- if they end up equal, the staged row is
    *  deleted instead of written (nothing left to commit). */
   dayId?: ID;
+  /** Every staged day, chronological; empty stages "back to wishlist". Rows
+   *  written before a place could span several days carry only `dayId` —
+   *  read both through `stagedAssignmentsToRecord` in useTripStore.ts. */
+  dayIds?: ID[];
   /** The place's `City.name` at staging time -- lets discard/count-by-city
    *  scope correctly without cross-referencing the live places list. */
   city: string;

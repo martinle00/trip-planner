@@ -229,6 +229,12 @@ actions in dense lists, but **don't use it for a primary action.**
 universal container.
 
 **`.chip`** — filter toggles, pill-shaped, `.active` inverts to ink-on-paper.
+**`.choice-chip`** (`components/ChoiceChips.tsx`) — a multi-select *value* rather than a
+filter: a place's days and its categories. Smaller than `.chip` because a row of them sits
+inside a place card; `.is-on` inverts to ink-on-paper like `.chip.active`. Day chips carry
+their `--d-*` colour as a dot so they read the same as the pin. Same `aria-pressed` +
+`role="group"` rule as filter chips below; the group's accessible name says what it sets
+("Days for Yu Garden").
 **`.tag`** — 11px/700 non-interactive metadata label.
 **`.status-pill`** — state with a leading dot.
 

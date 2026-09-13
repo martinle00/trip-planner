@@ -428,16 +428,18 @@ describe('planJourneyEdit — the cascade', () => {
     expect(plan.orphanedExpenses.map((e) => e.id)).not.toContain('e-2');
   });
 
-  it('does not unassign a place that still has a stop on a surviving day', () => {
+  it('moves a place that still has a stop on a surviving day onto that day, instead of unassigning it', () => {
+    const shanghaiDayId = DAYS.find((d) => d.city === 'Shanghai')!.id;
     const alsoOnShanghai: ItineraryItem[] = [
       ...itinerary,
-      { id: 'i-4', dayId: DAYS.find((d) => d.city === 'Shanghai')!.id, placeId: 'p-hongya', title: 'Hongya', order: 1 },
+      { id: 'i-4', dayId: shanghaiDayId, placeId: 'p-hongya', title: 'Hongya', order: 1 },
     ];
     const plan = planJourneyEdit({
       nextCities: removeLeg(CITIES, 'Chongqing'), tripId, days: DAYS, places,
       itinerary: alsoOnShanghai, expenses, newId: idFactory(),
     });
-    expect(plan.placesToUnassign).toEqual([]);
+    expect(plan.placesToUnassign).toHaveLength(1);
+    expect(plan.placesToUnassign[0]).toMatchObject({ id: 'p-hongya', dayId: shanghaiDayId, status: 'planned' });
   });
 
   it('touches nothing when the edit adds days', () => {

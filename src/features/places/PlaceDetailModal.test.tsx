@@ -16,7 +16,7 @@
 // AddPlaceModal.test.tsx.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PlaceDetailModal } from './PlaceDetailModal';
 import { useTripStore } from '../../store/useTripStore';
 import type { PlaceDraft } from '../../data/draftRepository';
@@ -461,7 +461,7 @@ describe('PlaceDetailModal — editing name, category, city and location', () =>
     const name = screen.getByLabelText('Name') as HTMLInputElement;
     expect(name.value).toBe('Hongya Cave');
     expect(document.activeElement).toBe(name);
-    expect(screen.getByLabelText('Category')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Categories' })).toBeInTheDocument();
     expect(screen.getByLabelText('City')).toBeInTheDocument();
     // No second editor: exactly one save control, and no "Edit details".
     expect(screen.queryByRole('button', { name: /Edit details|Save details/ })).not.toBeInTheDocument();
@@ -492,7 +492,9 @@ describe('PlaceDetailModal — editing name, category, city and location', () =>
     await openEditor();
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Hongya Cave (night view)' } });
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Food' } });
+    const categories = within(screen.getByRole('group', { name: 'Categories' }));
+    // Adds Food alongside the place's existing Landmark rather than replacing it.
+    fireEvent.click(categories.getByRole('button', { name: 'Food' }));
     fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Chengdu' } });
     fireEvent.click(screen.getByRole('button', { name: /Change/ }));
     // Sydney: outside China, so no datum shift — the saved pair is exact.
@@ -505,7 +507,8 @@ describe('PlaceDetailModal — editing name, category, city and location', () =>
     expect(updatePlaceMock.mock.calls[0][0]).toMatchObject({
       id: 'place-1',
       name: 'Hongya Cave (night view)',
-      category: 'Food',
+      category: 'Landmark',
+      categories: ['Landmark', 'Food'],
       city: 'Chengdu',
       lat: -33.8688,
       lng: 151.2093,

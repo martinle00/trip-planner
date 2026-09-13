@@ -13,7 +13,7 @@
 // microtasks) instead.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { AddPlaceModal } from './AddPlaceModal';
 import { useTripStore } from '../../store/useTripStore';
 import type { TripState } from '../../store/useTripStore';
@@ -103,8 +103,12 @@ async function flush() {
 /** Category and City deliberately start empty (an unnoticed default is how
  *  a place ends up filed under the wrong city), and both are required to
  *  save — so every save-path test has to choose them explicitly. */
+function categoryChip(category: string) {
+  return within(screen.getByRole('group', { name: 'Categories' })).getByRole('button', { name: category });
+}
+
 function chooseCategoryAndCity(category = 'Landmark', city = 'Chengdu') {
-  fireEvent.change(screen.getByLabelText('Category'), { target: { value: category } });
+  fireEvent.click(categoryChip(category));
   fireEvent.change(screen.getByLabelText('City'), { target: { value: city } });
 }
 
@@ -235,17 +239,15 @@ describe('AddPlaceModal — category selector', () => {
   it('offers exactly the canonical 10 categories, in order, with nothing pre-selected — and "Neighbourhood" is gone', async () => {
     render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
 
-    const select = screen.getByLabelText('Category') as HTMLSelectElement;
-    const optionLabels = Array.from(select.options).map((o) => o.value);
-    // The leading '' is the "Choose a category…" placeholder.
-    expect(optionLabels[0]).toBe('');
-    expect(optionLabels.slice(1)).toEqual(PLACE_CATEGORIES);
-    expect(optionLabels.slice(1)).toEqual([
+    const chips = within(screen.getByRole('group', { name: 'Categories' })).getAllByRole('button');
+    const optionLabels = chips.map((c) => c.textContent);
+    expect(optionLabels).toEqual(PLACE_CATEGORIES);
+    expect(optionLabels).toEqual([
       'Landmark', 'Nature', 'Garden', 'Museum', 'Street / Market', 'Shopping', 'Food', 'Entertainment',
       'Transport', 'Hotel',
     ]);
     expect(optionLabels).not.toContain('Neighbourhood');
-    expect(select.value).toBe('');
+    expect(chips.every((c) => c.getAttribute('aria-pressed') === 'false')).toBe(true);
     expect((screen.getByLabelText('City') as HTMLSelectElement).value).toBe('');
   });
 
@@ -432,6 +434,29 @@ describe('AddPlaceModal — manual coordinates (Phase 4 item 9)', () => {
   });
 });
 
+describe('AddPlaceModal — several categories', () => {
+  it('saves every chosen category, the first picked as the primary', async () => {
+    render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Rooftop hotel' } });
+    fireEvent.click(categoryChip('Hotel'));
+    fireEvent.click(categoryChip('Food'));
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Chengdu' } });
+    fireEvent.click(screen.getByText('Save to wishlist'));
+    await flush();
+
+    expect(addPlaceMock.mock.calls[0][0]).toMatchObject({ category: 'Hotel', categories: ['Hotel', 'Food'] });
+  });
+
+  it('un-picking the only category blocks the save again', () => {
+    render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Somewhere' } });
+    chooseCategoryAndCity('Food');
+    fireEvent.click(categoryChip('Food'));
+    expect(screen.getByText('Save to wishlist').closest('button')).toBeDisabled();
+  });
+});
+
 describe('AddPlaceModal — required Category and City', () => {
   it('blocks the save until both are chosen, and names what is missing', async () => {
     render(<AddPlaceModal open mode="pin" point={{ lat: 1, lng: 1 }} defaultCity="Chengdu" onClose={() => {}} />);
@@ -441,7 +466,7 @@ describe('AddPlaceModal — required Category and City', () => {
     expect(save).toBeDisabled();
     expect(screen.getByText('Add a category and a city to save this place.')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Food' } });
+    fireEvent.click(categoryChip('Food'));
     expect(screen.getByText('Add a city to save this place.')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Shanghai' } });
@@ -473,6 +498,6 @@ describe('AddPlaceModal — required Category and City', () => {
     fireEvent.click(screen.getByText('Chengdu Panda Base'));
 
     expect((screen.getByLabelText('City') as HTMLSelectElement).value).toBe('Chengdu');
-    expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('');
+    expect(categoryChip('Food')).toHaveAttribute('aria-pressed', 'false');
   });
 });

@@ -36,6 +36,7 @@ import { OutboxTripRepository, applyOutboxEntry, sortForReplay } from '../data/o
 import * as exchangeRates from '../lib/exchangeRates';
 import { appendRemoteIfDifferent } from '../lib/proseMerge';
 import { reconcilePlaceDaysToItinerary } from '../lib/reconcilePlaceDays';
+import { buildPlaceDayIndex, sameDaySet, sortDayIds } from '../lib/placeDays';
 
 export interface TripState {
   // ---- data ----
@@ -100,7 +101,7 @@ export interface TripState {
    * `getEffectiveDayId`/`getStagedAssignmentCount*` helpers exported
    * alongside this store, rather than re-deriving the same lookups ad hoc.
    */
-  stagedAssignments: Record<ID, { dayId: ID | undefined; city: string }>;
+  stagedAssignments: Record<ID, { dayIds: ID[]; city: string }>;
 
   // ---- lifecycle ----
   /**
@@ -144,6 +145,16 @@ export interface TripState {
    *  stages the edit locally and only reaches this write path in a batch,
    *  via `saveStagedAssignments`, once the user hits Save. */
   assignPlaceToDay: (placeId: ID, dayId: ID | undefined) => Promise<void>;
+  /**
+   * Put a place on exactly these days (empty = back to wishlist). A place can
+   * span several days; each day gets one linked itinerary stop. Stops on days
+   * no longer chosen are MOVED onto newly chosen days where possible, so a
+   * start time or note set on them survives a change of day; any left over
+   * are deleted, and any still missing are created untimed. `place.dayId`
+   * keeps pointing at the day it already had if that's still chosen, else
+   * the earliest. `assignPlaceToDay` is this with one day.
+   */
+  setPlaceDays: (placeId: ID, dayIds: ID[]) => Promise<void>;
 
   // ---- Map: staged day-assignment edits ("Save changes" model) ----
   /**
@@ -157,7 +168,7 @@ export interface TripState {
    * reload before Save is ever pressed. No-ops if `placeId` isn't a known
    * place.
    */
-  stagePlaceAssignment: (placeId: ID, dayId: ID | undefined) => Promise<void>;
+  stagePlaceAssignment: (placeId: ID, dayIds: ID[]) => Promise<void>;
   /**
    * Discard every staged assignment scoped to ONE city; other cities' staged
    * assignments are untouched (Discard's scope is deliberately narrower than
@@ -351,10 +362,13 @@ function sortByOrder(items: ItineraryItem[]): ItineraryItem[] {
  *  `Record<placeId, ...>` shape `TripState.stagedAssignments` uses. */
 function stagedAssignmentsToRecord(
   entries: StagedAssignment[],
-): Record<ID, { dayId: ID | undefined; city: string }> {
-  const record: Record<ID, { dayId: ID | undefined; city: string }> = {};
+): TripState['stagedAssignments'] {
+  const record: TripState['stagedAssignments'] = {};
   for (const entry of entries) {
-    record[entry.placeId] = { dayId: entry.dayId, city: entry.city };
+    // A row staged by a build from before places could span several days
+    // carries a single `dayId` instead.
+    const dayIds = entry.dayIds ?? (entry.dayId ? [entry.dayId] : []);
+    record[entry.placeId] = { dayIds, city: entry.city };
   }
   return record;
 }
@@ -630,15 +644,28 @@ export function resetTripStoreForSignOut(): void {
 // copy in sync.
 // ---------------------------------------------------------------------------
 
-/** Effective (about-to-be-shown) dayId for a place: the staged value if one
- *  is pending, otherwise the place's own saved `dayId`. Lets the Map render
- *  a pin at its staged day/colour immediately, without waiting for Save. */
+/** Effective (about-to-be-shown) PRIMARY day for a place — what colours its
+ *  pin: its saved `dayId` unless a staged change is pending, in which case the
+ *  staged day it already had if that's still among them, else the earliest
+ *  staged day. Lets the Map recolour a pin immediately, without waiting for
+ *  Save. */
 export function getEffectiveDayId(
   place: Place,
   stagedAssignments: TripState['stagedAssignments'],
 ): ID | undefined {
   const staged = stagedAssignments[place.id];
-  return staged ? staged.dayId : place.dayId;
+  if (!staged) return place.dayId;
+  return place.dayId && staged.dayIds.includes(place.dayId) ? place.dayId : staged.dayIds[0];
+}
+
+/** Every day a place is effectively on: the staged set if a change is
+ *  pending, else its saved days (`buildPlaceDayIndex`). */
+export function getEffectiveDayIds(
+  place: Place,
+  stagedAssignments: TripState['stagedAssignments'],
+  savedDayIndex: Map<ID, ID[]>,
+): ID[] {
+  return stagedAssignments[place.id]?.dayIds ?? savedDayIndex.get(place.id) ?? [];
 }
 
 /** Total number of staged (unsaved) day assignments across every city. */
@@ -686,6 +713,63 @@ function subscribeToOutboxOnce(): void {
   onOutboxChange(() => {
     void useTripStore.getState().refreshPendingCount();
   });
+}
+
+/**
+ * `setPlaceDays` without the `runExclusive` wrapper — see its comment in the
+ * store body for the ordering rules. Module-level (reading the store through
+ * `useTripStore`) so both `setPlaceDays` and `assignPlaceToDay` can queue it
+ * on the same lock without one calling the other and deadlocking.
+ */
+async function setPlaceDaysUnlocked(placeId: ID, requestedDayIds: ID[]): Promise<void> {
+  const get = useTripStore.getState;
+  const existing = get().places.find((p) => p.id === placeId);
+  if (!existing) return;
+
+  const dateOf = new Map(get().days.map((d) => [d.id, d.date]));
+  const target = sortDayIds(requestedDayIds, dateOf);
+  const linkedByDay = new Map<ID, ItineraryItem[]>();
+  for (const [dayId, items] of Object.entries(get().itineraryByDay)) {
+    const linked = items.filter((i) => i.placeId === placeId);
+    if (linked.length > 0) linkedByDay.set(dayId, linked);
+  }
+  const current = [...linkedByDay.keys()];
+
+  const primary = existing.dayId && target.includes(existing.dayId) ? existing.dayId : target[0];
+  const status: Place['status'] = primary ? 'planned' : 'wishlist';
+
+  // Nothing to do at all — checked before any write so a retry, or the same
+  // staged batch applied twice, never bumps `updatedAt` for nothing (that
+  // could spuriously trip `updatePlaceIfUnchanged`'s conflict detection for
+  // an unrelated prose draft in flight on this place).
+  if (sameDaySet(target, current) && existing.dayId === primary && existing.status === status) return;
+
+  if (existing.dayId !== primary || existing.status !== status) {
+    const updated: Place = { ...existing, dayId: primary, status, updatedAt: new Date().toISOString() };
+    await tripRepository.upsertPlace(updated);
+    mutationVersion++;
+    useTripStore.setState((s) => ({ places: s.places.map((p) => (p.id === placeId ? updated : p)) }));
+  }
+
+  const dropped = current.filter((d) => !target.includes(d));
+  const added = target.filter((d) => !linkedByDay.has(d));
+  // Primary first: once its stop exists, `addItineraryItem` sees the place
+  // as linked there and leaves `place.dayId` alone for the rest.
+  added.sort((a, b) => (a === primary ? -1 : b === primary ? 1 : 0));
+
+  for (const dayId of added) {
+    const donorDay = dropped.shift();
+    if (donorDay) {
+      const [toMove, ...extras] = linkedByDay.get(donorDay) ?? [];
+      await get().updateItineraryItem({ ...toMove, dayId });
+      await Promise.all(extras.map((extra) => get().removeItineraryItem(extra.id)));
+    } else {
+      await get().addItineraryItem({ dayId, placeId, title: existing.name });
+    }
+  }
+  for (const dayId of dropped) {
+    await Promise.all((linkedByDay.get(dayId) ?? []).map((item) => get().removeItineraryItem(item.id)));
+  }
 }
 
 export const useTripStore = create<TripState>((set, get) => ({
@@ -931,103 +1015,36 @@ export const useTripStore = create<TripState>((set, get) => ({
     });
   },
 
-  // Assigning/reassigning/unassigning a place to a day keeps a single linked
-  // ItineraryItem (item.placeId === placeId) in sync with the place's dayId,
-  // so the day's plan (Map day-view + Itinerary tab) reflects the change —
-  // mirroring the pattern applyAutoPlan already uses. The link is identified
-  // purely by placeId + dayId (not by remembering "the" item across calls),
-  // so:
-  //  - assign (wishlist -> day D): create one untimed linked stop on D,
-  //    UNLESS one already exists on D (e.g. auto-plan already linked it) —
-  //    in that case the existing item (and any startTime/note on it) is left
-  //    untouched, avoiding a duplicate.
-  //  - reassign (day A -> day B): the linked item is *moved* (its `dayId` is
-  //    updated and it's appended to the end of B's order) — any startTime/
-  //    note/durationMin previously set on it is preserved. If B already has
-  //    its own linked item for this place, the moved item is dropped instead
-  //    (no duplicate) and B's existing item wins.
-  //  - unassign (day A -> wishlist): the linked item is deleted outright.
+  // A place's days are the days its linked itinerary stops are on — the
+  // itinerary is the source of truth (see reconcilePlaceDays.ts), and
+  // `place.dayId`/`status` are its cache. This keeps both sides in step:
+  //  - the place is written FIRST, with its final primary day. Every inline
+  //    place-side write in add/update/removeItineraryItem only fires when the
+  //    place points at the day being touched, so pointing it at a day that
+  //    stays chosen up front keeps all of them quiet.
+  //  - newly chosen days are filled primary-first, reusing (moving) a stop
+  //    from a day that was dropped when there is one, so a start time or note
+  //    isn't lost to a change of day. Days still missing a stop get an
+  //    untimed one; dropped days with nothing left to reuse lose theirs.
+  //  - a day that stays chosen is left exactly as it is, duplicates included.
   //
-  // Wrapped in runExclusive: this whole read-then-write sequence is
-  // serialized against other assignPlaceToDay/applyAutoPlan calls, so two
-  // overlapping invocations (e.g. rapid day-dropdown changes) can't both
-  // read "no existing link" before either writes — the second one always
-  // observes the first's completed write and updates/moves it instead of
-  // creating a duplicate.
+  // Wrapped in runExclusive: the read-then-write sequence is serialized
+  // against other assignments and applyAutoPlan, so two overlapping calls
+  // (rapid toggles) can't both read "no stop on this day" and create two.
+  setPlaceDays: (placeId, dayIds) => runExclusive(() => setPlaceDaysUnlocked(placeId, dayIds)),
+
   assignPlaceToDay: (placeId, dayId) =>
-    runExclusive(async () => {
-      const existing = get().places.find((p) => p.id === placeId);
-      if (!existing) return;
-      const oldDayId = existing.dayId;
+    runExclusive(() => setPlaceDaysUnlocked(placeId, dayId ? [dayId] : [])),
 
-      if (oldDayId === dayId) {
-        // No actual day change (incl. undefined -> undefined): nothing to
-        // write or link/unlink. Checked BEFORE the write below (not after)
-        // so a no-op re-assignment (e.g. a retry, or re-applying the same
-        // staged batch entry twice) never bumps `updatedAt` for nothing --
-        // that write would be silently discarded here anyway, but it could
-        // still spuriously trip `updatePlaceIfUnchanged`'s conflict
-        // detection for an unrelated, genuinely in-flight prose draft on
-        // this same place.
-        return;
-      }
-
-      const updated: Place = {
-        ...existing,
-        dayId,
-        status: dayId ? 'planned' : 'wishlist',
-        updatedAt: new Date().toISOString(),
-      };
-      await tripRepository.upsertPlace(updated);
-      mutationVersion++;
-      set((s) => ({
-        places: s.places.map((p) => (p.id === placeId ? updated : p)),
-      }));
-
-      const linkedOnOldDay = oldDayId
-        ? (get().itineraryByDay[oldDayId] ?? []).filter((i) => i.placeId === placeId)
-        : [];
-
-      if (!dayId) {
-        // Unassign: drop the linked stop(s) entirely.
-        await Promise.all(linkedOnOldDay.map((item) => get().removeItineraryItem(item.id)));
-        return;
-      }
-
-      const linkedOnNewDay = (get().itineraryByDay[dayId] ?? []).filter(
-        (i) => i.placeId === placeId,
-      );
-
-      if (linkedOnNewDay.length > 0) {
-        // Target day already has a linked stop for this place (e.g. from
-        // auto-plan) — keep it, and drop any stray link left on the old day.
-        await Promise.all(linkedOnOldDay.map((item) => get().removeItineraryItem(item.id)));
-        return;
-      }
-
-      if (linkedOnOldDay.length > 0) {
-        // Move: relocate the existing linked item to the new day, appended
-        // at the end (updateItineraryItem auto-appends on a cross-day
-        // move), preserving any customizations it already had.
-        const [toMove, ...extras] = linkedOnOldDay;
-        await get().updateItineraryItem({ ...toMove, dayId });
-        await Promise.all(extras.map((extra) => get().removeItineraryItem(extra.id)));
-        return;
-      }
-
-      // No existing linked item anywhere — create a fresh untimed stop.
-      await get().addItineraryItem({
-        dayId,
-        placeId,
-        title: updated.name,
-      });
-    }),
-
-  stagePlaceAssignment: async (placeId, dayId) => {
+  stagePlaceAssignment: async (placeId, requestedDayIds) => {
     const place = get().places.find((p) => p.id === placeId);
     if (!place) return;
 
-    if (dayId === place.dayId) {
+    const dateOf = new Map(get().days.map((d) => [d.id, d.date]));
+    const dayIds = sortDayIds(requestedDayIds, dateOf);
+    const saved = buildPlaceDayIndex(get().itineraryByDay, get().days).get(placeId) ?? [];
+
+    if (sameDaySet(dayIds, saved)) {
       // Typing back to the currently-saved value -- nothing left to commit
       // for this place. Only actually remove/bump if a staged row existed at
       // all -- otherwise this is a genuine no-op (nothing changed, so no
@@ -1045,13 +1062,13 @@ export const useTripStore = create<TripState>((set, get) => ({
 
     await stagedAssignmentRepository.upsert({
       placeId,
-      dayId,
+      dayIds,
       city: place.city,
       stagedAt: new Date().toISOString(),
     });
     stagedAssignmentsVersion++;
     set((s) => ({
-      stagedAssignments: { ...s.stagedAssignments, [placeId]: { dayId, city: place.city } },
+      stagedAssignments: { ...s.stagedAssignments, [placeId]: { dayIds, city: place.city } },
     }));
   },
 
@@ -1102,8 +1119,8 @@ export const useTripStore = create<TripState>((set, get) => ({
 
       const committedPlaceIds: ID[] = [];
       try {
-        for (const [placeId, { dayId }] of entries) {
-          await get().assignPlaceToDay(placeId, dayId);
+        for (const [placeId, { dayIds }] of entries) {
+          await get().setPlaceDays(placeId, dayIds);
           committedPlaceIds.push(placeId);
         }
       } catch (err) {
@@ -1338,10 +1355,13 @@ export const useTripStore = create<TripState>((set, get) => ({
     // it may have been moved elsewhere since, and unassigning it then would
     // undo a newer, deliberate assignment.
     if (!place || place.dayId !== item.dayId) return;
+    // A place spanning several days stays planned: it moves onto the earliest
+    // day it still has a stop on, and only goes back to wishlist with none.
+    const remaining = buildPlaceDayIndex(get().itineraryByDay, get().days).get(place.id) ?? [];
     const released: Place = {
       ...place,
-      dayId: undefined,
-      status: 'wishlist',
+      dayId: remaining[0],
+      status: remaining.length > 0 ? 'planned' : 'wishlist',
       updatedAt: new Date().toISOString(),
     };
     await tripRepository.upsertPlace(released);

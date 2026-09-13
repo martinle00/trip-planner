@@ -110,6 +110,7 @@ interface PlaceRow {
   description: string | null;
   self_review: string | null;
   category: string | null;
+  categories: string[] | null;
   lat: number | null;
   lng: number | null;
   city: string;
@@ -128,6 +129,7 @@ function placeFromRow(row: PlaceRow): Place {
     description: row.description ?? undefined,
     selfReview: row.self_review ?? undefined,
     category: row.category ?? undefined,
+    categories: row.categories && row.categories.length > 0 ? row.categories : undefined,
     lat: row.lat ?? undefined,
     lng: row.lng ?? undefined,
     city: row.city,
@@ -147,6 +149,7 @@ function placeToRow(place: Place): PlaceRow {
     description: place.description ?? null,
     self_review: place.selfReview ?? null,
     category: place.category ?? null,
+    categories: place.categories && place.categories.length > 0 ? place.categories : null,
     lat: place.lat ?? null,
     lng: place.lng ?? null,
     city: place.city,

@@ -116,16 +116,16 @@ function baseState() {
     // update `stagedAssignments` so the count/pin/select reactively update,
     // the same way the real store's implementation does. `vi.fn` wrapping
     // still lets assertions check call args.
-    stagePlaceAssignment: vi.fn(async (placeId: string, dayId: string | undefined) => {
+    stagePlaceAssignment: vi.fn(async (placeId: string, dayIds: string[]) => {
       const place = useTripStore.getState().places.find((p) => p.id === placeId);
       if (!place) return;
       useTripStore.setState((s) => {
-        if (dayId === place.dayId) {
+        if (dayIds.join() === (place.dayId ?? '')) {
           const next = { ...s.stagedAssignments };
           delete next[placeId];
           return { stagedAssignments: next };
         }
-        return { stagedAssignments: { ...s.stagedAssignments, [placeId]: { dayId, city: place.city } } };
+        return { stagedAssignments: { ...s.stagedAssignments, [placeId]: { dayIds, city: place.city } } };
       });
     }),
     discardStagedAssignmentsForCity: vi.fn(async (city: string) => {
@@ -169,20 +169,20 @@ describe('MapPanel — staged changes', () => {
     expect(screen.queryByRole('region', { name: 'Map save status' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText(/Tianzifang/));
-    const select = screen.getByLabelText('Assign Tianzifang to a day');
-    fireEvent.change(select, { target: { value: 'day-2' } });
+    const dayChips = within(screen.getByRole('group', { name: 'Days for Tianzifang' })).getAllByRole('button');
+    fireEvent.click(dayChips[0]); // day-2
 
-    expect(useTripStore.getState().stagePlaceAssignment).toHaveBeenCalledWith('place-tianzifang', 'day-2');
+    expect(useTripStore.getState().stagePlaceAssignment).toHaveBeenCalledWith('place-tianzifang', ['day-2']);
     expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
   });
 
-  it('reflects an already-staged assignment as the select\'s value and shows the "Unsaved change" pill', () => {
-    setupStore({ stagedAssignments: { 'place-tianzifang': { dayId: 'day-3', city: 'Shanghai' } } });
+  it('reflects an already-staged assignment on the day chips and shows the "Unsaved change" pill', () => {
+    setupStore({ stagedAssignments: { 'place-tianzifang': { dayIds: ['day-3'], city: 'Shanghai' } } });
     renderMapPanel();
 
     fireEvent.click(screen.getByText(/Tianzifang/));
-    const select = screen.getByLabelText('Assign Tianzifang to a day') as HTMLSelectElement;
-    expect(select.value).toBe('day-3');
+    const dayChips = within(screen.getByRole('group', { name: 'Days for Tianzifang' })).getAllByRole('button');
+    expect(dayChips.map((c) => c.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
     // Scoped to the pill (a real <button>) — "Unsaved change" also appears as
     // plain text in the always-present legend entry.
     expect(screen.getByRole('button', { name: 'Unsaved change' })).toBeInTheDocument();
@@ -191,8 +191,8 @@ describe('MapPanel — staged changes', () => {
   it('shows the cross-city hint and the correct per-city Discard scope', () => {
     setupStore({
       stagedAssignments: {
-        'place-tianzifang': { dayId: 'day-2', city: 'Shanghai' },
-        'place-elsewhere': { dayId: undefined, city: 'Suzhou' },
+        'place-tianzifang': { dayIds: ['day-2'], city: 'Shanghai' },
+        'place-elsewhere': { dayIds: [], city: 'Suzhou' },
       },
     });
     renderMapPanel();
@@ -203,7 +203,7 @@ describe('MapPanel — staged changes', () => {
   });
 
   it('Discard calls discardStagedAssignmentsForCity scoped to the city on screen', () => {
-    setupStore({ stagedAssignments: { 'place-tianzifang': { dayId: 'day-2', city: 'Shanghai' } } });
+    setupStore({ stagedAssignments: { 'place-tianzifang': { dayIds: ['day-2'], city: 'Shanghai' } } });
     renderMapPanel();
 
     fireEvent.click(screen.getByRole('button', { name: 'Discard (Shanghai)' }));
@@ -212,7 +212,7 @@ describe('MapPanel — staged changes', () => {
   });
 
   it('Save calls saveStagedAssignments', async () => {
-    setupStore({ stagedAssignments: { 'place-tianzifang': { dayId: 'day-2', city: 'Shanghai' } } });
+    setupStore({ stagedAssignments: { 'place-tianzifang': { dayIds: ['day-2'], city: 'Shanghai' } } });
     renderMapPanel();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -228,7 +228,7 @@ describe('MapPanel — staged changes', () => {
 
   it('disables Save while offline but keeps the bar informative', () => {
     onlineMock = false;
-    setupStore({ stagedAssignments: { 'place-tianzifang': { dayId: 'day-2', city: 'Shanghai' } } });
+    setupStore({ stagedAssignments: { 'place-tianzifang': { dayIds: ['day-2'], city: 'Shanghai' } } });
     renderMapPanel();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
@@ -322,7 +322,7 @@ describe('MapPanel — pin search', () => {
     fireEvent.click(options[0]);
 
     // Selected in the detail panel...
-    expect(screen.getByLabelText('Assign The Bund to a day')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Days for The Bund' })).toBeInTheDocument();
     // ...and the camera actually moved to it.
     expect(mapStub.flyTo).toHaveBeenCalledWith([31.24, 121.49], 15, expect.anything());
     // The list closes behind the pick.
@@ -361,7 +361,7 @@ describe('MapPanel — pin search', () => {
     expect(showingCity()).toBe('Suzhou');
     // The city switch resets the day/pin selection for every OTHER reason;
     // this one has to survive it, or the jump lands on nothing.
-    expect(screen.getByLabelText('Assign Humble Administrator’s Garden to a day')).toBeInTheDocument();
+    expect(document.querySelector('.pin-detail-name')).toHaveTextContent('Humble Administrator’s Garden');
     expect(mapStub.flyTo).toHaveBeenCalledWith([31.32, 120.63], 15, expect.anything());
   });
 
@@ -389,7 +389,7 @@ describe('MapPanel — "View on map" focus request', () => {
     const onFocusHandled = vi.fn();
     renderMapPanel({ focusRequest: { placeId: 'place-bund', nonce: 1 }, onFocusHandled });
 
-    expect(screen.getByLabelText('Assign The Bund to a day')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Days for The Bund' })).toBeInTheDocument();
     expect(mapStub.flyTo).toHaveBeenCalledWith([31.24, 121.49], 15, expect.anything());
     // Consumed once — a request left set would re-centre the map every time
     // the user came back to this tab.

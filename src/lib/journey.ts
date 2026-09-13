@@ -384,7 +384,10 @@ export interface JourneyEditPlan {
   days: DayDiff;
   /** Stops on a deleted day. Deleted EXPLICITLY, client-side — see below. */
   itineraryToDelete: ItineraryItem[];
-  /** Places that were assigned to a deleted day, unassigned back to wishlist. */
+  /** Places whose `dayId` is a deleted day. A place with a stop on some other
+   *  day moves onto the earliest of those (places can span several days);
+   *  one with none goes back to wishlist. Name kept from before places could
+   *  span days — the common case is still an unassign. */
   placesToUnassign: Place[];
   /** Places whose city is no longer a leg. Left exactly as they are — listed
    *  only so the confirm dialog can say how many, and so the Places tab knows
@@ -431,14 +434,23 @@ export function planJourneyEdit(input: {
   // A place is unassigned when the day it sits on disappears, or when the only
   // stop linking it to a day is being deleted. `status` follows `dayId` — the
   // same invariant `reconcilePlaceDaysToItinerary` maintains on load.
+  const dateOf = new Map(days.map((d) => [d.id, d.date]));
   const survivingStopDayIds = new Map<ID, ID>();
   for (const item of itinerary) {
     if (!item.placeId || deletedDayIds.has(item.dayId)) continue;
-    if (!survivingStopDayIds.has(item.placeId)) survivingStopDayIds.set(item.placeId, item.dayId);
+    const seen = survivingStopDayIds.get(item.placeId);
+    if (!seen || (dateOf.get(item.dayId) ?? '') < (dateOf.get(seen) ?? '')) {
+      survivingStopDayIds.set(item.placeId, item.dayId);
+    }
   }
   const placesToUnassign = places
-    .filter((p) => p.dayId && deletedDayIds.has(p.dayId) && !survivingStopDayIds.has(p.id))
-    .map((p) => ({ ...p, dayId: undefined, status: 'wishlist' as const }));
+    .filter((p) => p.dayId && deletedDayIds.has(p.dayId))
+    .map((p) => {
+      const surviving = survivingStopDayIds.get(p.id);
+      return surviving
+        ? { ...p, dayId: surviving, status: 'planned' as const }
+        : { ...p, dayId: undefined, status: 'wishlist' as const };
+    });
 
   const legNames = new Set(cities.map((c) => c.name));
   return {

@@ -36,6 +36,8 @@ import type { CoordinateParseFailure } from '../../lib/coordinateInput';
 import { gcj02ToWgs84, isInsideChina } from '../../lib/gcj02';
 import { haversineMeters } from '../../lib/geo';
 import { PLACE_CATEGORIES, inferCityFromAddress, orderedCities } from '../../lib/tripView';
+import { CategoryChips } from '../../components/ChoiceChips';
+import { withCategories } from '../../data/schema';
 
 export type AddPlaceMode = 'search' | 'pin';
 
@@ -93,7 +95,9 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
   // Both start empty and are required to save. Neither is defaulted: a
   // pre-filled Category/City reads as "already answered", and the wrong
   // answer is silently accepted at a rate a deliberate choice never is.
-  const [category, setCategory] = useState<string>('');
+  // Several allowed (a hotel with a rooftop bar); the first picked is the
+  // primary, whose icon the place wears.
+  const [categories, setCategories] = useState<string[]>([]);
   const [city, setCity] = useState('');
   // A short, optional description only — NOT the full About/My review editor
   // the place detail modal has (Phase 4 item 3/7). Adding a place and
@@ -149,7 +153,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     setDescription('');
     setCoordInput('');
     setApplyChinaShift(true);
-    setCategory('');
+    setCategories([]);
     setCity('');
     setSaving(false);
     setSaved(false);
@@ -250,7 +254,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
   async function handleSave(e: FormEvent) {
     e.preventDefault();
     const trimmedName = name.trim();
-    if (!trimmedName || !category || !city || saving) return;
+    if (!trimmedName || categories.length === 0 || !city || saving) return;
     setSaving(true);
 
     // No coordinate from any of the three sources means the place is saved
@@ -273,8 +277,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
     }
 
     await addPlace({
-      name: trimmedName,
-      category,
+      ...withCategories({ name: trimmedName }, categories),
       city,
       description: description.trim() || undefined,
       lat,
@@ -287,7 +290,7 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
 
   const missingFields = [
     !name.trim() && 'a name',
-    !category && 'a category',
+    categories.length === 0 && 'a category',
     !city && 'a city',
   ].filter((f): f is string => typeof f === 'string');
   const canSave = missingFields.length === 0;
@@ -436,16 +439,14 @@ export function AddPlaceModal({ open, mode, point, defaultCity, onClose }: AddPl
           )}
 
           <div className="add-form-grid" style={{ marginTop: 10 }}>
-            <div>
-              <label htmlFor="ap-cat">Category</label>
-              <select id="ap-cat" value={category} onChange={(e) => setCategory(e.target.value)} required>
-                <option value="">Choose a category&hellip;</option>
-                {PLACE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+            <div className="full">
+              <span className="field-label choice-chips-label">Categories</span>
+              <CategoryChips
+                options={PLACE_CATEGORIES}
+                selected={categories}
+                label="Categories"
+                onChange={setCategories}
+              />
             </div>
             <div>
               <label htmlFor="ap-city">City</label>

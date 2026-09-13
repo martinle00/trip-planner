@@ -1089,7 +1089,7 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
   it("a Save that completes staging while init()'s BACKGROUND remote refresh is mid-flight re-reading it does not get resurrected once that refresh resolves (signed-in cache-first path)", async () => {
     const place = useTripStore.getState().places.find((p) => !p.dayId)!;
     const day = useTripStore.getState().days[0];
-    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [day.id]);
 
     const cachedTrip = useTripStore.getState().trip as Trip;
     const fakeRemote = makeFakeRemoteRepo({
@@ -1140,7 +1140,7 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
       await initPromise;
       expect(useTripStore.getState().syncing).toBe(true);
       expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({
-        dayId: day.id,
+        dayIds: [day.id],
         city: place.city,
       });
 
@@ -1191,7 +1191,7 @@ describe('init() — cache-first / stale-while-revalidate (remote-backed reposit
     async () => {
       const place = useTripStore.getState().places.find((p) => !p.dayId)!;
       const day = useTripStore.getState().days[0];
-      await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+      await useTripStore.getState().stagePlaceAssignment(place.id, [day.id]);
 
       const cachedTrip = useTripStore.getState().trip as Trip;
       const fakeRemote = makeFakeRemoteRepo({
@@ -1570,10 +1570,10 @@ describe('stagePlaceAssignment', () => {
     const place = places.find((p) => !p.dayId)!;
     const day = days[0];
 
-    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [day.id]);
 
     expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({
-      dayId: day.id,
+      dayIds: [day.id],
       city: place.city,
     });
     // Nothing committed to the saved place/itinerary yet.
@@ -1582,7 +1582,7 @@ describe('stagePlaceAssignment', () => {
     // Persisted to the local staging table too (survives a reload — see the
     // dedicated test below).
     expect(await stagedAssignmentRepository.listAll()).toContainEqual(
-      expect.objectContaining({ placeId: place.id, dayId: day.id, city: place.city }),
+      expect.objectContaining({ placeId: place.id, dayIds: [day.id], city: place.city }),
     );
   });
 
@@ -1591,10 +1591,10 @@ describe('stagePlaceAssignment', () => {
     const place = places.find((p) => !p.dayId)!; // saved dayId is undefined
     const day = days[0];
 
-    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [day.id]);
     expect(useTripStore.getState().stagedAssignments[place.id]).toBeDefined();
 
-    await useTripStore.getState().stagePlaceAssignment(place.id, undefined); // back to saved (undefined)
+    await useTripStore.getState().stagePlaceAssignment(place.id, []); // back to saved (undefined)
 
     expect(useTripStore.getState().stagedAssignments[place.id]).toBeUndefined();
     expect(await stagedAssignmentRepository.listAll()).toHaveLength(0);
@@ -1606,10 +1606,10 @@ describe('stagePlaceAssignment', () => {
     const day = days[0];
     await useTripStore.getState().assignPlaceToDay(place.id, day.id); // saved dayId = day.id
 
-    await useTripStore.getState().stagePlaceAssignment(place.id, undefined);
+    await useTripStore.getState().stagePlaceAssignment(place.id, []);
 
     expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({
-      dayId: undefined,
+      dayIds: [],
       city: place.city,
     });
     // Saved place is untouched until Save.
@@ -1620,16 +1620,16 @@ describe('stagePlaceAssignment', () => {
     const { places, days } = useTripStore.getState();
     const place = places.find((p) => !p.dayId)!;
 
-    await useTripStore.getState().stagePlaceAssignment(place.id, days[0].id);
-    await useTripStore.getState().stagePlaceAssignment(place.id, days[1].id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [days[0].id]);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [days[1].id]);
 
-    expect(useTripStore.getState().stagedAssignments[place.id]?.dayId).toBe(days[1].id);
+    expect(useTripStore.getState().stagedAssignments[place.id]?.dayIds).toEqual([days[1].id]);
     expect(await stagedAssignmentRepository.listAll()).toHaveLength(1);
   });
 
   it('is a no-op for an unknown placeId', async () => {
     await expect(
-      useTripStore.getState().stagePlaceAssignment('no-such-place', useTripStore.getState().days[0].id),
+      useTripStore.getState().stagePlaceAssignment('no-such-place', [useTripStore.getState().days[0].id]),
     ).resolves.toBeUndefined();
     expect(useTripStore.getState().stagedAssignments).toEqual({});
   });
@@ -1638,12 +1638,12 @@ describe('stagePlaceAssignment', () => {
     const { places, days } = useTripStore.getState();
     const place = places.find((p) => !p.dayId)!;
     const day = days[0];
-    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [day.id]);
 
     await useTripStore.getState().init(); // re-load from IndexedDB, mirrors a page reload
 
     expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({
-      dayId: day.id,
+      dayIds: [day.id],
       city: place.city,
     });
   });
@@ -1657,22 +1657,22 @@ describe('discardStagedAssignmentsForCity', () => {
     const placeElsewhere = places.find((p) => !p.dayId && p.city !== homeDay.city)!;
     const dayElsewhere = days.find((d) => d.city === placeElsewhere.city)!;
 
-    await useTripStore.getState().stagePlaceAssignment(placeInHomeCity.id, homeDay.id);
-    await useTripStore.getState().stagePlaceAssignment(placeElsewhere.id, dayElsewhere.id);
+    await useTripStore.getState().stagePlaceAssignment(placeInHomeCity.id, [homeDay.id]);
+    await useTripStore.getState().stagePlaceAssignment(placeElsewhere.id, [dayElsewhere.id]);
     expect(getStagedAssignmentCount(useTripStore.getState().stagedAssignments)).toBe(2);
 
     await useTripStore.getState().discardStagedAssignmentsForCity(homeDay.city);
 
     const staged = useTripStore.getState().stagedAssignments;
     expect(staged[placeInHomeCity.id]).toBeUndefined();
-    expect(staged[placeElsewhere.id]).toEqual({ dayId: dayElsewhere.id, city: placeElsewhere.city });
+    expect(staged[placeElsewhere.id]).toEqual({ dayIds: [dayElsewhere.id], city: placeElsewhere.city });
     expect(await stagedAssignmentRepository.listAll()).toHaveLength(1);
   });
 
   it('no-ops for a city with nothing staged', async () => {
     const { places, days } = useTripStore.getState();
     const place = places.find((p) => !p.dayId)!;
-    await useTripStore.getState().stagePlaceAssignment(place.id, days[0].id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [days[0].id]);
 
     await useTripStore.getState().discardStagedAssignmentsForCity('A City With Nothing Staged');
 
@@ -1696,8 +1696,8 @@ describe('saveStagedAssignments', () => {
     const placeElsewhere = places.find((p) => !p.dayId && p.city !== homeDay.city)!;
     const dayElsewhere = days.find((d) => d.city === placeElsewhere.city)!;
 
-    await useTripStore.getState().stagePlaceAssignment(placeInHomeCity.id, homeDay.id);
-    await useTripStore.getState().stagePlaceAssignment(placeElsewhere.id, dayElsewhere.id);
+    await useTripStore.getState().stagePlaceAssignment(placeInHomeCity.id, [homeDay.id]);
+    await useTripStore.getState().stagePlaceAssignment(placeElsewhere.id, [dayElsewhere.id]);
 
     await useTripStore.getState().saveStagedAssignments();
 
@@ -1714,7 +1714,7 @@ describe('saveStagedAssignments', () => {
   it('persists through a simulated reload once saved (a real commit, not just in-memory)', async () => {
     const { places, days } = useTripStore.getState();
     const place = places.find((p) => !p.dayId)!;
-    await useTripStore.getState().stagePlaceAssignment(place.id, days[0].id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [days[0].id]);
 
     await useTripStore.getState().saveStagedAssignments();
     await useTripStore.getState().init();
@@ -1726,7 +1726,7 @@ describe('saveStagedAssignments', () => {
   it('offline: refuses to attempt the save, throws, and leaves staging fully intact', async () => {
     const place = useTripStore.getState().places.find((p) => !p.dayId)!;
     const day = useTripStore.getState().days[0];
-    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [day.id]);
 
     Object.defineProperty(globalThis.navigator, 'onLine', { configurable: true, value: false });
     try {
@@ -1735,7 +1735,7 @@ describe('saveStagedAssignments', () => {
       Object.defineProperty(globalThis.navigator, 'onLine', { configurable: true, value: true });
     }
 
-    expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({ dayId: day.id, city: place.city });
+    expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({ dayIds: [day.id], city: place.city });
     expect(await stagedAssignmentRepository.listAll()).toHaveLength(1);
     expect(useTripStore.getState().places.find((p) => p.id === place.id)?.dayId).toBeUndefined();
   });
@@ -1754,9 +1754,9 @@ describe('saveStagedAssignments', () => {
     // sequentially in staged order (Object.entries preserves insertion
     // order for these non-numeric string keys), so okPlace commits first,
     // failingPlace fails second, and neverAttemptedPlace's turn never comes.
-    await useTripStore.getState().stagePlaceAssignment(okPlace.id, homeDay.id);
-    await useTripStore.getState().stagePlaceAssignment(failingPlace.id, failingDay.id);
-    await useTripStore.getState().stagePlaceAssignment(neverAttemptedPlace.id, neverAttemptedDay.id);
+    await useTripStore.getState().stagePlaceAssignment(okPlace.id, [homeDay.id]);
+    await useTripStore.getState().stagePlaceAssignment(failingPlace.id, [failingDay.id]);
+    await useTripStore.getState().stagePlaceAssignment(neverAttemptedPlace.id, [neverAttemptedDay.id]);
 
     const baseRepo = new DexieTripRepository();
     const failingRepo: TripRepository = {
@@ -1804,7 +1804,7 @@ describe('saveStagedAssignments', () => {
     // staged so a retry (or Discard) has something correct to act on.
     expect(useTripStore.getState().places.find((p) => p.id === failingPlace.id)?.dayId).toBeUndefined();
     expect(useTripStore.getState().stagedAssignments[failingPlace.id]).toEqual({
-      dayId: failingDay.id,
+      dayIds: [failingDay.id],
       city: failingPlace.city,
     });
 
@@ -1813,7 +1813,7 @@ describe('saveStagedAssignments', () => {
     // with a failure).
     expect(useTripStore.getState().places.find((p) => p.id === neverAttemptedPlace.id)?.dayId).toBeUndefined();
     expect(useTripStore.getState().stagedAssignments[neverAttemptedPlace.id]).toEqual({
-      dayId: neverAttemptedDay.id,
+      dayIds: [neverAttemptedDay.id],
       city: neverAttemptedPlace.city,
     });
 
@@ -1832,7 +1832,7 @@ describe('init() background refresh vs. a concurrent staging action (stagedAssig
   it('a Save that completes staging while init() is mid-flight re-reading it does not get resurrected by init()\'s now-stale snapshot', async () => {
     const place = useTripStore.getState().places.find((p) => !p.dayId)!;
     const day = useTripStore.getState().days[0];
-    await useTripStore.getState().stagePlaceAssignment(place.id, day.id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [day.id]);
 
     // Block init()'s staged-assignments read from RESOLVING (not from
     // reading) until the test explicitly releases it -- the snapshot is
@@ -1886,15 +1886,15 @@ describe('getEffectiveDayId / getStagedAssignmentCount* selectors (pure helpers)
       updatedAt: new Date().toISOString(),
     };
     expect(getEffectiveDayId(place, {})).toBe('day-saved');
-    expect(getEffectiveDayId(place, { p1: { dayId: 'day-staged', city: 'Shanghai' } })).toBe('day-staged');
-    expect(getEffectiveDayId(place, { p1: { dayId: undefined, city: 'Shanghai' } })).toBeUndefined();
+    expect(getEffectiveDayId(place, { p1: { dayIds: ['day-staged'], city: 'Shanghai' } })).toBe('day-staged');
+    expect(getEffectiveDayId(place, { p1: { dayIds: [], city: 'Shanghai' } })).toBeUndefined();
   });
 
   it('count helpers total and break down correctly by city', () => {
     const staged = {
-      p1: { dayId: 'd1', city: 'Shanghai' },
-      p2: { dayId: 'd2', city: 'Shanghai' },
-      p3: { dayId: undefined, city: 'Suzhou' },
+      p1: { dayIds: ['d1'], city: 'Shanghai' },
+      p2: { dayIds: ['d2'], city: 'Shanghai' },
+      p3: { dayIds: [], city: 'Suzhou' },
     };
     expect(getStagedAssignmentCount(staged)).toBe(3);
     expect(getStagedAssignmentCountForCity(staged, 'Shanghai')).toBe(2);
@@ -1907,7 +1907,7 @@ describe('getEffectiveDayId / getStagedAssignmentCount* selectors (pure helpers)
 describe('staged assignments are cleared alongside sign-out / whole-trip import', () => {
   it('resetTripStoreForSignOut clears in-memory staged assignments', async () => {
     const place = useTripStore.getState().places.find((p) => !p.dayId)!;
-    await useTripStore.getState().stagePlaceAssignment(place.id, useTripStore.getState().days[0].id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [useTripStore.getState().days[0].id]);
     expect(getStagedAssignmentCount(useTripStore.getState().stagedAssignments)).toBe(1);
 
     resetTripStoreForSignOut();
@@ -1917,7 +1917,7 @@ describe('staged assignments are cleared alongside sign-out / whole-trip import'
 
   it('importJson clears any staged assignments -- old placeIds are no longer meaningful against the new snapshot', async () => {
     const place = useTripStore.getState().places.find((p) => !p.dayId)!;
-    await useTripStore.getState().stagePlaceAssignment(place.id, useTripStore.getState().days[0].id);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [useTripStore.getState().days[0].id]);
 
     const json = await useTripStore.getState().exportJson();
     await useTripStore.getState().importJson(json);
@@ -2350,5 +2350,106 @@ describe('init — suppressed while writes are queued', () => {
     // already painted (that's the whole point of stale-while-revalidate), so
     // wait for the background step rather than assuming it finished.
     await vi.waitFor(() => expect(remoteReads).toBeGreaterThan(0));
+  });
+});
+
+describe('setPlaceDays — a place spanning several days', () => {
+  function cityWithDays(min: number) {
+    const { places, days } = useTripStore.getState();
+    const place = places.find((p) => days.filter((d) => d.city === p.city).length >= min)!;
+    return { place, cityDays: days.filter((d) => d.city === place.city).sort((a, b) => a.date.localeCompare(b.date)) };
+  }
+  const placeNow = (id: string) => useTripStore.getState().places.find((p) => p.id === id)!;
+
+  it('creates one linked stop per chosen day and points dayId at the earliest', async () => {
+    const { place, cityDays } = cityWithDays(2);
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[1].id, cityDays[0].id]);
+
+    expect(linkedItemsOn(cityDays[0].id, place.id)).toHaveLength(1);
+    expect(linkedItemsOn(cityDays[1].id, place.id)).toHaveLength(1);
+    expect(placeNow(place.id)).toMatchObject({ dayId: cityDays[0].id, status: 'planned' });
+  });
+
+  it('keeps the primary day it already had while that day stays chosen', async () => {
+    const { place, cityDays } = cityWithDays(2);
+    await useTripStore.getState().assignPlaceToDay(place.id, cityDays[1].id);
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[0].id, cityDays[1].id]);
+    expect(placeNow(place.id).dayId).toBe(cityDays[1].id);
+  });
+
+  it('moves a dropped day’s stop onto a newly chosen day, keeping its start time', async () => {
+    const { place, cityDays } = cityWithDays(2);
+    await useTripStore.getState().assignPlaceToDay(place.id, cityDays[0].id);
+    const [stop] = linkedItemsOn(cityDays[0].id, place.id);
+    await useTripStore.getState().updateItineraryItem({ ...stop, startTime: '09:30' });
+
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[1].id]);
+
+    expect(linkedItemsOn(cityDays[0].id, place.id)).toHaveLength(0);
+    const [moved] = linkedItemsOn(cityDays[1].id, place.id);
+    expect(moved).toMatchObject({ id: stop.id, startTime: '09:30' });
+    expect(placeNow(place.id).dayId).toBe(cityDays[1].id);
+  });
+
+  it('dropping one of two days removes only that stop and leaves the place planned', async () => {
+    const { place, cityDays } = cityWithDays(2);
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[0].id, cityDays[1].id]);
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[1].id]);
+
+    expect(linkedItemsOn(cityDays[0].id, place.id)).toHaveLength(0);
+    expect(linkedItemsOn(cityDays[1].id, place.id)).toHaveLength(1);
+    expect(placeNow(place.id)).toMatchObject({ dayId: cityDays[1].id, status: 'planned' });
+  });
+
+  it('an empty set sends the place back to wishlist with no stops', async () => {
+    const { place, cityDays } = cityWithDays(2);
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[0].id, cityDays[1].id]);
+    await useTripStore.getState().setPlaceDays(place.id, []);
+
+    expect(linkedItemsOn(cityDays[0].id, place.id)).toHaveLength(0);
+    expect(linkedItemsOn(cityDays[1].id, place.id)).toHaveLength(0);
+    expect(placeNow(place.id)).toMatchObject({ dayId: undefined, status: 'wishlist' });
+  });
+
+  it('re-applying the same days writes nothing (updatedAt untouched)', async () => {
+    const { place, cityDays } = cityWithDays(2);
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[0].id, cityDays[1].id]);
+    const before = placeNow(place.id).updatedAt;
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[1].id, cityDays[0].id]);
+    expect(placeNow(place.id).updatedAt).toBe(before);
+  });
+
+  it('removing the primary day’s stop moves the place onto its remaining day instead of releasing it', async () => {
+    const { place, cityDays } = cityWithDays(2);
+    await useTripStore.getState().setPlaceDays(place.id, [cityDays[0].id, cityDays[1].id]);
+    const [primaryStop] = linkedItemsOn(cityDays[0].id, place.id);
+
+    await useTripStore.getState().removeItineraryItem(primaryStop.id);
+
+    expect(placeNow(place.id)).toMatchObject({ dayId: cityDays[1].id, status: 'planned' });
+  });
+
+  it('a Map save stages and commits a whole set of days', async () => {
+    const { place, cityDays } = cityWithDays(2);
+    await useTripStore.getState().stagePlaceAssignment(place.id, [cityDays[1].id, cityDays[0].id]);
+    expect(useTripStore.getState().stagedAssignments[place.id]?.dayIds).toEqual([cityDays[0].id, cityDays[1].id]);
+
+    await useTripStore.getState().saveStagedAssignments();
+
+    expect(linkedItemsOn(cityDays[0].id, place.id)).toHaveLength(1);
+    expect(linkedItemsOn(cityDays[1].id, place.id)).toHaveLength(1);
+    expect(useTripStore.getState().stagedAssignments).toEqual({});
+  });
+
+  it('reads a staged row written before multi-day staging (single dayId) as a one-day set', async () => {
+    const { place, cityDays } = cityWithDays(1);
+    await stagedAssignmentRepository.upsert({
+      placeId: place.id,
+      dayId: cityDays[0].id,
+      city: place.city,
+      stagedAt: new Date().toISOString(),
+    });
+    await useTripStore.getState().init();
+    expect(useTripStore.getState().stagedAssignments[place.id]).toEqual({ dayIds: [cityDays[0].id], city: place.city });
   });
 });

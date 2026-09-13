@@ -12,6 +12,7 @@ import { BackToTop } from '../../components/BackToTop';
 import { useFocusCity } from '../../hooks/useFocusCity';
 import { citySlug } from '../../components/RouteStrip';
 import type { Day, ID, ItineraryItem, Place } from '../../data/schema';
+import { placeCategories } from '../../data/schema';
 import {
   buildDayColorMap,
   buildItinerarySections,
@@ -61,26 +62,17 @@ export function ItineraryPanel({ focusCity }: ItineraryPanelProps = {}) {
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
   const sections = useMemo(() => (trip ? buildItinerarySections(trip, days) : []), [trip, days]);
 
-  // Places already linked to a stop on ANY day. `place.dayId` would be the
-  // tempting test, but a place with stops on two days points at the earliest
-  // only (see reconcilePlaceDays.ts) — so it would re-offer something that is
-  // already scheduled elsewhere. The itinerary is the source of truth.
-  const scheduledPlaceIds = useMemo(() => {
-    const ids = new Set<ID>();
-    for (const items of Object.values(itineraryByDay)) {
-      for (const item of items) if (item.placeId) ids.add(item.placeId);
-    }
-    return ids;
-  }, [itineraryByDay]);
-
   // Exact `day.city` match, never `parentCity`: a day trip offers its own
-  // city's places, not the base leg's — the same rule autoplan uses.
+  // city's places, not the base leg's — the same rule autoplan uses. A place
+  // already on ANOTHER day is still offered (places can span several days);
+  // only one already linked to a stop on this same day is left out.
   const candidatePlaces = useMemo(() => {
     if (!addingToDay) return [];
+    const onThisDay = new Set((itineraryByDay[addingToDay.id] ?? []).map((i) => i.placeId).filter(Boolean));
     return places
-      .filter((p) => p.city === addingToDay.city && !scheduledPlaceIds.has(p.id))
+      .filter((p) => p.city === addingToDay.city && !onThisDay.has(p.id))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [addingToDay, places, scheduledPlaceIds]);
+  }, [addingToDay, places, itineraryByDay]);
 
   const jumpToToday = useCallback(() => {
     if (days.length === 0) return;
@@ -566,7 +558,7 @@ function StopFormModal({ open, dayId, item, candidates, onClose, onSubmit }: Sto
               <Icon name="check" />
               <div>
                 <strong>{selectedPlace.name}</strong>
-                <span>{selectedPlace.category ?? 'Place'}</span>
+                <span>{placeCategories(selectedPlace).join(' · ') || 'Place'}</span>
               </div>
               <button
                 type="button"
@@ -612,10 +604,12 @@ function StopFormModal({ open, dayId, item, candidates, onClose, onSubmit }: Sto
                         className="search-result"
                         onClick={() => handleSelect(p)}
                       >
-                        <Icon name={categoryIcon(p.category)} className="search-result-icon" />
+                        <Icon name={categoryIcon(placeCategories(p)[0])} className="search-result-icon" />
                         <span className="search-result-body">
                           <span className="search-result-name">{p.name}</span>
-                          {p.category && <span className="search-result-addr">{p.category}</span>}
+                          {placeCategories(p).length > 0 && (
+                            <span className="search-result-addr">{placeCategories(p).join(' · ')}</span>
+                          )}
                         </span>
                       </button>
                     ))}
@@ -659,7 +653,7 @@ function StopFormModal({ open, dayId, item, candidates, onClose, onSubmit }: Sto
 
         {!item && freeText && candidates.length === 0 && (
           <p className="search-hint">
-            No unscheduled places in this city yet &mdash; add them in the Places tab to pick them
+            No places left to add to this day &mdash; add them in the Places tab to pick them
             here.
           </p>
         )}

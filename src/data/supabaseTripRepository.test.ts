@@ -259,6 +259,29 @@ describe('SupabaseTripRepository', () => {
     expect(places).toEqual([place]);
   });
 
+  it('round-trips several categories, and reads a row without them as absent', async () => {
+    const { client, tables } = makeFakeClient();
+    const repo = new SupabaseTripRepository(client, USER_ID);
+    const place: Place = {
+      id: 'place-hotel',
+      tripId: baseTrip.id,
+      name: 'Rooftop hotel',
+      city: 'Shanghai',
+      category: 'Hotel',
+      categories: ['Hotel', 'Food'],
+      status: 'wishlist',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    await repo.upsertPlace(place);
+    expect(tables.places[0].categories).toEqual(['Hotel', 'Food']);
+    expect(await repo.listPlaces(baseTrip.id)).toEqual([place]);
+
+    await repo.upsertPlace({ ...place, id: 'place-old', categories: undefined });
+    expect(tables.places.find((r) => r.id === 'place-old')?.categories).toBeNull();
+    const old = (await repo.listPlaces(baseTrip.id)).find((p) => p.id === 'place-old');
+    expect(old?.categories).toBeUndefined();
+  });
+
   it('round-trips a place with NO location as null columns, not as 0,0', async () => {
     const { client, tables } = makeFakeClient();
     const repo = new SupabaseTripRepository(client, USER_ID);

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../components/Icons';
 import type { ID, LocatedPlace, Place } from '../../data/schema';
 import { categoryIcon } from '../../lib/tripView';
+import { placeCategories } from '../../data/schema';
 import { searchPlaces } from './placeSearch';
 
 interface MapSearchProps {
@@ -176,13 +177,13 @@ export function MapSearch({ places, selectedCity, colorForPlace, onPick }: MapSe
                 >
                   <span className="map-search-dot" style={{ background: colorForPlace(m.place) }} aria-hidden="true">
                     <svg aria-hidden="true">
-                      <use href={`#i-${categoryIcon(m.place.category)}`} />
+                      <use href={`#i-${categoryIcon(placeCategories(m.place)[0])}`} />
                     </svg>
                   </span>
                   <span className="map-search-body">
                     <span className="map-search-name">{m.place.name}</span>
                     <span className="map-search-meta">
-                      {m.place.category ? `${m.place.category} · ` : ''}
+                      {placeCategories(m.place).length > 0 ? `${placeCategories(m.place).join(', ')} · ` : ''}
                       {m.place.city}
                     </span>
                   </span>

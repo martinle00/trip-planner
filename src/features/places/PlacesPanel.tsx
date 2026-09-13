@@ -1,7 +1,7 @@
 // Places tab — wishlist/planned pins grouped by city (each section tinted
 // with a stable per-city accent so a long list still reads as distinct
-// chunks), with a city + category filter bar and a day-assignment select per
-// card. "Add place" opens the shared AddPlaceModal (search-first) instead of
+// chunks), with a city + category filter bar and day chips per card (a place
+// can span several days). "Add place" opens the shared AddPlaceModal (search-first) instead of
 // an inline form — the same modal the Map tab uses, so there's only one
 // add-place flow in the app.
 //
@@ -15,11 +15,13 @@ import { useTripStore } from '../../store/useTripStore';
 import { Icon } from '../../components/Icons';
 import { BackToTop } from '../../components/BackToTop';
 import { useFocusCity } from '../../hooks/useFocusCity';
+import { DayChips } from '../../components/ChoiceChips';
+import { buildPlaceDayIndex } from '../../lib/placeDays';
 import { citySlug } from '../../components/RouteStrip';
 import type { AddPlaceMode } from './AddPlaceModal';
 import { PlaceDetailModal } from './PlaceDetailModal';
 import type { Day, ID, Place } from '../../data/schema';
-import { hasLocation } from '../../data/schema';
+import { hasLocation, placeCategories } from '../../data/schema';
 import { buildPlaceDeleteWarning } from '../../lib/placeDeleteWarning';
 import {
   PLACE_CATEGORIES,
@@ -28,7 +30,6 @@ import {
   categoryIcon,
   cityAccentColor,
   dayColor,
-  dayLabel,
   daysForCity,
   daysForLeg,
   groupPlacesByCity,
@@ -51,7 +52,8 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap, focusCity }: PlacesPa
   const places = useTripStore((s) => s.places);
   const days = useTripStore((s) => s.days);
   const removePlace = useTripStore((s) => s.removePlace);
-  const assignPlaceToDay = useTripStore((s) => s.assignPlaceToDay);
+  const setPlaceDays = useTripStore((s) => s.setPlaceDays);
+  const itineraryByDay = useTripStore((s) => s.itineraryByDay);
   const getPlaceDraft = useTripStore((s) => s.getPlaceDraft);
 
   const [cityFilter, setCityFilter] = useState('all');
@@ -63,6 +65,7 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap, focusCity }: PlacesPa
   const [collapsedCities, setCollapsedCities] = useState<Set<string>>(new Set());
 
   const dayColorMap = useMemo(() => buildDayColorMap(days), [days]);
+  const placeDayIndex = useMemo(() => buildPlaceDayIndex(itineraryByDay, days), [itineraryByDay, days]);
   const groups = useMemo(() => (trip ? groupPlacesByCity(places, trip.cities) : []), [places, trip]);
 
   // Picking a city on the timeline must actually reveal it: a city filter set
@@ -133,7 +136,7 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap, focusCity }: PlacesPa
   function matchesFilters(p: Place): boolean {
     return (
       (cityFilter === 'all' || p.city === cityFilter) &&
-      (categoryFilter === 'all' || categoryGroup(p.category) === categoryFilter)
+      (categoryFilter === 'all' || placeCategories(p).some((c) => categoryGroup(c) === categoryFilter))
     );
   }
 
@@ -304,7 +307,8 @@ export function PlacesPanel({ onOpenAddPlace, onViewOnMap, focusCity }: PlacesPa
                       legDays={cLegDays}
                       dayColorMap={dayColorMap}
                       hasDraft={draftPlaceIds.has(p.id)}
-                      onAssign={(dayId) => assignPlaceToDay(p.id, dayId)}
+                      dayIds={placeDayIndex.get(p.id) ?? []}
+                    onSetDays={(dayIds) => setPlaceDays(p.id, dayIds)}
                       onDelete={() => handleDelete(p.id)}
                       onOpenDetail={() => setSelectedPlaceId(p.id)}
                     />
@@ -335,14 +339,16 @@ interface PlaceCardProps {
   legDays: Day[];
   dayColorMap: Map<string, string>;
   hasDraft: boolean;
-  onAssign: (dayId: string | undefined) => void;
+  /** Every day the place has a stop on, chronological. */
+  dayIds: ID[];
+  onSetDays: (dayIds: ID[]) => void;
   onDelete: () => void;
   onOpenDetail: () => void;
 }
 
-function PlaceCard({ place, cityDays, legDays, dayColorMap, hasDraft, onAssign, onDelete, onOpenDetail }: PlaceCardProps) {
+function PlaceCard({ place, cityDays, legDays, dayColorMap, hasDraft, dayIds, onSetDays, onDelete, onOpenDetail }: PlaceCardProps) {
   const color = dayColor(place.dayId, dayColorMap);
-  const tintStyle: CSSProperties = { ['--select-tint' as string]: color } as CSSProperties;
+  const categories = placeCategories(place);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const trashRef = useRef<HTMLButtonElement>(null);
   const wasConfirming = useRef(false);
@@ -385,7 +391,7 @@ function PlaceCard({ place, cityDays, legDays, dayColorMap, hasDraft, onAssign, 
       <div className="place-card-top">
         <span className="place-title">
           <span className={`place-icon${!place.dayId ? ' unassigned' : ''}`} style={{ ['--pin-color' as string]: color } as CSSProperties}>
-            <Icon name={categoryIcon(place.category)} />
+            <Icon name={categoryIcon(categories[0])} />
           </span>
           <span className="place-name">{place.name}</span>
         </span>
@@ -404,7 +410,11 @@ function PlaceCard({ place, cityDays, legDays, dayColorMap, hasDraft, onAssign, 
         </div>
       </div>
       <div className="place-tags">
-        {place.category && <span className="tag">{place.category}</span>}
+        {categories.map((c) => (
+          <span className="tag" key={c}>
+            {c}
+          </span>
+        ))}
         <span className="tag city">{place.city}</span>
         {/* A non-empty selfReview IS the "visited" signal (Phase 4 item 3) —
             deliberately not a `visited` status field, so this never has to
@@ -439,23 +449,14 @@ function PlaceCard({ place, cityDays, legDays, dayColorMap, hasDraft, onAssign, 
       </button>
       <div className="place-foot">
         {cityDays.length > 0 ? (
-          <span className="assign-slot">
-            <select
-              className={`assign-select${!place.dayId ? ' is-wishlist' : ''}`}
-              style={tintStyle}
-              aria-label={`Assign day for ${place.name}`}
-              value={place.dayId ?? ''}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => onAssign(e.target.value || undefined)}
-            >
-              <option value="">Wishlist</option>
-              {cityDays.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {dayLabel(d, legDays)}
-                </option>
-              ))}
-            </select>
-          </span>
+          <DayChips
+            days={cityDays}
+            legDays={legDays}
+            selected={dayIds}
+            dayColorMap={dayColorMap}
+            label={`Days for ${place.name}`}
+            onChange={onSetDays}
+          />
         ) : (
           <span className="assign-none">No days scheduled yet</span>
         )}

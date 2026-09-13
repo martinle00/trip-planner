@@ -2,7 +2,8 @@
 // (online-only, per spec). The top route-strip timeline (in App) is the
 // PRIMARY city selector — `selectedCity` is passed down from there so the
 // timeline and map stay in sync; day chips dim/emphasize pins for that day;
-// clicking a pin opens a detail card with an assign-to-day select. Both the
+// clicking a pin opens a detail card with day chips (a place can span several
+// days). Both the
 // header "Add place" button and a real tap on the map open the shared
 // AddPlaceModal (search entry point, and pin entry point with the tapped
 // coordinate already known) instead of jumping to the Places tab. Offline
@@ -23,6 +24,7 @@ import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from '
 import type { LatLngBoundsExpression } from 'leaflet';
 import {
   getEffectiveDayId,
+  getEffectiveDayIds,
   getStagedAssignmentCount,
   getStagedAssignmentCountForCity,
   useTripStore,
@@ -31,7 +33,9 @@ import { Icon } from '../../components/Icons';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { AddPlaceMode, AddPlacePoint } from '../places/AddPlaceModal';
 import type { Day, ID, LocatedPlace, Place } from '../../data/schema';
-import { hasLocation } from '../../data/schema';
+import { hasLocation, placeCategories } from '../../data/schema';
+import { DayChips } from '../../components/ChoiceChips';
+import { buildPlaceDayIndex } from '../../lib/placeDays';
 import { buildDayColorMap, cityFocusPoint, dayColor, dayLabel, daysForCity, daysForLeg } from '../../lib/tripView';
 import { fmtCompactRange, fmtShortNumeric, parseISODate } from '../../lib/dates';
 import { buildPinIcon } from './markerIcon';
@@ -98,6 +102,7 @@ export function MapPanel({
   const saveStagedAssignments = useTripStore((s) => s.saveStagedAssignments);
   const online = useOnlineStatus();
 
+  const placeDayIndex = useMemo(() => buildPlaceDayIndex(itineraryByDay, days), [itineraryByDay, days]);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   // The pin the map camera should move to, and the one wearing the transient
@@ -315,6 +320,7 @@ export function MapPanel({
                   legDays={legDays}
                   dayColorMap={dayColorMap}
                   stagedAssignments={stagedAssignments}
+                  placeDayIndex={placeDayIndex}
                   selectedDayId={selectedDayId}
                   selectedPlaceId={selectedPlaceId}
                   focusTarget={focusTarget}
@@ -372,14 +378,14 @@ export function MapPanel({
 
         <PinDetailPanel
           place={selectedPlace}
-          effectivePlaceDayId={selectedPlace ? getEffectiveDayId(selectedPlace, stagedAssignments) : undefined}
+          effectivePlaceDayIds={selectedPlace ? getEffectiveDayIds(selectedPlace, stagedAssignments, placeDayIndex) : []}
           pending={selectedPlacePending}
           selectedDay={selectedDay}
           cityDays={cityDays}
           legDays={legDays}
           dayColorMap={dayColorMap}
           itineraryByDay={itineraryByDay}
-          onAssign={(dayId) => selectedPlace && stagePlaceAssignment(selectedPlace.id, dayId)}
+          onSetDays={(dayIds) => selectedPlace && stagePlaceAssignment(selectedPlace.id, dayIds)}
           onClose={() => setSelectedPlaceId(null)}
           onClearDayFilter={() => handleSelectDay(null)}
           onOpenInItinerary={(city) => onJumpToItinerary(`it-${city.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)}
@@ -425,6 +431,8 @@ interface LeafletMapProps {
   legDays: Day[];
   dayColorMap: Map<string, string>;
   stagedAssignments: StagedAssignments;
+  /** Saved days per place — see `buildPlaceDayIndex`. */
+  placeDayIndex: Map<ID, ID[]>;
   selectedDayId: string | null;
   selectedPlaceId: string | null;
   /** Camera request — see `MapFocusRequest` and `FlyToPlace`. */
@@ -443,6 +451,7 @@ function LeafletMap({
   legDays,
   dayColorMap,
   stagedAssignments,
+  placeDayIndex,
   selectedDayId,
   selectedPlaceId,
   focusTarget,
@@ -464,22 +473,30 @@ function LeafletMap({
       <FlyToPlace target={focusTarget} places={places} />
       <ClickToAdd onMapClick={onMapClick} />
       {places.map((p) => {
-        const effDayId = getEffectiveDayId(p, stagedAssignments);
+        const effDayIds = getEffectiveDayIds(p, stagedAssignments, placeDayIndex);
+        const onSelectedDay = selectedDayId !== null && effDayIds.includes(selectedDayId);
+        // A place on several days wears the filtered day's colour while that
+        // day is picked, and its primary day's otherwise.
+        const effDayId = onSelectedDay ? selectedDayId : getEffectiveDayId(p, stagedAssignments);
         const pending = isPlacePending(p.id, stagedAssignments);
         const day = cityDays.find((d) => d.id === effDayId);
         const color = dayColor(effDayId, dayColorMap);
         const unassigned = !effDayId;
-        const emph = selectedDayId ? effDayId === selectedDayId : false;
-        const dim = selectedDayId ? effDayId !== selectedDayId : false;
+        const emph = selectedDayId ? onSelectedDay : false;
+        const dim = selectedDayId ? !onSelectedDay : false;
+        const extraDays = effDayIds.length - 1;
         const badgeText = day ? String(parseISODate(day.date).getDate()) : undefined;
-        const tooltipText = (day ? dayLabel(day, legDays) : 'Unassigned') + (pending ? ' (unsaved)' : '');
+        const tooltipText =
+          (day ? dayLabel(day, legDays) : 'Unassigned') +
+          (extraDays > 0 ? ` +${extraDays} more day${extraDays === 1 ? '' : 's'}` : '') +
+          (pending ? ' (unsaved)' : '');
         return (
           <Marker
             key={p.id}
             position={[p.lat, p.lng]}
             icon={buildPinIcon({
               color,
-              category: p.category,
+              category: placeCategories(p)[0],
               unassigned,
               badgeText,
               selected: p.id === selectedPlaceId,
@@ -563,9 +580,9 @@ function ClickToAdd({ onMapClick }: { onMapClick: (lat: number, lng: number) => 
 
 interface PinDetailPanelProps {
   place: Place | null;
-  /** The place's staged day if one is pending, else its saved `dayId` — what
-   *  the "Assign to day" select should actually show. */
-  effectivePlaceDayId: ID | undefined;
+  /** The place's staged days if a change is pending, else its saved days —
+   *  what the day chips should actually show. */
+  effectivePlaceDayIds: ID[];
   /** Whether `place` has an unsaved (staged) day reassignment right now. */
   pending: boolean;
   selectedDay: Day | null;
@@ -574,7 +591,7 @@ interface PinDetailPanelProps {
   legDays: Day[];
   dayColorMap: Map<string, string>;
   itineraryByDay: Record<string, { id: string; title: string; startTime?: string; durationMin?: number; note?: string }[]>;
-  onAssign: (dayId: string | undefined) => void;
+  onSetDays: (dayIds: ID[]) => void;
   onClose: () => void;
   onClearDayFilter: () => void;
   onOpenInItinerary: (city: string) => void;
@@ -583,14 +600,14 @@ interface PinDetailPanelProps {
 
 function PinDetailPanel({
   place,
-  effectivePlaceDayId,
+  effectivePlaceDayIds,
   pending,
   selectedDay,
   cityDays,
   legDays,
   dayColorMap,
   itineraryByDay,
-  onAssign,
+  onSetDays,
   onClose,
   onClearDayFilter,
   onOpenInItinerary,
@@ -607,7 +624,11 @@ function PinDetailPanel({
           <div>
             <div className="pin-detail-name">{place.name}</div>
             <div className="pin-detail-tags">
-              {place.category && <span className="tag">{place.category}</span>}
+              {placeCategories(place).map((c) => (
+                <span className="tag" key={c}>
+                  {c}
+                </span>
+              ))}
               <span className="tag city">{place.city}</span>
             </div>
             {/* Same visual language as PlaceDetailModal's "Unsaved changes"
@@ -628,20 +649,20 @@ function PinDetailPanel({
         </div>
         {place.description?.trim() && <p className="pin-detail-note">{place.description}</p>}
         <div className="field-row">
-          <span className="field-label">Assign to day</span>
+          <span className="field-label">Days</span>
         </div>
-        <select
-          value={effectivePlaceDayId ?? ''}
-          aria-label={`Assign ${place.name} to a day`}
-          onChange={(e) => onAssign(e.target.value || undefined)}
-        >
-          <option value="">Unassigned</option>
-          {cityDays.map((d) => (
-            <option key={d.id} value={d.id}>
-              {dayLabel(d, legDays)}
-            </option>
-          ))}
-        </select>
+        {cityDays.length > 0 ? (
+          <DayChips
+            days={cityDays}
+            legDays={legDays}
+            selected={effectivePlaceDayIds}
+            dayColorMap={dayColorMap}
+            label={`Days for ${place.name}`}
+            onChange={onSetDays}
+          />
+        ) : (
+          <span className="assign-none">No days scheduled yet</span>
+        )}
         {assignedDay && (
           <button className="btn btn-sm btn-ghost btn-block" onClick={() => onOpenInItinerary(place.city)}>
             Open in Itinerary

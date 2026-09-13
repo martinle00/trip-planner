@@ -252,12 +252,18 @@ describe('ItineraryPanel — Add stop place picker', () => {
     expect(offeredPlaceNames()).not.toContain('Tiger Hill');
   });
 
-  it('excludes a place that already has a stop on ANOTHER day', () => {
-    // p1 is scheduled on d2; opening Add stop on d1 (same city) must not
-    // re-offer it. `place.dayId` alone wouldn't catch this reliably — the
-    // itinerary is the source of truth.
+  it('still offers a place that has a stop on ANOTHER day — places can span several days', () => {
     renderWithPlaces({
       itineraryByDay: { d2: [{ id: 'x1', dayId: 'd2', placeId: 'p1', title: 'Yu Garden', order: 0 }] },
+    });
+    openAddStop(0);
+
+    expect(offeredPlaceNames()).toEqual(['The Bund', 'Yu Garden']);
+  });
+
+  it('excludes a place that already has a stop on THIS day', () => {
+    renderWithPlaces({
+      itineraryByDay: { d1: [{ id: 'x1', dayId: 'd1', placeId: 'p1', title: 'Yu Garden', order: 0 }] },
     });
     openAddStop(0);
 

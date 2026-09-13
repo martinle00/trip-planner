@@ -48,7 +48,8 @@ import { useTripStore } from '../../store/useTripStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { ID, ItineraryItem, Place } from '../../data/schema';
 import { PLACE_CATEGORIES, categoryIcon, orderedCities } from '../../lib/tripView';
-import { hasLocation } from '../../data/schema';
+import { hasLocation, placeCategories, withCategories } from '../../data/schema';
+import { CategoryChips } from '../../components/ChoiceChips';
 import { splitMergedProse } from '../../lib/proseMerge';
 import { formatCoordinate, parseCoordinateInput } from '../../lib/coordinateInput';
 import { gcj02ToWgs84, isInsideChina } from '../../lib/gcj02';
@@ -126,7 +127,7 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
   // concurrent edit from another device, append-merging the prose with
   // itself).
   const [nameValue, setNameValue] = useState('');
-  const [categoryValue, setCategoryValue] = useState('');
+  const [categoryValues, setCategoryValues] = useState<string[]>([]);
   const [cityValue, setCityValue] = useState('');
   const [coordValue, setCoordValue] = useState('');
   const [locationOpen, setLocationOpen] = useState(false);
@@ -174,7 +175,7 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
 
   function resetIdentityFields(from: Place | null) {
     setNameValue(from?.name ?? '');
-    setCategoryValue(from?.category ?? '');
+    setCategoryValues(from ? placeCategories(from) : []);
     setCityValue(from?.city ?? '');
     setCoordValue(from && hasLocation(from) ? `${from.lat}, ${from.lng}` : '');
     setApplyChinaShift(false);
@@ -186,7 +187,7 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
   const identityDirty =
     place !== null &&
     (nameValue.trim() !== place.name ||
-      categoryValue !== (place.category ?? '') ||
+      categoryValues.join('\n') !== placeCategories(place).join('\n') ||
       cityValue !== place.city ||
       (nextPoint !== null && (nextPoint.lat !== place.lat || nextPoint.lng !== place.lng)));
 
@@ -423,9 +424,9 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
       setPendingFocus('name');
       return;
     }
-    if (!categoryValue || !cityValue) {
+    if (categoryValues.length === 0 || !cityValue) {
       setMode('edit');
-      setSaveError(`Pick a ${!categoryValue ? 'category' : 'city'} before saving.`);
+      setSaveError(`Pick a ${categoryValues.length === 0 ? 'category' : 'city'} before saving.`);
       return;
     }
     // Only TYPED-BUT-UNREADABLE text blocks the save. A blank box means
@@ -473,9 +474,8 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
       if (identityDirty) {
         const moved = nextPoint !== null && (nextPoint.lat !== saved.lat || nextPoint.lng !== saved.lng);
         await updatePlace({
-          ...saved,
+          ...withCategories(saved, categoryValues),
           name: trimmedName,
-          category: categoryValue,
           city: cityValue,
           lat: nextPoint?.lat ?? saved.lat,
           lng: nextPoint?.lng ?? saved.lng,
@@ -593,32 +593,17 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
                     placeholder="Place name"
                     disabled={mode === 'saving'}
                   />
+                  <div className="identity-categories">
+                    <span className="field-label">Categories</span>
+                    <CategoryChips
+                      options={PLACE_CATEGORIES}
+                      selected={categoryValues}
+                      label="Categories"
+                      onChange={setCategoryValues}
+                      disabled={mode === 'saving'}
+                    />
+                  </div>
                   <div className="identity-fields-row">
-                    <div>
-                      <label className="field-label" htmlFor="pd-cat">
-                        Category
-                      </label>
-                      <select
-                        id="pd-cat"
-                        value={categoryValue}
-                        onChange={(e) => setCategoryValue(e.target.value)}
-                        disabled={mode === 'saving'}
-                      >
-                        <option value="">Choose a category&hellip;</option>
-                        {/* A place saved before the categories were
-                            canonicalised can carry a legacy value (e.g.
-                            'Sightseeing') — keep it selectable rather than
-                            silently re-categorising it on open. */}
-                        {categoryValue && !PLACE_CATEGORIES.includes(categoryValue) && (
-                          <option value={categoryValue}>{categoryValue}</option>
-                        )}
-                        {PLACE_CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                     <div>
                       <label className="field-label" htmlFor="pd-city">
                         City
@@ -713,12 +698,16 @@ export function PlaceDetailModal({ place, pinColor, onClose, onViewOnMap, onDraf
                       className={`place-icon${unassigned ? ' unassigned' : ''}`}
                       style={{ ['--pin-color' as string]: pinColor }}
                     >
-                      <Icon name={categoryIcon(place.category)} />
+                      <Icon name={categoryIcon(placeCategories(place)[0])} />
                     </span>
                     {place.name}
                   </div>
                   <div className="modal-tags">
-                    {place.category && <span className="tag">{place.category}</span>}
+                    {placeCategories(place).map((c) => (
+                      <span className="tag" key={c}>
+                        {c}
+                      </span>
+                    ))}
                     <span className="tag city">{place.city}</span>
                     {!placeLocated && (
                       <span className="tag no-location">

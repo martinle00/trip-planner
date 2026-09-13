@@ -322,6 +322,19 @@ through mockup + review before implementation.
 order, not queue order** — coalescing moves a re-edited record to the back, which
 could otherwise put a day behind the place that references it.
 
+### A place spans days and categories
+
+- **A place's days are DERIVED from the itinerary** — one linked stop per day, read through
+  `buildPlaceDayIndex` (`lib/placeDays.ts`). `Place.dayId` is only the *primary* day (pin
+  colour); never read it as "the" day. Change days through `setPlaceDays` (`assignPlaceToDay`
+  is the one-day case), which moves a dropped day's stop onto a newly chosen one so a start
+  time survives. Map staging holds `dayIds[]`; old staged rows with a single `dayId` are
+  still read.
+- **Categories:** `Place.categories` (primary first) with `category` mirroring
+  `categories[0]` so older builds and exports still read one. Read via `placeCategories`,
+  write via `withCategories` — never set one field without the other. No snapshot version
+  bump: the field is optional and absent means "just `category`".
+
 ### Settle up is derived, never stored (Phase 11)
 
 `src/lib/settlement.ts` answers "who owes whom" as a **pure function of the current
@@ -373,6 +386,10 @@ derived settlement (no schema change at all), then **recording a repayment** via
 > Until it is, every `upsertExpense` fails on the missing `is_transfer` column —
 > an RLS-style hard error, *not* something the outbox will queue, so it breaks ALL
 > expense saving, not just repayments. (`0007` **has** been applied.)
+>
+> ⚠️ **`0009_place_categories.sql` has NOT been applied either.** Same failure shape, for
+> places: every `upsertPlace` sends `categories`, so until it's applied **no place can be
+> saved**. Apply 0008 then 0009 (0009 redefines `import_trip_snapshot` on top of 0008's).
 >
 > Migrations are applied by hand, in the Supabase dashboard's SQL editor. There is
 > deliberately no CI that applies them — single developer, and the workflow it took

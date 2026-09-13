@@ -129,8 +129,16 @@ export interface Place {
   description?: string;
   /** Free-text, blog-style reflection written after visiting. */
   selfReview?: string;
-  /** Free-text category, e.g. 'Sightseeing', 'Food', 'Museum'. */
+  /** Free-text category, e.g. 'Sightseeing', 'Food', 'Museum'. The PRIMARY
+   *  category (its icon is the place's icon). Always mirrors `categories[0]`
+   *  when `categories` is set — kept so older builds and pre-v7 exports,
+   *  which only know this field, still read something sensible. Read both
+   *  through `placeCategories`, write both through `withCategories`. */
   category?: string;
+  /** Every category the place falls under, primary first (a hotel with a
+   *  rooftop bar is Hotel + Food). Absent on places saved before multiple
+   *  categories existed — `placeCategories` falls back to `category`. */
+  categories?: string[];
   /**
    * WGS-84 position, or undefined when the place has no location yet.
    *
@@ -150,7 +158,11 @@ export interface Place {
   /** City name this place belongs to (matches a City.name, incl. day-trip cities). */
   city: string;
   status: PlaceStatus;
-  /** Set when the place has been assigned to a day. */
+  /** The place's PRIMARY day: one of the days it has an itinerary stop on
+   *  (the earliest, unless it was already pointing at another of them).
+   *  A place can span several days — the full set is derived from the
+   *  itinerary (`buildPlaceDayIndex` in lib/placeDays.ts), never stored here.
+   *  This copy exists for the pin colour and is kept in step by the store. */
   dayId?: ID;
   /** Optional pasted reference URL (not scraped). */
   sourceUrl?: string;
@@ -183,6 +195,26 @@ export type LocatedPlace = Place & { lat: number; lng: number };
  */
 export function hasLocation(place: Place): place is LocatedPlace {
   return Number.isFinite(place.lat) && Number.isFinite(place.lng);
+}
+
+/**
+ * Every category a place falls under, primary first, de-duplicated. The one
+ * reader everyone should use: a place saved before `categories` existed only
+ * carries `category`, and a bare `place.categories` would read as none.
+ */
+export function placeCategories(place: Pick<Place, 'category' | 'categories'>): string[] {
+  const list = place.categories && place.categories.length > 0 ? place.categories : place.category ? [place.category] : [];
+  return [...new Set(list.map((c) => c.trim()).filter(Boolean))];
+}
+
+/** Returns `place` with both category fields set from `categories` (primary
+ *  first), so `category` can never disagree with `categories[0]`. */
+export function withCategories<T extends object>(
+  place: T,
+  categories: string[],
+): Omit<T, 'category' | 'categories'> & Pick<Place, 'category' | 'categories'> {
+  const list = placeCategories({ categories });
+  return { ...place, category: list[0], categories: list.length > 0 ? list : undefined };
 }
 
 /** One dated day of the trip, belonging to a city. */

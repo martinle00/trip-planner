@@ -18,6 +18,7 @@
 //   so the UI can say so out loud instead of silently dropping them.
 
 import type { Place, LocatedPlace } from '../../data/schema';
+import { placeCategories } from '../../data/schema';
 import { hasLocation } from '../../data/schema';
 
 export const MAP_SEARCH_LIMIT = 8;
@@ -50,7 +51,7 @@ function score(place: Place, q: string): number | null {
   if (words.some((w) => w === q)) return 1;
   if (words.some((w) => w.startsWith(q))) return 2;
   if (name.includes(q)) return 3;
-  if (place.category?.toLowerCase().includes(q) || place.city.toLowerCase().includes(q)) return 4;
+  if (placeCategories(place).some((c) => c.toLowerCase().includes(q)) || place.city.toLowerCase().includes(q)) return 4;
   return null;
 }
 

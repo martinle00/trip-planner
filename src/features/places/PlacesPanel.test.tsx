@@ -357,3 +357,40 @@ describe('PlacesPanel — follows the timeline city', () => {
     expect(screen.getByRole('button', { name: /^Chengdu/ })).toHaveAttribute('aria-expanded', 'true');
   });
 });
+
+describe('PlacesPanel — several categories and days per place', () => {
+  it('lists every category as a tag, and a secondary category matches its filter chip', () => {
+    useTripStore.setState({
+      places: [...PLACES, { ...PLACES[0], id: 'p9', name: 'Peace Hotel', category: 'Hotel', categories: ['Hotel', 'Food'] }],
+    });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const card = screen.getByText('Peace Hotel').closest('.place-card') as HTMLElement;
+    expect(within(card).getByText('Hotel')).toBeInTheDocument();
+    expect(within(card).getByText('Food')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    expect(screen.getByText('Peace Hotel')).toBeInTheDocument();
+  });
+
+  it('shows every day a place has a stop on as pressed, and toggling sends the whole set', () => {
+    const setPlaceDays = vi.fn();
+    useTripStore.setState({
+      days: [
+        { id: 'd1', tripId: 't', date: '2026-11-09', city: 'Shanghai' },
+        { id: 'd2', tripId: 't', date: '2026-11-10', city: 'Shanghai' },
+        { id: 'd3', tripId: 't', date: '2026-11-11', city: 'Shanghai' },
+      ],
+      itineraryByDay: {
+        d1: [{ id: 'i1', dayId: 'd1', placeId: 'p1', title: 'The Bund', order: 0 }],
+        d3: [{ id: 'i2', dayId: 'd3', placeId: 'p1', title: 'The Bund', order: 0 }],
+      },
+      setPlaceDays,
+    });
+    render(<PlacesPanel onOpenAddPlace={() => {}} />);
+    const chips = within(screen.getByRole('group', { name: 'Days for The Bund' })).getAllByRole('button');
+    expect(chips.map((c) => c.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'true']);
+
+    fireEvent.click(chips[1]);
+    expect(setPlaceDays).toHaveBeenCalledWith('p1', ['d1', 'd2', 'd3']);
+  });
+});
