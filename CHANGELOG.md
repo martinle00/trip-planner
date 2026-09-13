@@ -1,5 +1,52 @@
 # ctpapp
 
+## 0.12.0
+
+### Minor Changes
+
+- bcba7ae: Add a **Hotel** place category for accommodation. It appears in the Add Place and
+  Place Detail category pickers and as a Places-tab filter chip, with a new `cat-hotel`
+  bed icon. Free-text categories like `accommodation`, `hostel`, `guest_house`, `motel`
+  or `apartment`, including ones from geocoder results, now group under it.
+- 5b08179: Settle up now follows the Budget tab's filters. Picking a category (or a city, or
+  Paid/Unpaid) rebases the card, so "who owes whom **for Food**" is answerable
+  without doing the arithmetic by hand — the payments, the balances and the
+  fronted/share working all narrow to the selection, and the heading names the
+  scope it covers.
+
+  Scoped, the card is read-only: "Mark paid" and the "Already settled" strip appear
+  only in the whole-trip view. A repayment settles the trip's one balance, never a
+  category's slice of it, and the expense it writes carries no category or city — so
+  recording one from a filtered view would leave that view still asking for money
+  that had just changed hands. The scoped view links back to the whole-trip one
+  instead.
+
+- ebcbec5: A place can now be on **several days** and under **several categories**.
+
+  - **Days:** the day dropdown on Places cards and the Map pin panel is replaced by day chips.
+    Tap any number of them. Each chosen day gets its own itinerary stop, and turning a day
+    off removes only that stop. Changing a place from one day to another moves its existing
+    stop, so a start time or note set on it isn't lost. On the Map, a place shows in the
+    day-view of every day it's on, and a day filter highlights it on each of them. In the
+    Itinerary, "Add stop" now offers places already scheduled on other days.
+  - **Categories:** Add Place and Place Detail pick categories with chips instead of a single
+    select. The first one picked is the primary and sets the place's icon. Cards, the pin
+    panel and the detail modal list every category, and a category filter matches a place
+    on any of them.
+
+  Requires migration `0009_place_categories.sql` on the Supabase project. Place saves fail
+  until it is applied.
+
+- bcba7ae: The topbar timeline now drives the **Places** and **Itinerary** tabs as well as the
+  Map. Both tabs open scrolled to the selected city. Tapping a city while you're on one
+  of them keeps you on that tab and jumps to the city instead of switching to the Map.
+  A day-trip leg jumps to its nested day in the Itinerary. Other tabs still switch to
+  the Map.
+
+  Every leg of the trip now has a section in **Places**, even one with nothing saved
+  yet ("No places yet"). Adding or removing a leg in Edit journey adds or removes its
+  section, so an added leg like Chengdu no longer stays hidden until its first place.
+
 ## 0.11.0
 
 ### Minor Changes
